@@ -1,3 +1,5 @@
+import type { BallSkinId, CourtSkinId, CrowdStyle } from "./skins";
+
 export interface Settings {
   arrow: "arrow" | "dots";
   confetti: number;
@@ -7,6 +9,19 @@ export interface Settings {
   ballScale: number;
   autostart: boolean;
   fullscreen: boolean;
+  baseSkin: "plate" | "round" | "concrete";
+  court: boolean;
+  ballSkin: BallSkinId;
+  courtSkin: CourtSkinId;
+  crowd: CrowdStyle;
+  arenaFill: boolean;
+  stayOpen: boolean;
+  sfxBounce: boolean;
+  sfxShoot: boolean;
+  sfxGoal: boolean;
+  sfxMilestone: boolean;
+  sfxAchievement: boolean;
+  sfxUi: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -18,6 +33,19 @@ const DEFAULTS: Settings = {
   ballScale: 3,
   autostart: false,
   fullscreen: true,
+  baseSkin: "plate",
+  court: true,
+  ballSkin: "classic",
+  courtSkin: "parquet",
+  crowd: "stands",
+  arenaFill: false,
+  stayOpen: false,
+  sfxBounce: true,
+  sfxShoot: true,
+  sfxGoal: true,
+  sfxMilestone: true,
+  sfxAchievement: true,
+  sfxUi: true,
 };
 
 const KEY = "hoops.settings";
@@ -64,6 +92,48 @@ export function getScore(): number {
 export function setScore(v: number): void {
   try {
     localStorage.setItem(SCORE_KEY, String(v));
+  } catch {
+    /* ignore */
+  }
+}
+
+const SHOTS_KEY = "hoops.shots";
+const LAST10_KEY = "hoops.last10";
+
+/** Shots taken since the score was last reset, for the screen on the LED wall. */
+export function getShots(): number {
+  return Number(localStorage.getItem(SHOTS_KEY) ?? "0") || 0;
+}
+
+export function getLast10(): number[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST10_KEY) ?? "[]");
+    return Array.isArray(v) ? v.slice(-10) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addShot(): void {
+  try {
+    localStorage.setItem(SHOTS_KEY, String(getShots() + 1));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function pushLast10(made: boolean): void {
+  try {
+    localStorage.setItem(LAST10_KEY, JSON.stringify([...getLast10(), made ? 1 : 0].slice(-10)));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function resetMatch(): void {
+  try {
+    localStorage.removeItem(SHOTS_KEY);
+    localStorage.removeItem(LAST10_KEY);
   } catch {
     /* ignore */
   }

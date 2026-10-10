@@ -116,6 +116,23 @@ export class Net {
     }
   }
 
+  /** The ball hit the rim but not the net: the net still reacts, either swinging (A) or puffing up (C). */
+  rimHit(dir: number, s: number): void {
+    if (Math.random() < 0.5) {
+      this.impulse(dir * 0.95 * s, 0.15 * s);
+      return;
+    }
+    this.impulse(dir * 0.25 * s, -1.5 * s);
+    const C = this.cols;
+    let cx = 0;
+    for (let i = 0; i < C; i++) cx += this.px[i];
+    cx /= C;
+    for (let i = C; i < this.n; i++) {
+      const w = this.row[i] / (this.rows - 1);
+      this.vx[i] += Math.sign(this.px[i] - cx) * 0.55 * s * w;
+    }
+  }
+
   setHoop(ms: number, offX: number, hoopAcc: number): void {
     const frames = ms / (1000 / 60);
     this.offX = offX;

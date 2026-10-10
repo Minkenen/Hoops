@@ -1,0 +1,60 @@
+<title>Hoops basketgolv</title>
+<style>
+:root{--bg:#eceae4;--fg:#1c1c22;--card:#fbfaf7;--mut:#6a6860;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1c22;--fg:#f0eee8;--card:#272a32;--mut:#a3a6b0;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1c1c22;--fg:#f0eee8;--card:#272a32;--mut:#a3a6b0;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:ui-monospace,Menlo,monospace;padding-inline:16px;padding-block:24px;max-width:680px;margin:0 auto}
+.c{background:var(--card);border:2px solid var(--fg);padding:12px;margin-bottom:14px}
+.c b{font-size:14px}.c p{color:var(--mut);font-size:12px;line-height:1.5;margin:6px 0 0}
+canvas{width:100%;display:block;image-rendering:pixelated;margin-top:8px;aspect-ratio:170/110}
+</style>
+<div id="r"></div>
+<script>
+const W=170,H=110,BT=74,OX=85,OY=70,DK='#1c1c22';
+const hs=(a,b)=>{let n=(a*374761393+b*668265263)|0;n=(n^(n>>>13))*1274126177|0;return((n^(n>>>16))>>>0)%1000/1000};
+const uv=(x,y)=>{const a=x-OX,b=2*(y-OY);return[(a+b)/2,(b-a)/2]};
+const FL={
+ a:{n:'A. Parkett',d:'Träplankor som löper längs den isometriska diagonalen med förskjutna skarvar. Vit linje, målade ytor i ett fält och en trepoängsbåge som blir en perfekt ellips.',
+  px(u,v,x,y){const r=Math.floor(v/6),pu=u+hs(r,1)*40,j=Math.floor(pu/46);let c=['#dca25a','#d19650','#e2ab66','#d89c55'][Math.floor(hs(r,j)*4)];
+   if(v-r*6<1)c='#a8733a';if(Math.floor(pu)%46===0)c='#a8733a';
+   if((u>-8&&u<36&&v>10&&v<54)){c=hs(r,j)>.5?'#c9703a':'#c06832';if(v-r*6<1||Math.floor(pu)%46===0)c='#9c5328'}
+   const L=(Math.abs(v-10)<1.1&&u>-8&&u<36)||(Math.abs(v-54)<1.1&&u>-8&&u<36)||(Math.abs(u-36)<1.1&&v>10&&v<54)||(Math.hypot(u-72,v-32)<60&&Math.abs(Math.hypot(u-72,v-32)-52)<1.2&&u>40);
+   if(L)c='#fff4dc';return c},
+  edge:'#8a5a2c',shadow:'rgba(60,30,8,0.35)'},
+ b:{n:'B. Asfaltsplan',d:'Utomhusplan på gatan: grov asfalt med korn, sprickor och en målad röd zon. Linjerna är slitna och saknar bitar, med kantsten längst bak.',
+  px(u,v,x,y){let c=hs(x,y)>.82?'#6c717a':hs(x+9,y)>.55?'#5d626b':'#555a63';
+   const cr=Math.abs(((u*0.6+v*1.3)%58)-hs(Math.floor((u*0.6+v*1.3)/58),3)*2)<0.6&&hs(Math.floor(u/9),Math.floor(v/9))>.6;if(cr)c='#3d4048';
+   if(u>-6&&u<40&&v>8&&v<52)c=hs(x,y)>.7?'#b84a3a':'#a8402f';
+   const L=(Math.abs(v-8)<1.2&&u>-6&&u<40)||(Math.abs(v-52)<1.2&&u>-6&&u<40)||(Math.abs(u-40)<1.2&&v>8&&v<52)||(Math.abs(Math.hypot(u-76,v-30)-50)<1.2&&u>46);
+   if(L&&hs(Math.floor(u/3),Math.floor(v/3))>.22)c='#e9e6dc';return c},
+  edge:'#8d929b',shadow:'rgba(10,12,18,0.4)',curb:true},
+ c:{n:'C. Arenagolv',d:'Mörkt blankt golv i en arena med lagfärgad zon, mittcirkel och vit ring. Ett svagt ljus glider över golvet och bollen speglas i det.',
+  px(u,v,x,y,t){const sh=Math.max(0,1-Math.abs(x-((t*0.03)%(W+80)-40))/34);let c=(Math.floor(v/6)%2)?'#2a2f4a':'#262a44';
+   const d=Math.hypot(u-20,v-30);if(d<30)c=(Math.floor(v/6)%2)?'#5a3fb0':'#5236a4';
+   if(Math.abs(d-30)<1.1)c='#f4f0ff';if(Math.abs(u-20)<1&&true&&d<30)c='#f4f0ff';
+   if(Math.abs(v-4)<1&&u>60)c='#c9c3e8';
+   if(sh>0){const m=sh*0.28;c=mixc(c,'#ffffff',m)}return c},
+  edge:'#10122a',shadow:'rgba(0,0,10,0.5)',mirror:true}
+};
+function mixc(a,b,t){const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));const A=p(a),B=p(b);return'rgb('+A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(',')+')'}
+function ball(ctx,cx,cy,al){ctx.globalAlpha=al;const R=10;for(let y=-R;y<=R;y++)for(let x=-R;x<=R;x++){const d=Math.hypot(x,y);if(d>R+.4)continue;let c=d>R-1?DK:(x+y<-2?'#ffa24a':x+y>3?'#c4561c':'#f07a2a');if(d<R-1&&(Math.abs(x)<1||Math.abs(y)<1||Math.abs(Math.hypot(x+10,y)-11)<.8||Math.abs(Math.hypot(x-10,y)-11)<.8))c='#5a2a10';ctx.fillStyle=c;ctx.fillRect(cx+x,cy+y,1,1)}ctx.globalAlpha=1}
+function pole(ctx,x,yb){ctx.fillStyle=DK;ctx.fillRect(x-3,6,6,yb-6);ctx.fillStyle='#b8bec8';ctx.fillRect(x-2,6,4,yb-6);ctx.fillStyle='#8a919c';ctx.fillRect(x+1,6,1,yb-6);
+ for(let i=0;i<22;i++)for(let j=-9;j<=9;j++){const e=(j/9)**2+((i-11)/11)**2*0;if(Math.abs(j)+Math.abs(i-11)/2.2>9)continue;ctx.fillStyle=DK;ctx.fillRect(x+j*1,yb-5+Math.round(j*0.5)-1+Math.floor(i/11)*0,1,1)}
+ ctx.fillStyle=DK;for(let j=-11;j<=11;j++)ctx.fillRect(x+j,yb-1+Math.round(j*0.5)*0-2+Math.round(Math.abs(j)*0.0),1,1);
+ ctx.fillStyle='#9aa1ad';ctx.fillRect(x-10,yb-4,21,3);ctx.fillStyle=DK;ctx.fillRect(x-11,yb-5,23,1);ctx.fillRect(x-11,yb-1,23,1)}
+const root=document.getElementById('r'),cv={};
+Object.keys(FL).forEach(k=>{const f=FL[k],d=document.createElement('div');d.className='c';d.innerHTML='<b>'+f.n+'</b><canvas width="'+W+'" height="'+H+'"></canvas><p>'+f.d+'</p>';root.appendChild(d);cv[k]=d.querySelector('canvas').getContext('2d')});
+function draw(t){Object.keys(FL).forEach(k=>{const f=FL[k],ctx=cv[k];
+ ctx.clearRect(0,0,W,H);
+ ctx.fillStyle=k==='c'?'#171a30':k==='b'?'#aab4c4':'#cfd8e8';ctx.fillRect(0,0,W,BT);
+ if(k==='c'){ctx.fillStyle='#222645';for(let i=0;i<W;i+=6)ctx.fillRect(i,0,2,BT)}
+ for(let y=BT;y<H;y++)for(let x=0;x<W;x++){const[u,v]=uv(x,y);ctx.fillStyle=f.px(u,v,x,y,t);ctx.fillRect(x,y,1,1)}
+ ctx.fillStyle=f.curb?'#b9bec8':f.edge;ctx.fillRect(0,BT,W,f.curb?3:2);ctx.fillStyle=DK;ctx.fillRect(0,BT-1,W,1);ctx.fillRect(0,BT+(f.curb?3:2),W,1);
+ pole(ctx,146,96);
+ const by=92,bx=58;
+ ctx.fillStyle=f.shadow;for(let x=-7;x<=7;x++)for(let y=-1;y<=1;y++)if((x/8)**2+(y/1.6)**2<1)ctx.fillRect(bx+x,by+y+1,1,1);
+ if(f.mirror){ball(ctx,bx,by+11,0.28)}
+ ball(ctx,bx,by-9,1)});
+ requestAnimationFrame(draw)}
+requestAnimationFrame(draw);
+</script>

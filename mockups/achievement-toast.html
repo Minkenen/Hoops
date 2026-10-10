@@ -1,0 +1,70 @@
+<!doctype html><meta charset="utf-8"><title>Achievement toast</title>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--panel:#2a2d36;--text:#f2f4f7;--mut:#aeb4be;--btn:#3a3e48;--acc:#ee7a24;--gold:#ffc83a;--o:#0d0e12;--h:rgba(255,255,255,.9)}
+*{box-sizing:border-box}
+body{margin:0;background:#6b7a8c;font-family:'Pixelify Sans',ui-monospace,monospace;color:var(--text);min-height:100vh}
+.bar{position:fixed;top:0;left:0;right:0;padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#0008;z-index:50}
+.bar b{margin-right:8px}
+button{font-family:inherit;font-size:14px;border:0;background:var(--btn);color:var(--text);padding:6px 12px;cursor:pointer;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+button.on{background:var(--acc);color:#1c1c22}
+.stage{position:fixed;inset:0;background:linear-gradient(#8aa0b8,#5c6b7c)}
+.floor{position:absolute;left:0;right:0;bottom:0;height:34%;background:#a06a3c;opacity:.6}
+.px{background:var(--panel);box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o),-4px 0 0 var(--h),4px 0 0 var(--h),0 -4px 0 var(--h),0 4px 0 var(--h)}
+.t{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);pointer-events:none;display:none}
+.t.show{display:block}
+canvas{image-rendering:pixelated;display:block}
+.cap{position:fixed;left:16px;bottom:16px;color:#fff;font-size:13px;opacity:.85;max-width:60ch}
+/* A: card slides up */
+.a{display:flex;gap:12px;align-items:center;padding:10px 16px 10px 12px;min-width:290px;animation:aIn .45s steps(8) both,aOut .35s steps(6) 3.2s both}
+.a .k{font-size:11px;letter-spacing:.12em;color:var(--gold)}
+.a .n{font-size:18px;font-weight:500}
+.a .ic{background:var(--btn);padding:6px}
+@keyframes aIn{from{transform:translate(0,60px);opacity:0}to{transform:none;opacity:1}}
+@keyframes aOut{to{transform:translate(0,30px);opacity:0}}
+/* B: wide banner with shine and progress */
+.b{width:380px;max-width:92vw;overflow:hidden;animation:bIn .4s steps(6) both,bOut .3s steps(5) 3.3s both}
+.b .hd{background:var(--acc);color:#1c1c22;font-size:12px;letter-spacing:.14em;padding:3px 12px;font-weight:700;display:flex;justify-content:space-between}
+.b .bd{display:flex;gap:12px;align-items:center;padding:12px}
+.b .n{font-size:19px;font-weight:500}
+.b .d{font-size:13px;color:var(--mut)}
+.b .tr{height:8px;background:#0d0e12;margin-top:6px;position:relative}
+.b .tr i{position:absolute;left:0;top:0;bottom:0;background:var(--gold);width:0;animation:fill 1s steps(10) .5s forwards}
+.b::after{content:"";position:absolute;top:0;bottom:0;width:40px;left:-60px;background:linear-gradient(100deg,transparent,#fff6,transparent);animation:shine 1s .5s 1 both}
+.b{position:relative}
+@keyframes fill{to{width:100%}}
+@keyframes shine{to{left:420px}}
+@keyframes bIn{from{transform:scaleY(.1);opacity:0}to{transform:none;opacity:1}}
+@keyframes bOut{to{opacity:0;transform:translateY(20px)}}
+/* C: pill with medal pop and sparkles */
+.c{display:flex;align-items:center;gap:10px;padding:6px 18px 6px 8px;animation:cIn .5s steps(10) both,cOut .3s steps(5) 3.3s both;position:relative}
+.c .medal{width:44px;height:44px;margin:-14px 0 -14px -4px;animation:pop .6s steps(8) .15s both}
+.c .n{font-size:17px;font-weight:500}
+.c .k{font-size:11px;color:var(--mut)}
+.c .cnt{font-size:12px;background:var(--acc);color:#1c1c22;padding:2px 6px;margin-left:6px}
+.sp{position:absolute;width:4px;height:4px;background:var(--gold);animation:spk 1s steps(6) .3s both;left:24px;top:22px}
+@keyframes cIn{from{transform:translateY(40px) scale(.6);opacity:0}to{transform:none;opacity:1}}
+@keyframes cOut{to{opacity:0;transform:translateY(16px)}}
+@keyframes pop{0%{transform:scale(.2) rotate(-40deg)}70%{transform:scale(1.25) rotate(8deg)}100%{transform:none}}
+@keyframes spk{from{transform:translate(0,0);opacity:1}to{transform:translate(var(--x),var(--y));opacity:0}}
+</style>
+<div class="stage"><div class="floor"></div></div>
+<div class="bar"><b>Achievement toast, lower on screen</b>
+<button data-v="a" class="on">A Card</button><button data-v="b">B Banner</button><button data-v="c">C Medal pill</button><button id="re">Replay</button></div>
+<div class="t" id="ta"><div class="px a"><div class="ic"><canvas id="ca" width="12" height="12" style="width:36px;height:36px"></canvas></div><div><div class="k">ACHIEVEMENT UNLOCKED</div><div class="n">Nothing but net</div></div></div></div>
+<div class="t" id="tb"><div class="px b"><div class="hd"><span>ACHIEVEMENT UNLOCKED</span><span>4 / 17</span></div><div class="bd"><canvas id="cb" width="12" height="12" style="width:42px;height:42px"></canvas><div style="flex:1"><div class="n">Nothing but net</div><div class="d">Score without touching the rim or board</div><div class="tr"><i></i></div></div></div></div></div>
+<div class="t" id="tc"><div class="px c"><canvas class="medal" id="cc" width="12" height="12"></canvas><div><div class="n">Nothing but net</div><div class="k">Achievement unlocked</div></div><span class="cnt">4/17</span></div></div>
+<div class="cap">The toast sits about 90px above the bottom edge instead of at the top. A: compact card. B: banner with description, progress bar and shine. C: medal pops with sparkles.</div>
+<script>
+const G={'.':null,o:'#0d0e12',y:'#ffc83a',h:'#fff3b0',d:'#c98a12',w:'#ffffff'};
+const trophy=["............",".oooooooooo.",".oyyyyyyyyo.","oooyhyyyyyooo","oyoyhyyyydoyo","oyoyyyyyydoyo",".ooyyyyyydoo.","..oyyyyyydo..","...oodddoo...","....oydo....","....oyyo....","..oooooooo.."];
+function draw(id,map){const c=document.getElementById(id).getContext('2d');map.forEach((r,y)=>[...r].forEach((ch,x)=>{if(G[ch]){c.fillStyle=G[ch];c.fillRect(x,y,1,1)}}))}
+['ca','cb','cc'].forEach(i=>draw(i,trophy));
+let v='a',tm;
+function play(){clearTimeout(tm);document.querySelectorAll('.t').forEach(e=>{e.classList.remove('show');const k=e.firstElementChild;k.style.animation='none';void k.offsetWidth;k.style.animation=''});
+ const e=document.getElementById('t'+v);
+ if(v==='c'){e.querySelectorAll('.sp').forEach(s=>s.remove());for(let i=0;i<8;i++){const s=document.createElement('i');s.className='sp';const a=i/8*6.28;s.style.setProperty('--x',Math.cos(a)*34+'px');s.style.setProperty('--y',Math.sin(a)*34+'px');e.firstElementChild.appendChild(s)}}
+ e.classList.add('show');tm=setTimeout(()=>e.classList.remove('show'),3700)}
+document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{v=b.dataset.v;document.querySelectorAll('[data-v]').forEach(x=>x.classList.toggle('on',x===b));play()});
+document.getElementById('re').onclick=play;play();
+</script>

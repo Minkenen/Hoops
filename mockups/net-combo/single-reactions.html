@@ -1,0 +1,61 @@
+<meta charset="utf-8">
+<title>Hoops nätreaktion</title>
+<style>
+:root{--bg:#eceae4;--fg:#1c1c22;--card:#fbfaf7;--mut:#6a6860;--acc:#e8731f;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1c22;--fg:#f0eee8;--card:#272a32;--mut:#a3a6b0;--acc:#ffb257;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1c1c22;--fg:#f0eee8;--card:#272a32;--mut:#a3a6b0;--acc:#ffb257;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:ui-monospace,Menlo,monospace;padding-inline:16px;padding-block:24px;max-width:780px;margin:0 auto}
+h1{font-size:18px;margin:0 0 6px}p.i{color:var(--mut);font-size:12px;line-height:1.6;margin:0 0 14px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+button{font:inherit;font-size:13px;padding:8px 12px;background:var(--acc);color:#1c1c22;border:2px solid #1c1c22;cursor:pointer;box-shadow:3px 3px 0 #1c1c22}
+button.g{background:var(--card);color:var(--fg);border-color:var(--fg);box-shadow:3px 3px 0 var(--fg)}
+button:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.c{background:var(--card);border:2px solid var(--fg);padding:10px}
+.c b{font-size:14px;display:block;margin-bottom:6px}
+canvas{width:100%;display:block;image-rendering:pixelated;background:#c9d3e3;cursor:pointer}
+.c p{color:var(--mut);font-size:12px;line-height:1.5;margin:8px 0 0}
+</style>
+<h1>När bollen träffar ringen men inte nätet</h1>
+<p class="i">Tryck på en knapp för att skicka in bollen mot ringens kant, eller klicka på en enskild bild. Alla tre använder spelets riktiga nät, och skillnaden är hur nätet reagerar på träffen.</p>
+<div class="bar"><button data-a="l">Träff från vänster</button><button data-a="r" class="g">Träff från höger</button><button data-a="h" class="g">Hård träff</button></div>
+<div class="grid" id="g"></div>
+<script src="bundle.js"></script>
+<script>
+const {Net,makeHoopSprite}=H,W=130,HH=100,DK='#1c1c22',R=10,G=0.16;
+const sp=makeHoopSprite('right'),X0=Math.round((W-sp.w)/2),Y0=14;
+const RX=X0+sp.rimCx,RY=Y0+sp.rimY,RR=13;
+const BALL=(()=>{const c=document.createElement('canvas');c.width=23;c.height=23;const x=c.getContext('2d');for(let j=-R;j<=R;j++)for(let i=-R;i<=R;i++){const d=Math.hypot(i,j);if(d>R+.4)continue;let col=d>R-1?DK:(i+j<-3?'#ffa24a':i+j>4?'#c4561c':'#f07a2a');if(d<R-1&&(Math.abs(i)<1||Math.abs(j)<1||Math.abs(Math.hypot(i+10,j)-11)<.8||Math.abs(Math.hypot(i-10,j)-11)<.8))col='#5a2a10';x.fillStyle=col;x.fillRect(i+11,j+11,1,1)}return c})();
+const VAR=[
+ {n:'A. Nätet gungar',d:'Hela nätet gungar åt samma håll som bollen träffade, där nederkanten rör sig mest. Stilla och enkelt, som en pendel.',
+  hit(net,d,s){net.impulse(d*0.95*s,0.15*s)}},
+ {n:'B. Våg nedför nätet',d:'Träffen går som en skakning från ringen nedåt: varje rad får en knuff i tur och ordning, med växlande riktning. Ser ut som ett nät som darrar.',
+  hit(net,d,s){this.wave={d,s,f:0}}},
+ {n:'C. Nätet puffar upp',d:'Nätet lyfts till och breder ut sig en kort stund, som när luft trycks in, och faller sedan tillbaka. Mest livlig effekt.',
+  hit(net,d,s){net.impulse(d*0.25*s,-1.5*s);const n=net,c=n.cols;let cx=0;for(let i=0;i<c;i++)cx+=n.px[i];cx/=c;for(let i=c;i<n.n;i++){const w=n.row[i]/(n.rows-1);n.vx[i]+=Math.sign(n.px[i]-cx)*0.55*s*w}}}
+];
+const grid=document.getElementById('g'),cards=[];
+function mkNet(){return new Net(sp.netGeom,X0,Y0)}
+VAR.forEach(v=>{const d=document.createElement('div');d.className='c';d.innerHTML='<b>'+v.n+'</b><canvas width="'+W+'" height="'+HH+'"></canvas><p>'+v.d+'</p>';grid.appendChild(d);
+ const o={v,ctx:d.querySelector('canvas').getContext('2d'),net:mkNet(),ball:null,wave:null};v.wave=null;
+ d.querySelector('canvas').onclick=()=>shoot(o,1,1);cards.push(o)});
+function shoot(o,dir,s){o.net=mkNet();o.v.wave=null;const ex=RX+(dir>0?-RR:RR);
+ o.ball={x:ex-dir*45,y:RY-46,vx:dir*1.9,vy:0.9,hit:false,dir,s}}
+document.querySelector('.bar').onclick=e=>{const a=e.target.dataset.a;if(!a)return;cards.forEach(o=>shoot(o,a==='r'?-1:1,a==='h'?1.9:1))};
+function tick(o){const b=o.ball,net=o.net;
+ for(let i=0;i<4;i++)net.step(0.25*1.25,null);
+ const w=o.v.wave;if(w){const f=w.f++,r=Math.floor(f/3);if(f%3===0&&r<net.rows){const amp=0.9*w.s*Math.pow(0.88,r)*w.d*(r%2?-1:1);for(let i=0;i<net.cols;i++)net.vx[r*net.cols+i]+=amp*(r>0?1:0)}if(r>=net.rows)o.v.wave=null}
+ if(b){b.vy+=G;b.x+=b.vx;b.y+=b.vy;
+  const ex=RX+(b.dir>0?-RR:RR);
+  if(!b.hit&&b.dir*(b.x-ex)>-R*0.7&&b.y>RY-R*1.4){b.hit=true;b.vx=-b.dir*1.4*b.s;b.vy=-2.4*b.s;o.v.hit(net,b.dir,b.s)}
+  if(b.y>HH+30||b.x<-30||b.x>W+30)o.ball=null}}
+function draw(o){const c=o.ctx,b=o.ball;c.clearRect(0,0,W,HH);
+ c.fillStyle='#bfc9dc';c.fillRect(0,HH-8,W,8);
+ c.drawImage(sp.canvas,X0,Y0);o.net.draw(c,'back');
+ if(b)c.drawImage(BALL,Math.round(b.x-11.5),Math.round(b.y-11.5));
+ o.net.draw(c,'front');c.drawImage(sp.front,X0,Y0)}
+let last=performance.now(),acc=0;
+function loop(now){acc+=Math.min(50,now-last);last=now;while(acc>=1000/60){acc-=1000/60;cards.forEach(tick)}cards.forEach(draw);requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+setTimeout(()=>cards.forEach(o=>shoot(o,1,1)),500);
+</script>

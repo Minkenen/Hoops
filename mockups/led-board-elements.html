@@ -1,0 +1,155 @@
+<!doctype html><meta charset="utf-8"><title>LED board elements</title>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#1d2029;--panel:#2a2d36;--text:#f2f4f7;--mut:#aeb4be;--acc:#ee7a24}
+*{box-sizing:border-box}
+body{margin:0;padding:20px 16px;background:var(--bg);color:var(--text);font-family:'Pixelify Sans',ui-monospace,monospace}
+h1{font-size:20px;font-weight:500;margin:0 0 4px}p.s{color:var(--mut);margin:0 0 14px;font-size:14px}
+.top{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;border:0;background:var(--acc);color:#1c1c22;padding:6px 14px;cursor:pointer;box-shadow:-2px 0 0 #0d0e12,2px 0 0 #0d0e12,0 -2px 0 #0d0e12,0 2px 0 #0d0e12}
+.g{display:grid;gap:18px;max-width:1240px}
+.c{background:var(--panel);padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.c h2{font-size:17px;font-weight:500;margin:0}.c h2 span{color:var(--acc)}
+.c p{margin:0;color:var(--mut);font-size:13px}
+canvas{image-rendering:pixelated;display:block;width:100%;border:4px solid #0d0e12}
+</style>
+<h1>LED board, things to put on the dark wall</h1>
+<p class="s">The wall behind the court is empty. Three ideas, each on the same wall with flags, crowd and ticker.</p>
+<div class="top"><button id="goal">Score a goal</button><span style="color:var(--mut);font-size:13px">See how each one reacts.</span></div>
+<div class="g">
+<div class="c"><h2><span>A</span> Jumbotron</h2><canvas data-v="a" width="240" height="110"></canvas><p>A hanging scoreboard on cables with your score and shots, a streak page with flames and an equalizer page. A live ball cam on the left and a crowd wave on the right.</p></div>
+<div class="c"><h2><span>B</span> Hall of fame</h2><canvas data-v="b" width="240" height="110"></canvas><p>Retired jerseys and a championship banner hang from the roof and sway under spotlights. The numbers can be your milestones (25, 50, 100).</p></div>
+<div class="c"><h2><span>C</span> Dot-matrix show</h2><canvas data-v="c" width="240" height="110"></canvas><p>A wide LED wall that cycles equalizer bars, colour waves and a bouncing ball with a HOOPS sign. A goal fires fireworks over the whole wall.</p></div>
+</div>
+<script>
+const W=240,H=110;
+const G={0:"111101101101111",1:"010110010010111",2:"111001111100111",3:"111001111001111",4:"101101111001001",5:"111100111001111",6:"111100111101111",7:"111001010010010",8:"111101111101111",9:"111101111001111",
+A:"010101111101101",B:"110101110101110",C:"111100100100111",D:"110101101101110",E:"111100110100111",F:"111100110100100",G:"111100101101111",H:"101101111101101",I:"111010010010111",J:"001001001101111",K:"101101110101101",L:"100100100100111",M:"101111111101101",N:"110101101101101",O:"111101101101111",P:"111101111100100",R:"110101110101101",S:"111100111001111",T:"111010010010010",U:"101101101101111",V:"101101101101010",W:"101101111111101",X:"101101010101101",Y:"101101010010010",Z:"111001010100111","!":"010010010000010","x":"000101010101000"," ":"000000000000000",":":"000010000010000","-":"000000111000000"};
+const hs=(a,b)=>{let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return (h&255)/255};
+let c,x;
+const r=(a,b,w,h,col)=>{x.fillStyle=col;x.fillRect(a,b,w,h)};
+function txt(s,px,py,sc,col){for(const ch of String(s)){const g=G[ch]||G[" "];for(let k=0;k<15;k++)if(g[k]==="1")r(px+(k%3)*sc,py+Math.floor(k/3)*sc,sc,sc,col);px+=4*sc}}
+const tw=(s,sc)=>String(s).length*4*sc-sc;
+const ctr=(s,cx,py,sc,col)=>txt(s,Math.round(cx-tw(s,sc)/2),py,sc,col);
+let goalAt=-1e9,score=24,shots=31;
+document.getElementById('goal').onclick=()=>{goalAt=performance.now();score++;shots++};
+
+function bg(t,ch){
+ r(0,0,W,H,"#0c0e1a");r(0,H-44,W,44,"#141830");
+ for(let bx=15;bx<W;bx+=29){const k=Math.round((bx-15)/29)%2;for(let y=0;y<11;y++){const bw=Math.max(0,Math.round(6-Math.max(0,y-7)*1.6));r(bx+Math.round((6-bw)/2),y,bw,1,k?"#f4f6fb":"#e8731f")}}
+ const slot=Math.floor(t/1400);for(let i=0;i<14;i++){if(Math.floor((t/130+i*7.3)%11)!==0)continue;const sx=Math.floor(hs(i,slot)*W),sy=14+Math.floor(hs(i,5+slot)*(H-50));r(sx-1,sy,3,1,"#fff");r(sx,sy-1,1,3,"#fff")}
+ // crowd silhouettes
+ for(let row=0;row<3;row++){const yb=H-30+row*7;r(0,yb+2,W,7,"#07080f");for(let px=2+row*3;px<W-4;px+=7){if(hs(px,row)>.12){r(px+1,yb-1+((px*7+Math.floor(t/250)+row)%9===0?-1:0),3,3,"#000");r(px,yb+2,5,4,"#000")}}}
+ // ticker
+ r(0,H-9,W,9,"#05060c");r(0,H-8,W,7,"#0e0f18");
+ const T="HOOPS x GOAL! x HOOPS x HOOPS x GOAL! x ",adv=T.length*4,off=Math.floor(t/60)%adv;
+ for(let k=-1;k<=Math.ceil(W/adv)+1;k++)txt(T,2+k*adv-off,H-7,1,ch>0&&Math.floor(t/100)%2?"#fff6a0":"#ffb257");
+}
+
+function A(t,ch){
+ bg(t,ch);
+ const x0=70,y0=16,w=100,h=50;
+ r(x0+14,0,1,y0-2,"#2a2f4a");r(x0+w-15,0,1,y0-2,"#2a2f4a");
+ r(x0-2,y0-2,w+4,h+4,ch>0&&Math.floor(t/120)%2?"#e8731f":"#05060c");r(x0-1,y0-1,w+2,h+2,"#2a2f4a");r(x0,y0,w,h,"#0a1230");
+ for(let j=y0;j<y0+h;j+=2)r(x0,j,w,1,"#0c1638");
+ const page=Math.floor(t/3200)%3;
+ if(ch>0){ctr("GOAL!",x0+w/2,y0+14,5,Math.floor(t/110)%2?"#ffcf3a":"#fff");ctr("SCORE "+score,x0+w/2,y0+h-10,1,"#7fd0ff")}
+ else if(page===0){
+  txt("SCORE",x0+8,y0+5,1,"#7fd0ff");txt("SHOTS",x0+w-28,y0+5,1,"#7fd0ff");
+  ctr(score,x0+27,y0+14,4,"#ffcf3a");ctr(shots,x0+w-22,y0+14,4,"#fff");
+  r(x0+w/2,y0+4,1,34,"#2a2f4a");
+  const acc=Math.round(score/shots*100);r(x0+6,y0+h-9,w-12,5,"#05060c");r(x0+7,y0+h-8,Math.round((w-14)*acc/100),3,"#3fae5c");txt("ACC "+acc,x0+8,y0+h-16,1,"#9aa1ad")
+ }else if(page===1){
+  ctr("STREAK",x0+w/2,y0+5,1,"#7fd0ff");ctr("3",x0+w/2-4,y0+13,5,"#ff9f43");
+  for(let k=0;k<3;k++){const fx=x0+w/2+16+k*9,fh=10+Math.round(Math.sin(t/110+k*2)*3);for(let y=0;y<fh;y++){const ww=Math.max(1,Math.round(5*(1-y/fh)+1));r(fx+Math.round((6-ww)/2),y0+38-y,ww,1,y<fh*.35?"#ffcf3a":y<fh*.7?"#ff9f43":"#e8392b")}}
+ }else{
+  ctr("HOOPS",x0+w/2,y0+4,2,"#ffb257");
+  for(let k=0;k<20;k++){const bh=4+Math.round((Math.sin(t/160+k*.9)*.5+.5)*(Math.sin(t/230+k*.4)*.4+.6)*26);r(x0+6+k*4.5|0,y0+h-4-bh,3,bh,bh>20?"#e8392b":bh>13?"#ffcf3a":"#3fae5c")}
+ }
+ // left: ball cam
+ const lx=22,ly=22,lw=34,lh=28;
+ r(lx-2,ly-2,lw+4,lh+4,"#05060c");r(lx,ly,lw,lh,"#0a1230");
+ const by=Math.abs(Math.sin(t/380)),bcy=ly+lh-9-Math.round(by*8);
+ r(lx,ly+lh-4,lw,4,"#a8743c");r(lx+8,ly+lh-3,18,1,"#6b4423");
+ for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++)if(dx*dx+dy*dy<=16)r(lx+17+dx,bcy+dy,1,1,(dx===0||dy===0)&&dx*dx+dy*dy>4?"#7a3a10":"#e8731f");
+ if(Math.floor(t/500)%2){r(lx+3,ly+3,3,3,"#e8392b")}txt("LIVE",lx+8,ly+3,1,"#fff");
+ // right: crowd wave
+ const rx=184,ry=22,rw=34,rh=28;
+ r(rx-2,ry-2,rw+4,rh+4,"#05060c");r(rx,ry,rw,rh,"#0a1230");
+ for(let k=0;k<8;k++){const bh=5+Math.round((Math.sin(t/200-k*.7)*.5+.5)*11);r(rx+2+k*4,ry+rh-2-bh,3,bh,k%2?"#f4f6fb":"#e8731f");r(rx+2+k*4,ry+rh-2-bh-2,3,2,"#f2c9a0")}
+ txt("WAVE",rx+9,ry+3,1,"#7fd0ff");
+}
+
+function jersey(cx,top,col,numCol,trim,num,swing,glow){
+ for(let y=0;y<26;y++){
+  const sh=Math.round(swing*(y/26)*2);
+  let a,b;
+  if(y<3){r(cx-7+sh,top+y,4,1,col);r(cx+4+sh,top+y,4,1,col);continue}
+  a=cx-9+sh;b=18;
+  if(y===3){r(a,top+y,6,1,col);r(a+12,top+y,6,1,col);continue}
+  r(a,top+y,b,1,y>=24?trim:col);
+  if(y>=4&&y<=11){r(a,top+y,2,1,trim)}
+ }
+ const sh2=Math.round(swing*0.6*2);
+ ctr(num,cx+sh2,top+9,2,glow?"#fff6a0":numCol);
+}
+function B(t,ch){
+ bg(t,ch);
+ const sw=(k,amp)=>Math.sin(t/(700+k*60)+k)*amp*(1+ch*2.5);
+ const spots=[[34,0],[78,1],[198,2],[222,3]];
+ // light cones
+ x.globalAlpha=.06+ch*.05;
+ for(const cxp of [34,78,120,162,206]){for(let y=0;y<54;y++){const half=3+Math.round(y*.3);r(cxp-half,y,half*2+1,1,"#fff3c0")}}
+ x.globalAlpha=1;
+ const list=[[34,"#e8731f","#fff","#7a3a10","23"],[78,"#f4f6fb","#2a4aa0","#2a4aa0","8"],[162,"#2a4aa0","#fff","#e8731f","32"],[206,"#e8731f","#fff","#7a3a10","6"]];
+ list.forEach(([cx,c1,c2,tr,n],k)=>{
+  const s=sw(k,1);r(cx-1+Math.round(s*.2),0,1,16,"#2a2f4a");
+  const glow=ch>0&&Math.floor(t/130+k)%2===0;
+  jersey(cx,16,c1,c2,tr,n,s,glow);
+  txt("RETIRED".slice(0,0),0,0,1,"#fff");
+ });
+ // championship banner in the middle
+ const bx=120,s=sw(9,.9);
+ r(bx-1,0,1,10,"#2a2f4a");r(bx+17+Math.round(s*.3),0,1,10,"#2a2f4a");
+ for(let y=0;y<44;y++){const sh=Math.round(s*(y/44)*2);const taper=y>38?(y-38):0;r(bx-14+sh+taper,10+y,32-taper*2,1,y<2||y>41?"#ffcf3a":"#1c2a6a")}
+ for(let y=0;y<44;y+=1){const sh=Math.round(s*(y/44)*2);if(y>3&&y<40){r(bx-13+sh,10+y,1,1,"#ffcf3a");r(bx+16+sh,10+y,1,1,"#ffcf3a")}}
+ const sh1=Math.round(s*.6);
+ // star
+ const sx=bx+2+sh1,sy=24;for(let d=-4;d<=4;d++){r(sx+d,sy,1,1,"#ffcf3a");r(sx,sy+d,1,1,"#ffcf3a")}for(let d=-2;d<=2;d++){r(sx+d,sy+d,1,1,"#ffe070");r(sx+d,sy-d,1,1,"#ffe070")}r(sx-1,sy-1,3,3,"#fff6a0");
+ ctr("CHAMPS",bx+2+sh1,38,1,"#ffcf3a");ctr("100",bx+2+sh1,46,2,"#fff");
+ // sparkles near banner
+ for(let k=0;k<5;k++){const f=Math.floor(t/140+k*3)%7;if(f<3){const px=bx-20+Math.round(hs(k,Math.floor(t/900))*44),py=14+Math.round(hs(k+9,Math.floor(t/900))*38);r(px,py,1,1,"#fff");if(f===1){r(px-1,py,3,1,"#fff6a0");r(px,py-1,1,3,"#fff6a0")}}}
+}
+
+function pulse(t,i,j){return Math.sin(t/200+i*.3)}
+function C(t,ch){
+ bg(t,ch);
+ const x0=14,y0=14,w=212,h=52;
+ r(x0-2,y0-2,w+4,h+4,"#05060c");r(x0,y0,w,h,"#080b18");
+ x.save();x.beginPath();x.rect(x0,y0,w,h);x.clip();
+ const mode=Math.floor(t/3200)%3;
+ if(ch>0){
+  r(x0,y0,w,h,Math.floor(t/90)%2?"#2a1204":"#080b18");
+  ctr("GOAL!",x0+w/2,y0+14,6,Math.floor(t/110)%2?"#ffcf3a":"#fff");
+  // fireworks
+  for(let k=0;k<6;k++){const age=(performance.now()-goalAt)/1000-k*.25;if(age<0||age>1.6)continue;const fx=x0+25+hs(k,3)*(w-50),fy=y0+10+hs(k,7)*30,rad=age*18;const col=["#ff9f43","#7fd0ff","#ff6fa8","#9be37a","#ffe070","#c8a0ff"][k];for(let a=0;a<16;a++){const an=a/16*6.28;r(Math.round(fx+Math.cos(an)*rad),Math.round(fy+Math.sin(an)*rad),2,2,col)}}
+ }else if(mode===0){
+  for(let k=0;k<36;k++){const bh=3+Math.round((Math.sin(t/150+k*.7)*.5+.5)*(Math.sin(t/260+k*.23)*.4+.6)*(h-8));for(let y=0;y<bh;y++){const f=y/(h-8);r(x0+3+k*5.8|0,y0+h-3-y,4,1,f>.75?"#e8392b":f>.5?"#ffcf3a":f>.25?"#9be37a":"#3fae5c")}}
+ }else if(mode===1){
+  for(let i=0;i<w;i++){const cols=["#7fd0ff","#ff6fa8","#ffe070"];for(let k=0;k<3;k++){const yy=y0+h/2+Math.sin((i+t/(18+k*7))/ (9+k*3))*(12-k*2)+ (k-1)*3;r(x0+i,Math.round(yy),1,2,cols[k])}}
+  ctr("HOOPS",x0+w/2,y0+h/2-5,2,"#fff");
+ }else{
+  const p=(t%3200)/3200;const bx=x0+10+p*(w-20),by=y0+h-12-Math.abs(Math.sin(p*Math.PI*5))*(h-24);
+  for(let k=1;k<9;k++){const px=bx-k*5,py=y0+h-12-Math.abs(Math.sin((p-k*.012)*Math.PI*5))*(h-24);r(Math.round(px),Math.round(py),2,2,k<4?"#e8731f":"#7a3a10")}
+  for(let dy=-5;dy<=5;dy++)for(let dx=-5;dx<=5;dx++)if(dx*dx+dy*dy<=25)r(Math.round(bx)+dx,Math.round(by)+dy,1,1,(dx===0||dy===0)&&dx*dx+dy*dy>5?"#7a3a10":"#e8731f");
+  r(x0,y0+h-5,w,1,"#a8743c");ctr("SHOOT!",x0+w/2,y0+5,3,"#ffb257");
+ }
+ // dot-matrix grid
+ x.globalAlpha=.35;for(let j=y0;j<y0+h;j+=2)r(x0,j,w,1,"#000");for(let i=x0;i<x0+w;i+=2)r(i,y0,1,h,"#000");x.globalAlpha=1;
+ x.restore();
+}
+const V={a:A,b:B,c:C};
+const cs=[...document.querySelectorAll('canvas')].map(k=>({k,ctx:k.getContext('2d'),f:V[k.dataset.v]}));
+function frame(now){const ch=Math.max(0,1-(now-goalAt)/2300);for(const o of cs){c=o.k;x=o.ctx;o.f(now,ch)}requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>

@@ -42,6 +42,12 @@ const G7: Record<string, string[]> = {
   "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
   "9": ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
   "+": ["00000", "00100", "00100", "11111", "00100", "00100", "00000"],
+  M: ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+  L: ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+  "!": ["00100", "00100", "00100", "00100", "00100", "00000", "00100"],
+  G: ["01110", "10001", "10000", "10111", "10001", "10001", "01111"],
+  O: ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+  A: ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
 };
 
 export function textWidth(str: string, s: number): number {
@@ -57,17 +63,28 @@ export function text(
   top: string,
   bot: string,
 ): void {
+  textRows(put, str, x, y, s, (r) => (r < 5 ? top : bot));
+}
+
+export function textRows(
+  put: Put,
+  str: string,
+  x: number,
+  y: number,
+  s: number,
+  color: (row: number) => string,
+): void {
   let cx = x;
   for (const ch of str) {
     const rows = G7[ch];
     if (rows) {
-      const padded = ["00000", ...rows];
+      const padded = rows.length === 8 ? rows : ["00000", ...rows];
       padded.forEach((row, r) => {
         for (let c = 0; c < 5; c++) {
           if (row[c] === "1") {
             for (let sy = 0; sy < s; sy++) {
               for (let sx = 0; sx < s; sx++) {
-                put(cx + c * s + sx, y + r * s + sy, r < 5 ? top : bot);
+                put(cx + c * s + sx, y + r * s + sy, color(r));
               }
             }
           }

@@ -13,6 +13,7 @@ import {
   onToggleMenu,
   setOverFullscreen,
 } from "./ipc";
+import { preloadSounds } from "./audio";
 import { onSettingChange, settings } from "./settings";
 import { UI } from "./ui";
 
@@ -39,6 +40,8 @@ async function main(): Promise<void> {
     if (k === "ballScale") {
       game.rescale();
       ui.refresh();
+    } else if (k === "ballSkin" || k === "courtSkin") {
+      game.applyCosmetics();
     } else if (k === "fullscreen") {
       void setOverFullscreen(settings.fullscreen);
     } else if (k === "autostart") {
@@ -60,6 +63,7 @@ async function main(): Promise<void> {
     /* autostart unavailable in dev */
   }
 
+  window.setTimeout(preloadSounds, 800);
   if (await isWindowVisible()) game.intro();
 }
 

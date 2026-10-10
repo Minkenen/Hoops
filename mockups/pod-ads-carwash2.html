@@ -1,0 +1,159 @@
+<!doctype html><meta charset="utf-8"><title>Car wash ads 2</title>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#1d2029;--panel:#2a2d36;--text:#f2f4f7;--mut:#aeb4be;--acc:#ee7a24}
+*{box-sizing:border-box}
+body{margin:0;padding:20px 16px;background:var(--bg);color:var(--text);font-family:'Pixelify Sans',ui-monospace,monospace}
+h1{font-size:20px;font-weight:500;margin:0 0 4px}p.s{color:var(--mut);margin:0 0 18px;font-size:14px}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.c{background:var(--panel);padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.c h2{font-size:17px;font-weight:500;margin:0}.c h2 span{color:var(--acc)}
+.c p{margin:0;color:var(--mut);font-size:13px}
+canvas{image-rendering:pixelated;display:block;max-width:100%;border:4px solid #0d0e12}
+.row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+</style>
+<h1>Car wash, scenery moves</h1><p class="s">Same 22x17 pixel screen as the other pod ads. Big view and actual size side by side.</p>
+<div class="g">
+<div class="c"><h2><span>A</span> Tunnel stations</h2><div class="row"><canvas data-ad="a" width="22" height="17" style="width:308px"></canvas><canvas data-ad="a" width="22" height="17" style="width:66px"></canvas></div><p>The car stays put in the middle while the tunnel slides past: foam curtain, big brush, rinse, dryer, then daylight. The car changes as each station reaches it.</p></div>
+<div class="c"><h2><span>B</span> Drive-in view</h2><div class="row"><canvas data-ad="b" width="22" height="17" style="width:308px"></canvas><canvas data-ad="b" width="22" height="17" style="width:66px"></canvas></div><p>Seen from behind. The tunnel rings rush toward you so it feels like driving in. Walls turn soapy, then brushes, water and warm dryer light.</p></div>
+<div class="c"><h2><span>C</span> Foam wall wipe</h2><div class="row"><canvas data-ad="c" width="22" height="17" style="width:308px"></canvas><canvas data-ad="c" width="22" height="17" style="width:66px"></canvas></div><p>A big wall of bubbles sweeps across the screen. Before it: grey and muddy. After it: blue sky, shiny car and a twinkling star. Bubbles drift past at different speeds.</p></div>
+</div>
+<script>
+const F={
+B:["110","101","110","101","110"],R:["110","101","110","101","101"],
+A:["010","101","111","101","101"],C:["111","100","100","100","111"],E:["111","100","110","100","111"],H:["101","101","111","101","101"],
+I:["111","010","010","010","111"],L:["100","100","100","100","111"],N:["101","111","111","111","101"],S:["111","100","111","001","111"],
+W:["101","101","111","111","101"],Y:["101","101","010","010","010"],"!":["010","010","010","000","010"]};
+function text(i,j,word,x0){const g=F[word[Math.floor((i-x0)/4)]];return j>=1&&j<=5&&i>=x0&&g&&(i-x0)%4<3&&g[j-1][(i-x0)%4]==="1"}
+const hash=(a,b)=>{let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return (h&255)/255};
+
+const CAR=["....bbbbb.....","...bwwbwwwb...","..bbbbbbbbbbbl","bbbbbbbbbbbbbb","bbkkkbbbbbkkkb",".kkhkk..kkhkk."];
+function carPix(lx,ly,clean){
+ const ch=(CAR[ly]||"")[lx];if(!ch||ch===".")return null;
+ if(ch==="k")return "#1c1c22";if(ch==="h")return "#c9ced8";if(ch==="l")return "#ffe28a";
+ if(ch==="w")return clean?"#bfe6ff":"#7d7a6a";
+ if(clean)return ly===2&&lx>=3&&lx<=10?"#8cc4ff":"#2f7fd6";
+ return hash(lx,ly)<.3?"#4e3622":"#7a5a38"}
+function star(i,j,cx,cy,s){const dx=Math.abs(i-cx),dy=Math.abs(j-cy);
+ if(dx===0&&dy===0)return "#ffffff";
+ if((dx===0&&dy<=s)||(dy===0&&dx<=s))return "#fff3a0";
+ if(s>=2&&dx===1&&dy===1)return "#ffe070";return null}
+const tw=(t,k)=>[0,1,2,1][Math.floor(t/110+k)%4];
+
+
+// the car stays here, only the world moves
+function wheel(i,j,lx,ly,t){return null}
+function carFixed(i,j,clean,t,bob){
+ const left=4,top=9+(bob?Math.round(Math.sin(t/90)*0.4):0);
+ const lx=i-left,ly=j-top;
+ const ch=(CAR[ly]||"")[lx];
+ if(ch==="h"){const f=Math.floor(t/70)%2;return f?"#c9ced8":"#6a7186"}
+ return carPix(lx,ly,clean)}
+const carMask=(i,j)=>{const ch=(CAR[j-9]||"")[i-4];return !!ch&&ch!=="."};
+
+function A(i,j,t){
+ const T=6400,s=((t%T)/T)*205;
+ const wx=i+s-11; // world x under this screen column
+ const dirty=s<40, clean=s>=90;
+ // foam on the car
+ let foam=0;if(s>=40&&s<85)foam=Math.min(1,(s-40)/10);else if(s>=85&&s<110)foam=1-(s-85)/25;
+ if(s>=110&&s<135){/* rinse water */}
+ const sunny=wx>=185;
+ // car
+ if(carMask(i,j)){
+  const c=carFixed(i,j,clean,t,true);
+  if(foam>0&&hash(i,j+Math.floor(t/130))<foam*1.1)return hash(i+4,j)<.25?"#cfe6ff":"#ffffff";
+  if(s>=148&&s<175&&clean&&Math.abs((i+j)-(11+(s-148)*.9))<1)return "#ffffff";
+  return c}
+ const w=carFixed(i,j,clean,t,true);if(w)return w; // wheels, light
+ // star
+ if(s>=165){const st=star(i,j,15,7,tw(t,0));if(st)return st}
+ // stations (overlay on wall)
+ if(j>=4&&j<=14){
+  // soap curtain
+  if(wx>=38&&wx<=44){const k=wx-38;if(hash(k,Math.floor(t/120)+j)<.7||j<9)return (j+Math.floor(t/100))%3?"#ffffff":"#cfe6ff"}
+  // big brush hanging above roof
+  if(wx>=72&&wx<=82&&j>=5&&j<=8){const ph=Math.floor(wx+j+t/60)%2;return ph?"#e8392b":"#9b1f1f"}
+  // rinse jets
+  if(wx>=105&&wx<=116&&j>=5&&j<=14&&((wx*7+j*3-Math.floor(t/60))%5===0))return "#7fd0ff";
+  // dryer wind
+  if(wx>=142&&wx<=156&&j>=5&&j<=13&&((j%2===0)&&((wx+Math.floor(t/50))%4<2)))return "#ffffff";
+  if(wx>=140&&wx<=158&&j===5)return "#aab4c6";
+ }
+ // exit daylight
+ if(sunny&&j>=4&&j<=14)return j<8?"#87ceeb":(j<14?"#a4dcf4":"#6bb86a");
+ // floor markings and ceiling lights
+ if(j>=15)return j===15?(((wx%6)+6)%6<3?"#8a93a5":"#5b6678"):"#3a4252";
+ if(j===0&&(((wx%12)+12)%12)<3)return "#ffe070";
+ if(text(i,j,s>=165?"SHINY":"WASH",s>=165?1:2))return s>=165?"#ffe070":"#ffffff";
+ return j<8?"#1f3d52":"#27495f"}
+
+const REAR=["..bbbbbb..",".bwwwwwwb.","bbbbbbbbbb","rrbbbbbbrr","bbbwwwwbbb","kkbbbbbbkk","kk......kk"];
+function rearPix(lx,ly,clean){
+ const ch=(REAR[ly]||"")[lx];if(!ch||ch===".")return null;
+ if(ch==="k")return "#1c1c22";if(ch==="r")return "#e8392b";
+ if(ch==="w")return lx>=3&&lx<=6&&ly===4?"#f4f6fb":clean?"#bfe6ff":"#7d7a6a";
+ if(clean)return ly===2?"#8cc4ff":"#2f7fd6";
+ return hash(lx,ly)<.3?"#4e3622":"#7a5a38"}
+
+function B(i,j,t){
+ const T=6000,tt=t%T,m0=tt*(30/T);
+ const mc=2.75+m0;const stage=Math.floor(mc/6)%5;const inSt=(mc%6)/6;
+ const clean=stage>=3||(stage===2&&inSt>.5);
+ let foam=0;if(stage===1)foam=Math.min(1,inSt*3);else if(stage===2)foam=Math.max(0,1-inSt*1.6);
+ const lx=i-6,ly=j-8;
+ // car
+ const c=rearPix(lx,ly,clean);
+ if(c){
+  if(foam>0&&hash(i,j+Math.floor(t/130))<foam*1.1)return hash(i+4,j)<.25?"#cfe6ff":"#ffffff";
+  if(stage===4&&clean&&Math.abs((lx+ly)-inSt*14)<1)return "#ffffff";
+  return c}
+ if(stage===4&&inSt>.4){const st=star(i,j,14,5,tw(t,0));if(st)return st}
+ // tunnel walls: bands rushing outward
+ const dx=Math.abs(i-10.5)/11,dy=Math.abs(j-8)/8.5;const r=Math.max(dx,dy)+.001;
+ const m=Math.floor(-Math.log(r)*2.6+m0);const st=((Math.floor(m/6)%5)+5)%5;const par=((m%2)+2)%2;
+ let col;
+ if(st===0)col=par?"#3a4a5e":"#2b3950";
+ else if(st===1)col=par?"#ffffff":"#cfe6ff";
+ else if(st===2)col=par?"#e8392b":"#4fc3f7";
+ else if(st===3)col=par?"#4aa8e8":"#2f7fd6";
+ else col=par?"#ffd35a":"#ff9f43";
+ // bubbles on soap walls, drops on rinse
+ if(st===1&&hash(i,j+Math.floor(t/110))<.12)return "#9fd0ff";
+ if(st===3&&hash(i,j+Math.floor(t/60))<.1)return "#ffffff";
+ if(text(i,j,stage===4&&inSt>.4?"SHINY":"WASH",stage===4&&inSt>.4?1:2)&&j<=5&&(i<3||i>18||true))return stage===4&&inSt>.4?"#ffe070":"#ffffff";
+ return col}
+
+function C(i,j,t){
+ const T=5200,p=(t%T)/T;
+ // wall edge moves from right to left across the screen, front line is bubbly
+ const edge=28-p*40; // screen x of the front edge (28 -> -12)
+ const w=9; // wall thickness
+ const bub=(x,y,sp,seed,size)=>{const px=((x+Math.floor(t*sp))%24+24)%24;return null};
+ const inWall=i>=edge&&i<=edge+w;
+ const behind=i<edge; // already washed (left of the wall)
+ // car (always centered)
+ const cleanHere=(x)=>x<edge+2;
+ if(carMask(i,j)){
+  const c=carFixed(i,j,cleanHere(i),t,true);
+  if(inWall)return hash(i,j+Math.floor(t/110))<.9?(hash(i+2,j)<.3?"#cfe6ff":"#ffffff"):c;
+  if(behind&&p>=.55&&Math.abs((i+j)-(2+(p-.55)*50))<1)return "#ffffff";
+  return c}
+ const wc=carFixed(i,j,cleanHere(i),t,true);if(wc)return wc;
+ if(p>=.62){const st=star(i,j,15,7,tw(t,2));if(st)return st}
+ // foam wall with bubbly rim
+ if(inWall){const rim=i-edge;if(rim<2&&hash(i+j*3,j)>.5)return null||"#cfe6ff";return hash(i,j+Math.floor(t/120))<.2?"#cfe6ff":"#ffffff"}
+ // bubbles drifting by (parallax)
+ const layers=[[.012,"#3b5875",1],[.03,"#6c8fb0",1],[.07,"#ffffff",2]];
+ for(let L=0;L<3;L++){const [sp,col,sz]=layers[L];for(let k=0;k<4;k++){const bx=((Math.floor(hash(k,L*9)*30-t*sp*6))%30+30)%30-4,by=2+Math.floor(hash(L,k*5)*11);
+   if(i>=bx&&i<bx+sz&&j>=by&&j<by+sz&&j<15)return col}}
+ // floor, sky/wall by side of wall
+ if(j>=15)return j===15?(behind?"#6bb86a":"#5b6678"):(behind?"#4a8a4a":"#3a4252");
+ if(text(i,j,p>=.62?"SHINY":"WASH",p>=.62?1:2))return p>=.62?"#ffe070":"#ffffff";
+ return behind?(j<9?"#87ceeb":"#a4dcf4"):(j<9?"#2c323c":"#363d49")}
+
+const ADS={a:A,b:B,c:C};
+const cvs=[...document.querySelectorAll('canvas')].map(c=>({ctx:c.getContext('2d'),fn:ADS[c.dataset.ad]}));
+function frame(now){for(const {ctx,fn} of cvs){const d=ctx.createImageData(22,17);for(let j=0;j<17;j++)for(let i=0;i<22;i++){const c=fn(i,j,now)||"#000000";const o=(j*22+i)*4;d.data[o]=parseInt(c.slice(1,3),16);d.data[o+1]=parseInt(c.slice(3,5),16);d.data[o+2]=parseInt(c.slice(5,7),16);d.data[o+3]=255}ctx.putImageData(d,0,0)}requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>

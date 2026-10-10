@@ -1,7 +1,13 @@
 import { MAXPULL, drawAim, geff, maxSpeed } from "./aim";
+import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { play } from "./audio";
+import { type Achievement, recordGoal, recordMiss, recordThrow } from "./stats";
 import { Confetti } from "./confetti";
+import { Crowd } from "./crowd";
 import { clamp, layer, rnd, text, textWidth } from "./draw";
+import { type CourtSprite, makeCourtSprite } from "./court";
+import { BALL_SKINS } from "./skins";
+import { Milestone } from "./milestone";
 import { NET_PARAMS, Net } from "./net";
 import {
   type Handoff,
@@ -12,8 +18,8 @@ import {
   setCapture,
   setHitRegions,
 } from "./ipc";
-import { getScore, isOnboarded, reloadSettings, setScore, settings } from "./settings";
-import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
+import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch, setScore, settings } from "./settings";
+import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import type { UI } from "./ui";
 
 interface Ball {
@@ -29,6 +35,7 @@ interface Ball {
   kicked: boolean;
   entering: boolean;
   ang: number;
+  noScore: boolean;
 }
 
 interface Hoop {
@@ -45,6 +52,7 @@ interface Hoop {
   pole: HTMLCanvasElement;
   poleX: number;
   poleY: number;
+  poleBox: [number, number][];
 }
 
 interface Drag {
@@ -59,6 +67,7 @@ interface Drag {
 }
 
 const SUB = 4;
+const isMilestone = (n: number): boolean => n === 25 || n === 50 || (n >= 100 && n % 100 === 0);
 const TIME_SCALE = 1.25;
 const SLIDE_GRAB = 1.2;
 const HOLD_K = 0.16;
@@ -80,7 +89,7 @@ export class Game {
 
   private ball: Ball = {
     x: 0, y: 0, vx: 0, vy: 0, moving: false, gs: 1, t: 999,
-    scored: false, postGoal: false, kicked: false, entering: false, ang: 0,
+    scored: false, postGoal: false, kicked: false, entering: false, ang: 0, noScore: false,
   };
   private hoop: Hoop | null = null;
   private drag: Drag | null = null;
@@ -88,9 +97,17 @@ export class Game {
   private hideAt: number | null = null;
   private bubble: { t0: number; cx: number; top: number } | null = null;
   private confetti = new Confetti();
-  private ballFrames = makeBallFrames();
+  private milestone = new Milestone();
+  private ballFrames = this.buildBall();
+  private lightFrames = new Map<number, HTMLCanvasElement[]>();
+  private crowd = new Crowd();
   private spR = makeHoopSprite("right");
   private spL = makeHoopSprite("left");
+  // The ring keeps the spot it had with the small board, so the big board is what runs off the edge.
+  private refR = makeHoopSprite("right", OLD_BOARD);
+  private refL = makeHoopSprite("left", OLD_BOARD);
+  private courtL!: CourtSprite;
+  private courtR!: CourtSprite;
   private running = false;
   private last = 0;
   private acc = 0;
@@ -139,6 +156,8 @@ export class Game {
     this.floorY = this.artH - Math.max(dock, MAXPULL + 8);
     this.vmax = maxSpeed(this.artW);
     this.confetti.resize(this.artW, this.artH);
+    this.milestone.resize(this.artW, this.artH);
+    this.buildCourts();
   }
 
   rescale(): void {
@@ -178,10 +197,12 @@ export class Game {
   deactivate(): void {
     this.active = false;
     this.hoop = null;
+    this.syncEsc();
     this.drag = null;
     this.stopBeat();
     this.shot = false;
     this.bubble = null;
+    this.milestone.stop();
     this.ball.moving = false;
     this.ui.close();
     void setHitRegions([]);
@@ -192,26 +213,17 @@ export class Game {
   intro(): void {
     this.activate();
     const b = this.ball;
-    const drop = Math.random() < 0.5;
     b.gs = 1;
     b.t = 999;
     b.scored = false;
     b.postGoal = false;
     b.kicked = false;
-    if (drop) {
-      b.x = this.artW * rnd(0.2, 0.8);
-      b.y = -30;
-      b.vx = 0;
-      b.vy = 0;
-      b.entering = false;
-    } else {
-      const left = Math.random() < 0.5;
-      b.x = left ? -15 : this.artW + 15;
-      b.y = this.floorY - rnd(30, 90);
-      b.vx = (left ? 1 : -1) * rnd(5, 7);
-      b.vy = -rnd(2, 4);
-      b.entering = true;
-    }
+    const left = Math.random() < 0.5;
+    b.x = left ? -15 : this.artW + 15;
+    b.y = this.floorY - rnd(30, 90);
+    b.vx = (left ? 1 : -1) * rnd(5, 7);
+    b.vy = -rnd(2, 4);
+    b.entering = true;
     b.moving = true;
     this.introDone = false;
     this.start();
@@ -246,6 +258,13 @@ export class Game {
   private slowSlide = false;
   private airborne = false;
   private floorHit = false;
+  private gasped = false;
+  private rimTouched = false;
+  private boardTouched = false;
+  private shotFar = false;
+  private gaspAt = 0;
+  private lastGasp = -1e9;
+  private bounces = 0;
 
   private stopBeat(): void {
     clearInterval(this.beat);
@@ -271,6 +290,67 @@ export class Game {
     this.start();
   }
 
+  /** Ball frames lit from the key light: the highlight and shading move with the ball's position. */
+  private framesFor(lit: boolean, x: number): HTMLCanvasElement[] {
+    if (!lit) return this.ballFrames;
+    const step = Math.max(-4, Math.min(4, Math.round(((this.artW / 2 - x) / (this.crowd.keyH(this.floorY, settings.arenaFill) * 1.6)) * 5)));
+    let f = this.lightFrames.get(step);
+    if (!f) {
+      const s = BALL_SKINS.find((k) => k.id === settings.ballSkin) ?? BALL_SKINS[0];
+      f = makeBallFrames(s.pal, s.seam, step / 5);
+      this.lightFrames.set(step, f);
+    }
+    return f;
+  }
+
+  private buildBall(): HTMLCanvasElement[] {
+    const s = BALL_SKINS.find((k) => k.id === settings.ballSkin) ?? BALL_SKINS[0];
+    return makeBallFrames(s.pal, s.seam);
+  }
+
+  private buildCourts(): void {
+    this.courtL = makeCourtSprite("left", this.artW, settings.courtSkin);
+    this.courtR = makeCourtSprite("right", this.artW, settings.courtSkin);
+  }
+
+  applyCosmetics(): void {
+    this.ballFrames = this.buildBall();
+    this.lightFrames.clear();
+    if (this.artW > 0) this.buildCourts();
+    this.start();
+  }
+
+  /** After a miss, a click anywhere on the screen puts the court, crowd and hoop away. */
+  private canDismiss(): boolean {
+    const h = this.hoop;
+    return !!h && h.phase === "shown" && !this.drag && this.ui.view === "none" && (!this.ball.moving || this.floorHit);
+  }
+
+  /** Esc closes the court when it is set to stay open. It is only a global shortcut while the court is up. */
+  private escOn = false;
+
+  private syncEsc(): void {
+    const want = settings.stayOpen && !!this.hoop && this.hoop.phase !== "out" && this.active;
+    if (want === this.escOn) return;
+    this.escOn = want;
+    if (want) {
+      void isRegistered("Escape")
+        .then((on) => (on ? undefined : register("Escape", (e) => e.state === "Pressed" && this.dismissHoop())))
+        .catch(() => undefined);
+    } else {
+      void unregister("Escape").catch(() => undefined);
+    }
+  }
+
+  private dismissHoop(): void {
+    const h = this.hoop;
+    if (!h || h.phase !== "shown") return;
+    h.phase = "out";
+    this.hideAt = null;
+    this.syncHit();
+    this.start();
+  }
+
   private canGrabSliding(): boolean {
     const b = this.ball;
     return b.y >= this.floorY - BALL_R - 0.5 && Math.abs(b.vy) < 0.3 && Math.abs(b.vx) < SLIDE_GRAB;
@@ -278,9 +358,17 @@ export class Game {
 
   private onDown(e: PointerEvent): void {
     if (!this.active || e.button !== 0) return;
-    if ((this.ball.moving && !this.canGrabSliding()) || this.ui.view !== "none") return;
     const p = this.toArt(e);
-    if (Math.hypot(p.x - this.ball.x, p.y - this.ball.y) > BALL_R + 5) return;
+    const onBall = Math.hypot(p.x - this.ball.x, p.y - this.ball.y) <= BALL_R + 5;
+    if (this.canDismiss() && (!onBall || (this.ball.moving && !this.canGrabSliding()))) {
+      this.hoop!.phase = "out";
+      this.hideAt = null;
+      this.syncHit();
+      this.start();
+      return;
+    }
+    if ((this.ball.moving && !this.canGrabSliding()) || this.ui.view !== "none") return;
+    if (!onBall) return;
     if (this.ball.moving) {
       this.ball.moving = false;
       this.ball.vx = 0;
@@ -341,15 +429,26 @@ export class Game {
       b.gs = Math.abs(d.ly / l);
       b.t = 0;
       b.scored = false;
+      b.noScore = false;
       b.postGoal = false;
       b.kicked = false;
       b.entering = false;
+      this.gasped = false;
+      this.gaspAt = 0;
+      this.rimTouched = false;
+      this.boardTouched = false;
+      const ringX = this.hoop ? this.hoop.x0 + this.hoop.sprite.rimCx : this.artW / 2;
+      this.shotFar = Math.abs(b.x - ringX) > this.artW * 0.55;
       b.moving = true;
       this.slowSlide = false;
       this.airborne = false;
       this.floorHit = false;
+      this.bounces = 0;
       this.shot = true;
       this.hideAt = null;
+      this.announce(recordThrow());
+      addShot();
+      this.crowd.shotStart(performance.now());
       play("shoot", clamp(d.power, 0.3, 1));
     } else if (this.hoop) {
       this.hoop.phase = "out";
@@ -415,12 +514,16 @@ export class Game {
     }
   }
 
+  private poleBottom(): number {
+    return settings.court ? this.floorY + BASE_CENTER[settings.baseSkin] - 2 : this.artH;
+  }
+
   private showHoop(): void {
     if (this.hoop && this.hoop.phase !== "out") return;
     const b = this.ball;
     const gap = BALL_R + 36;
-    const okRight = b.x < this.artW - this.spR.w - gap;
-    const okLeft = b.x > this.spL.w + gap;
+    const okRight = b.x < this.artW - this.refR.w - gap;
+    const okLeft = b.x > this.refL.w + gap;
     let side: "left" | "right";
     if (okRight && okLeft) side = Math.random() < 0.5 ? "left" : "right";
     else if (okRight) side = "right";
@@ -430,20 +533,28 @@ export class Game {
     const maxH = Math.min(260, this.artH * 0.6);
     let rimY = this.floorY - rnd(70, Math.max(80, maxH));
     rimY = Math.max(rimY, 8 + sp.rimY);
+    const ref = side === "right" ? this.refR : this.refL;
+    const hx0 = side === "right" ? this.artW - ref.w + ref.rimCx - sp.rimCx : ref.rimCx - sp.rimCx;
     this.hoop = {
       sprite: sp,
       side,
-      x0: side === "right" ? this.artW - sp.w : 0,
+      x0: hx0,
       y0: rimY - sp.rimY,
       rimY,
       phase: "in",
       p: 0,
       off: (side === "right" ? 1 : -1) * (sp.w + 8),
       vel: 0,
-      pole: makePoleSprite(side, this.artH - (rimY - sp.rimY - sp.shiftY) + 2),
-      poleX: (side === "right" ? this.artW - sp.w : 0) - sp.shiftX,
+      pole: makePoleSprite(side, this.poleBottom() - (rimY - sp.rimY - sp.shiftY) + 2, settings.baseSkin),
+      poleX: hx0 - sp.shiftX,
       poleY: rimY - sp.rimY - sp.shiftY,
-      net: new Net(sp.netGeom, side === "right" ? this.artW - sp.w : 0, rimY - sp.rimY),
+      poleBox: [
+        sp.poleTop[0],
+        sp.poleTop[1],
+        [sp.poleTop[1][0], this.poleBottom() - (rimY - sp.rimY) + 2],
+        [sp.poleTop[0][0], this.poleBottom() - (rimY - sp.rimY) + 2],
+      ],
+      net: new Net(sp.netGeom, hx0, rimY - sp.rimY),
     };
     this.hideAt = null;
     play("appear");
@@ -463,6 +574,7 @@ export class Game {
       !!this.drag ||
       !!this.hoop ||
       this.confetti.active ||
+      this.milestone.active ||
       (!!this.bubble && now - this.bubble.t0 < settings.bubble * 1000)
     );
   }
@@ -521,12 +633,18 @@ export class Game {
     if (h) {
       if (h.phase === "in") {
         h.p = Math.min(1, h.p + ms / 400);
-        if (h.p >= 1) h.phase = "shown";
+        if (h.p >= 1) {
+          h.phase = "shown";
+          this.syncHit();
+        }
       } else if (h.phase === "out") {
         h.p = Math.max(0, h.p - ms / 250);
-        if (h.p <= 0) this.hoop = null;
+        if (h.p <= 0) {
+          this.hoop = null;
+          this.syncHit();
+        }
       }
-      if (this.hideAt !== null && now >= this.hideAt && h.phase === "shown") {
+      if (!settings.stayOpen && this.hideAt !== null && now >= this.hideAt && now >= this.crowd.holdUntil(settings.crowd, now) && h.phase === "shown") {
         const toward = h.side === "right" ? b.vx > 1.2 : b.vx < -1.2;
         const inAir = b.y < this.floorY - BALL_R - 5;
         if (b.moving && (inAir || toward)) {
@@ -547,6 +665,16 @@ export class Game {
       if (!b.moving) for (let i = 0; i < SUB; i++) h.net.step(0.25 * TIME_SCALE, null);
     }
     this.confetti.update(ms);
+    this.milestone.update(ms);
+    this.syncEsc();
+    if (this.gaspAt && now >= this.gaspAt) {
+      this.gaspAt = 0;
+      if (!this.ball.scored && !this.ball.postGoal && !this.gasped) {
+        this.gasped = true;
+        this.lastGasp = performance.now();
+        play("gasp", 0.9);
+      }
+    }
   }
 
   private rest(now: number): void {
@@ -559,6 +687,10 @@ export class Game {
     b.entering = false;
     if (this.shot) {
       this.shot = false;
+      if (!b.scored) {
+        recordMiss();
+        pushLast10(false);
+      }
       const soon = now + 600;
       this.hideAt = this.hideAt === null ? now + 700 : Math.min(this.hideAt, soon);
     }
@@ -613,14 +745,21 @@ export class Game {
     b.x = cx + nx * min;
     b.y = cy + ny * min;
     const vn = b.vx * nx + b.vy * ny;
+    const pvx = b.vx;
     if (vn < 0) {
       b.vx -= (1 + e) * vn * nx;
       b.vy -= (1 + e) * vn * ny;
       if (-vn > 0.8) play(sfx, clamp(-vn / 8, 0.25, 1));
+      if (sfx === "rim" && -vn > 0.8) this.rimTouched = true;
+      if (sfx === "rim" && -vn > 0.8 && this.hoop) this.hoop.net.rimHit(pvx >= 0 ? 1 : -1, clamp(-vn / 4, 0.35, 1.9));
+      // Only a rim hit can make the crowd gasp, and only some of the time (and not twice in a row), or it wears thin.
+      if (sfx === "rim" && -vn > 1.2 && !this.gasped && !this.gaspAt && performance.now() - this.lastGasp > 20000 && Math.random() < 0.4) {
+        this.gaspAt = performance.now() + 700;
+      }
     }
   }
 
-  private collidePoly(hull: [number, number][], ox: number, oy: number, e: number): void {
+  private collidePoly(hull: [number, number][], ox: number, oy: number, e: number, shakesNet = false): void {
     const b = this.ball;
     const n = hull.length;
     let inside = false;
@@ -675,10 +814,15 @@ export class Game {
       b.y = cyp + ny * BALL_R;
     }
     const vn = b.vx * nx + b.vy * ny;
+    const pvx = b.vx;
     if (vn < 0) {
       b.vx -= (1 + e) * vn * nx;
       b.vy -= (1 + e) * vn * ny;
-      if (-vn > 0.8) play("board", clamp(-vn / 8, 0.25, 1));
+      if (-vn > 0.8) {
+        play("board", clamp(-vn / 8, 0.25, 1));
+        if (this.hoop && hull === this.hoop.sprite.hull) this.boardTouched = true;
+        if (shakesNet && this.hoop) this.hoop.net.rimHit(pvx >= 0 ? 1 : -1, clamp(-vn / 4, 0.35, 1.9));
+      }
     }
   }
 
@@ -703,12 +847,14 @@ export class Game {
       const sp = h.sprite;
       const fx = h.x0 + sp.frontX;
       const bx = h.x0 + sp.backX;
-      this.collidePoly(sp.hull, h.x0, h.y0, 0.55);
+      this.collidePoly(sp.hull, h.x0, h.y0, 0.55, true);
+      this.collidePoly(h.poleBox, h.x0, h.y0, 0.5, true);
       this.collideCircle(fx, h.rimY, 1.8, 0.5, "rim");
       this.collideCircle(bx, h.rimY, 1.8, 0.5, "rim");
       const l = Math.min(fx, bx);
       const r = Math.max(fx, bx);
-      if (!b.scored && py < h.rimY && b.y >= h.rimY && b.vy > 0 && b.x > l + 1 && b.x < r - 1) {
+      if (py > h.rimY && b.y <= h.rimY && b.vy < 0 && b.x > l && b.x < r) b.noScore = true;
+      if (!b.scored && !b.noScore && py < h.rimY && b.y >= h.rimY && b.vy > 0 && b.x > l + 1 && b.x < r - 1) {
         this.goal(h);
       }
     }
@@ -730,14 +876,19 @@ export class Game {
     if (b.y > fy) {
       if (this.shot && this.airborne && !this.floorHit) {
         this.floorHit = true;
+        this.syncHit();
         const t = performance.now() + 600;
         this.hideAt = this.hideAt === null ? t : Math.min(this.hideAt, t);
       }
       b.y = fy;
+      b.noScore = false;
       if (b.vy > 1.2) {
         play("bounce", clamp(b.vy / 9, 0.2, 1));
-        b.vy *= -0.74;
-        b.vx *= 0.93;
+        // First bounces as before, then they die out faster so hard shots do not make you wait.
+        const e = this.bounces < 2 ? 0.74 : Math.max(0.35, 0.62 - (this.bounces - 2) * 0.1);
+        this.bounces++;
+        b.vy *= -e;
+        b.vx *= this.bounces > 2 ? 0.85 : 0.93;
       } else {
         b.vy = 0;
       }
@@ -785,21 +936,99 @@ export class Game {
     }
   }
 
+  /** The layers that play together on a milestone. */
+  private milestoneSounds(): void {
+    window.setTimeout(() => {
+      play("milestone");
+      play("levelup");
+    }, 450);
+  }
+
+  private demoN = 0;
+
+  /** Plays a milestone the way it looks and sounds in a game, without touching the score. */
+  previewAchievement(): void {
+    this.ui.showAchievement("Nothing but net");
+    play("achievement");
+    play("achievement2", 0.9);
+  }
+
+  previewMilestone(): void {
+    if (!this.active) return;
+    const values = [25, 50, 100, 200];
+    const n = values[this.demoN++ % values.length];
+    this.ui.close();
+    play("swish");
+    play("swoosh2", 0.8);
+    play("cheer", 0.9);
+    play("boom", 0.9);
+    play("crowd", 0.8);
+    this.milestoneSounds();
+    this.milestone.start(n);
+    this.confetti.spawn(settings.confetti);
+    if (settings.confetti > 0) play("confetti", 0.8);
+    this.start();
+  }
+
+  private achQueue: Achievement[] = [];
+  private achBusy = false;
+
+  /** Shows newly unlocked achievements one after another. */
+  private announce(list: Achievement[]): void {
+    this.achQueue.push(...list);
+    if (this.achBusy) return;
+    const next = (): void => {
+      const a = this.achQueue.shift();
+      if (!a) {
+        this.achBusy = false;
+        return;
+      }
+      this.achBusy = true;
+      this.ui.showAchievement(a.name);
+      play("achievement");
+      play("achievement2", 0.9);
+      window.setTimeout(next, 3600);
+    };
+    next();
+  }
+
   private goal(h: Hoop): void {
     const b = this.ball;
     b.scored = true;
     b.postGoal = true;
+    this.gaspAt = 0;
+    pushLast10(true);
+    this.crowd.goal(performance.now());
+    this.announce(
+      recordGoal({
+        clean: !this.rimTouched && !this.boardTouched,
+        bank: this.boardTouched,
+        rim: this.rimTouched,
+        far: this.shotFar,
+      }),
+    );
     h.net.impulse(rnd(-0.25, 0.25), 0.3);
     this.hideAt = performance.now() + 1500;
     const s = getScore() + 1;
     setScore(s);
     play("swish");
-    this.bubble = {
-      t0: performance.now(),
-      cx: h.x0 + h.sprite.rimCx,
-      top: Math.max(4, h.y0 - 26),
-    };
+    play("swoosh2", 0.8);
+    play("cheer", 0.9);
+    play("boom", 0.9);
+    play("crowd", 0.8);
+    if (isMilestone(s)) {
+      this.milestoneSounds();
+      this.milestone.start(s);
+      this.bubble = null;
+    } else {
+      this.bubble = {
+        t0: performance.now(),
+        cx: h.x0 + h.sprite.rimCx,
+        top: Math.max(4, h.y0 - 26),
+      };
+    }
     this.confetti.spawn(settings.confetti);
+    this.crowd.cheer(performance.now());
     if (settings.confetti > 0) play("confetti", 0.8);
     this.start();
   }
@@ -810,15 +1039,33 @@ export class Game {
     ctx.clearRect(0, 0, this.artW, this.artH);
     const b = this.ball;
 
+    const ch = this.hoop;
+    if (ch && settings.court) {
+      const cs: CourtSprite = ch.side === "right" ? this.courtR : this.courtL;
+      const rise = Math.pow(1 - ch.p, 3) * (this.artH - (this.floorY - cs.cy));
+      const courtTop = Math.round(this.floorY - cs.cy + rise);
+      this.crowd.setBall(this.ball.x, this.floorY + rise, this.ball.y);
+      this.crowd.setHoop(ch.x0 + ch.sprite.rimCx, ch.rimY, ch.side);
+      this.crowd.draw(ctx, settings.crowd, now, this.artW, courtTop + 1, settings.arenaFill);
+      ctx.drawImage(cs.canvas, ch.side === "right" ? this.artW - cs.w : 0, courtTop);
+      if (settings.crowd === "arena") this.crowd.arenaFloor(ctx, now, this.artW, courtTop, cs.h);
+    }
+
     const height = clamp((this.floorY - BALL_R - b.y) / 70, 0, 1);
-    const rx = BALL_R * 0.9 * (1 - height * 0.6);
-    for (let y = -2; y <= 2; y++) {
+    // With the arena lights the key light is fixed above the middle of the screen, so the shadow falls away from it.
+    const lit = !!this.hoop && settings.court && settings.crowd === "arena";
+    const tl = (b.x - this.artW / 2) / this.crowd.keyH(this.floorY, settings.arenaFill);
+    const rx = BALL_R * 0.9 * (1 - height * 0.6) + (lit ? BALL_R * Math.abs(tl) * 1.3 : 0);
+    const sOff = lit ? Math.round(BALL_R * tl * 0.8 * (1 - height * 0.5)) + Math.sign(tl) * 3 : 0;
+    const sy = lit ? 3 : 2.4;
+    // In the arena the key light's shadow is drawn by the crowd, inside the floor pool along the beam.
+    for (let y = -3; y <= 3 && !lit; y++) {
       for (let x = -Math.round(rx); x <= Math.round(rx); x++) {
-        const q = (x / rx) ** 2 + (y / 2.4) ** 2;
+        const q = (x / rx) ** 2 + (y / sy) ** 2;
         if (q > 1) continue;
-        if (q < 0.55 || (x + y) % 2 === 0) {
-          ctx.fillStyle = `rgba(8,4,24,${q < 0.55 ? 0.3 : 0.18})`;
-          ctx.fillRect(Math.round(b.x) + x, this.floorY - 1 + y, 1, 1);
+        if (q < 0.55 || (x + y) % 2 === 0 || lit) {
+          ctx.fillStyle = lit ? `rgba(6,4,18,${q < 0.45 ? 0.62 : 0.38})` : `rgba(8,4,24,${q < 0.55 ? 0.3 : 0.18})`;
+          ctx.fillRect(Math.round(b.x) + x + sOff, this.floorY - 1 + y, 1, 1);
         }
       }
     }
@@ -836,7 +1083,7 @@ export class Game {
 
     const turns = ((b.ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
     ctx.drawImage(
-      this.ballFrames[Math.round((turns / (2 * Math.PI)) * BALL_FRAMES) % BALL_FRAMES],
+      this.framesFor(!!this.hoop && settings.court && settings.crowd === "arena", b.x)[Math.round((turns / (2 * Math.PI)) * BALL_FRAMES) % BALL_FRAMES],
       Math.round(b.x - BALL_SPRITE_SIZE / 2),
       Math.round(b.y - BALL_SPRITE_SIZE / 2),
     );
@@ -861,6 +1108,7 @@ export class Game {
         this.drawBubble(e, dur);
       }
     }
+    this.milestone.draw(ctx);
   }
 
   private drawBubble(e: number, dur: number): void {
@@ -894,6 +1142,7 @@ export class Game {
     if (!this.active) return;
     const rects: Rect[] = [];
     const b = this.ball;
+    if (this.canDismiss()) rects.push({ x: 0, y: 0, w: this.artW * this.S, h: this.artH * this.S });
     if ((!b.moving || this.canGrabSliding()) && !this.drag) {
       const pad = 8;
       rects.push({
@@ -912,5 +1161,6 @@ export class Game {
 
   resetScore(): void {
     setScore(0);
+    resetMatch();
   }
 }

@@ -1,0 +1,199 @@
+<!doctype html><meta charset="utf-8"><title>Street graffiti</title>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#1d2029;--panel:#2a2d36;--text:#f2f4f7;--mut:#aeb4be;--acc:#ee7a24}
+*{box-sizing:border-box}
+body{margin:0;padding:20px 16px;background:var(--bg);color:var(--text);font-family:'Pixelify Sans',ui-monospace,monospace}
+h1{font-size:20px;font-weight:500;margin:0 0 4px}p.s{color:var(--mut);margin:0 0 14px;font-size:14px}
+.g{display:grid;gap:18px;max-width:1240px}
+.c{background:var(--panel);padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.c h2{font-size:17px;font-weight:500;margin:0}.c h2 span{color:var(--acc)}
+.c p{margin:0;color:var(--mut);font-size:13px}
+canvas{image-rendering:pixelated;display:block;width:100%;border:4px solid #0d0e12}
+</style>
+<h1>Street style, graffiti and a guy with a spray can</h1>
+<p class="s">Same scene as in the game: brick wall, fence and fans. Drawn at the game's own pixel size.</p>
+<div class="g">
+<div class="c"><h2><span>A</span> Tagging a name</h2><canvas data-v="a" width="260" height="122"></canvas><p>The guy walks along the fence and sprays a bubble-letter HOOPS, one colour per letter, with white outline, shadow and drips. When it is done he shakes the can and the tag fades for the next round. A few old pieces sit on the wall above.</p></div>
+<div class="c"><h2><span>B</span> A wall full of art</h2><canvas data-v="b" width="260" height="122"></canvas><p>The whole wall is already covered: tags, a crown, a smiley, a stencil ball and fence tags. The guy strolls between spots, rattles the can and sprays a new star or lightning bolt on top, then walks on.</p></div>
+<div class="c"><h2><span>C</span> Mural from a rolling scaffold</h2><canvas data-v="c" width="260" height="122"></canvas><p>One big winged basketball painted in stages: outline, orange, seams, wings, shine and a signature. The guy stands on a stack of crates that rolls along as he works.</p></div>
+</div>
+<script>
+const W=260,H=122,OY=20; // canvas y = game y + 20 (the game's local y 0..92)
+const G={0:"111101101101111",1:"010110010010111",2:"111001111100111",3:"111001111001111",4:"101101111001001",5:"111100111001111",6:"111100111101111",7:"111001010010010",8:"111101111101111",9:"111101111001111",
+A:"010101111101101",B:"110101110101110",C:"111100100100111",D:"110101101101110",E:"111100110100111",F:"111100110100100",G:"111100101101111",H:"101101111101101",I:"111010010010111",J:"001001001101111",K:"101101110101101",L:"100100100100111",M:"101111111101101",N:"110101101101101",O:"111101101101111",P:"111101111100100",R:"110101110101101",S:"111100111001111",T:"111010010010010",U:"101101101101111",V:"101101101101010",W:"101101111111101",X:"101101010101101",Y:"101101010010010","!":"010010010000010"," ":"000000000000000"};
+const hs=(a,b)=>{let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return (h&255)/255};
+let x;
+const r=(a,b,w,h,col)=>{x.fillStyle=col;x.fillRect(Math.round(a),Math.round(b),w,h)};
+const DK="#1c1c22";
+const PAL=["#ff4fa0","#35d4ff","#ffe14a","#5de06a","#ff8a1f","#9b5cff"];
+const FY=45+OY,FLOOR=112; // fence top and the front baseline
+
+function bricks(){for(let y=0;y<92+OY;y+=4){const row=y/4;for(let bx0=-8;bx0<W;bx0+=8){const bx=bx0+(row%2)*4,col=['#8a4a3a','#7a3f32','#94503e'][Math.floor(hs(bx,row)*3)];r(bx,y,7,3,col);r(bx,y+3,8,1,'#5a2f27');r(bx+7,y,1,3,'#5a2f27')}}}
+function mesh(){for(let y=FY;y<88+OY;y++)for(let xx=0;xx<W;xx++){if(((xx+y)%5===0)||((xx-y+500)%5===0))r(xx,y,1,1,'rgba(190,196,208,0.75)')}
+ r(0,FY-1,W,2,DK);r(0,FY,W,1,'#c4cad4');for(let xx=12;xx<W;xx+=48){r(xx,FY-2,4,90+OY-FY+2,DK);r(xx+1,FY-1,2,90+OY-FY,'#b8bec8')}
+ r(0,88+OY,W,4,'#8a8f99');r(0,88+OY,W,1,DK);r(0,92+OY,W,H-92-OY,'#2e3340');r(0,92+OY,W,1,'#4a506a')}
+const SH=["#e8731f","#f4f6fb","#3a5493","#9aa1ad","#3fae5c","#d94a6a"];
+function fans(t){for(let xx=3;xx<W-6;xx+=10){const seed=xx*5+3;if(hs(seed,9)<.25)continue;const b=87+OY-(Math.floor(t/300+seed)%7===0?1:0);r(xx+1,b-9,3,3,"#f2c9a0");r(xx+1,b-10,3,1,["#1c1c22","#4a3020","#8a5a2a","#c9a24a"][Math.floor(hs(seed,2)*4)]);r(xx,b-6,5,6,SH[Math.floor(hs(seed,4)*6)])}}
+
+// pixel helpers for graffiti
+function glyphPixels(str,sc){const out=[];let px=0;for(const ch of str){const g=G[ch]||G[" "];for(let k=0;k<15;k++)if(g[k]==="1")for(let a=0;a<sc;a++)for(let b=0;b<sc;b++)out.push([px+(k%3)*sc+a,Math.floor(k/3)*sc+b,px]);px+=4*sc}return out}
+function bubble(str,x0,y0,sc,cols,reveal,outline,shadow,t,drip){
+ const px=glyphPixels(str,sc),set=new Set(px.map(p=>p[0]+","+p[1]));const hh=5*sc;
+ const vis=px.filter(p=>p[0]<=reveal);
+ for(const [a,b] of vis){r(x0+a+1,y0+b+2,1,1,shadow)}
+ for(const [a,b] of vis)for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)if(!set.has((a+dx)+","+(b+dy))&&(dx||dy))r(x0+a+dx,y0+b+dy,1,1,outline);
+ for(const [a,b,gx] of vis){const li=Math.floor(gx/(4*sc));const c=cols[li%cols.length];r(x0+a,y0+b,1,1,c);if(b%sc===0&&a%sc===0)r(x0+a,y0+b,1,1,"#ffffffcc")}
+ if(drip){const base=px.filter(p=>p[0]<=reveal&&!set.has(p[0]+","+(p[1]+1)));for(const [a,b,gx] of base){if(hs(a,7)<.18){const len=Math.min(2+Math.floor(hs(a,3)*7),Math.floor(drip*9));const c=cols[Math.floor(gx/(4*sc))%cols.length];r(x0+a,y0+b+1,1,len,c)}}}
+}
+// the guy
+function line(x1,y1,x2,y2,col){const n=Math.max(Math.abs(x2-x1),Math.abs(y2-y1))||1;for(let i=0;i<=n;i++)r(x1+(x2-x1)*i/n,y1+(y2-y1)*i/n,1,1,col)}
+function guy(gx,base,t,o){ // o:{walk,tx,ty,spray,col,rattle,face}
+ const f=o.face||1,bob=o.walk?(Math.floor(t/110)%2):0;
+ const l1=o.walk?(Math.floor(t/110)%2?2:-1):0;
+ // legs
+ r(gx-2+(o.walk?l1:0),base-6,2,5,"#2a3a6a");r(gx+1-(o.walk?l1:0),base-6,2,5,"#2a3a6a");
+ r(gx-3+(o.walk?l1:0)+(f>0?0:0),base-1,3,1,"#f4f6fb");r(gx+1-(o.walk?l1:0),base-1,3,1,"#f4f6fb");
+ // backpack
+ r(gx-(f>0?5:-3),base-11-bob,2,5,"#e8731f");
+ // torso
+ r(gx-3,base-12-bob,6,7,"#3a3a44");r(gx-3,base-12-bob,6,1,"#4a4a58");
+ // head
+ r(gx-2,base-16-bob,4,4,"#f2c9a0");r(gx-2,base-17-bob,4,2,"#e8392b");r(gx+(f>0?2:-4),base-16-bob,2,1,"#e8392b");
+ r(gx+(f>0?1:-1),base-15-bob,1,1,DK);
+ // arm
+ const sx=gx+(f>0?2:-2),sy=base-11-bob;
+ let hx=gx+f*4,hy=base-9-bob+(o.walk?1:0);
+ if(o.tx!==undefined){const dx=o.tx-sx,dy=o.ty-sy,d=Math.hypot(dx,dy)||1,len=Math.min(7,d);hx=sx+dx/d*len;hy=sy+dy/d*len}
+ if(o.rattle){hx+=Math.sin(t/25)*1.5;hy+=Math.cos(t/30)*1.5}
+ line(sx,sy,hx,hy,"#3a3a44");r(hx,hy,1,1,"#f2c9a0");
+ // can
+ const cx=Math.round(hx)+(f>0?0:-2),cy=Math.round(hy)-3;
+ r(cx,cy,2,4,o.col||"#ff4fa0");r(cx,cy,2,1,"#9aa1ad");r(cx+(f>0?1:0),cy-1,1,1,"#dde1e8");
+ if(o.spray&&o.tx!==undefined){const nx=cx+(f>0?2:0),ny=cy-1;
+  for(let k=0;k<14;k++){const u=((t/45+k*1.7)%7)/7,spread=u*3;const px=nx+(o.tx-nx)*u+(hs(k,Math.floor(t/40))-.5)*spread*2,py=ny+(o.ty-ny)*u+(hs(k+9,Math.floor(t/40))-.5)*spread*2;r(px,py,1,1,k%3?o.col:"#ffffffaa")}
+  for(let k=0;k<8;k++){const px=o.tx+(hs(k,Math.floor(t/60))-.5)*9,py=o.ty+(hs(k+4,Math.floor(t/60))-.5)*7;r(px,py,1,1,o.col+"88")}}
+}
+const ease=u=>u<0?0:u>1?1:u*u*(3-2*u);
+
+function pieceStatic(){
+ // crown, smiley, lightning, arrow etc. as little pixel pictures
+ const crown=["1010101","1111111","0111110","0111110"],crownCol="#ffe14a";
+ return {crown,crownCol}}
+function drawPix(rows,x0,y0,col,sc=1){rows.forEach((row,j)=>[...row].forEach((c,i)=>{if(c==="1")r(x0+i*sc,y0+j*sc,sc,sc,col)}))}
+function disc(cx,cy,R,col,edge){for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){const d=dx*dx+dy*dy;if(d<=R*R+1)r(cx+dx,cy+dy,1,1,d>(R-1)*(R-1)+1&&edge?edge:col)}}
+const STAR=["0001000","0001000","0011100","1111111","0111110","0110110","0100010"];
+const BOLT=["0001100","0011000","0110000","1111110","0001100","0011000","0110000","0100000"];
+const HEART=["0110110","1111111","1111111","0111110","0011100","0001000"];
+const CROWN=["1001001","1101011","1111111","1111111"];
+
+// ------------------------------------------------------- A
+function A(t){
+ bricks();
+ // old pieces on the wall above the fence
+ bubble("OK",30,12,3,["#35d4ff","#ff4fa0"],99,"#ffffff","#1c1c22",t,0);
+ drawPix(CROWN,176,14,"#ffe14a",2);r(176,26,14,2,"#c9a000");
+ disc(228,26,8,"#ffe14a","#c9a000");r(225,23,2,2,DK);r(230,23,2,2,DK);r(224,29,8,1,DK);r(225,30,6,1,DK);
+ for(let i=0;i<5;i++)r(110,12+i*3,40,2,PAL[i]);
+ fans(t);mesh();
+ // the tag being sprayed
+ const T=10000,p=(t%T)/T,sc=4,x0=92,y0=72,wd=5*4*sc-sc;
+ const prog=ease(p/.55),reveal=p<.55?prog*wd:wd;
+ const fade=p>.93?1-(p-.93)/.07:1;x.globalAlpha=fade;
+ bubble("HOOPS",x0,y0,sc,PAL.slice(0,5),reveal,"#ffffff","#1c1c22",t,Math.max(0,Math.min(1,(p-.55)/.3)));
+ x.globalAlpha=1;
+ // guy in front
+ let gxx,o={};
+ if(p<.55){const li=Math.min(4,Math.floor(reveal/(4*sc)));o={walk:p>.01&&p<.54,tx:x0+reveal+2,ty:y0+8+Math.sin(t/180)*5,spray:true,col:PAL[li],face:1};gxx=x0+reveal-18}
+ else{gxx=x0+wd-18;o={walk:false,col:PAL[4],face:1,rattle:p>.86&&p<.93}}
+ guy(gxx,FLOOR,t,o);
+}
+
+// ------------------------------------------------------- B
+function B(t){
+ bricks();
+ bubble("BALL",18,10,3,["#35d4ff","#9b5cff"],99,"#ffffff","#1c1c22",t,1);
+ drawPix(CROWN,112,12,"#ffe14a",2);r(112,24,14,2,"#c9a000");
+ disc(170,28,8,"#ffe14a","#c9a000");r(167,25,2,2,DK);r(172,25,2,2,DK);r(166,31,9,1,DK);r(167,32,7,1,DK);
+ disc(218,26,9,"#ff8a1f","#7a3a10");r(209,26,18,1,"#7a3a10");r(218,17,1,18,"#7a3a10");
+ drawPix(BOLT,60,38,"#9b5cff",2);
+ for(let i=0;i<6;i++)r(235,10+i*3,18,2,["#ff4fa0","#ff8a1f","#ffe14a","#5de06a","#35d4ff","#9b5cff"][i]);
+ // fence tags (already there)
+ fans(t);mesh();
+ bubble("HOOPS",24,80,2,["#ff4fa0","#ffe14a","#5de06a","#35d4ff","#ff8a1f"],99,"#1c1c22","#00000066",t,1);
+ bubble("MVP",196,82,2,["#ffe14a","#ff4fa0"],99,"#ffffff","#1c1c22",t,0);
+ drawPix(HEART,110,86,"#ff4fa0",2);
+ // the new piece
+ const T=14000,tt=t%T,spots=[[150,84,STAR,"#ffe14a"],[56,84,BOLT,"#35d4ff"]];
+ const phase=Math.floor(tt/7000),lt=tt%7000,s=spots[phase],walkIn=ease(lt/1800);
+ const gx0=phase?-20:W+20,gxTarget=s[0]+(phase?-12:20);
+ const gxx=gx0+(gxTarget-gx0)*walkIn,face=phase?1:-1;
+ const doRattle=lt>1800&&lt<2600,doSpray=lt>=2600&&lt<5000,done=lt>=5000;
+ const frac=done?1:doSpray?(lt-2600)/2400:0;
+ // painted so far
+ const rows=s[2],sc2=2;const pts=[];rows.forEach((row,j)=>[...row].forEach((c,i)=>{if(c==="1")pts.push([i,j])}));
+ pts.sort((a,b)=>a[1]-b[1]||a[0]-b[0]);
+ const n=Math.floor(pts.length*frac);
+ for(let k=0;k<n;k++){const [i,j]=pts[k];r(s[0]+i*sc2,s[1]+j*sc2,sc2,sc2,s[3]);if(i===0||k%5===0)r(s[0]+i*sc2,s[1]+j*sc2,1,1,"#ffffffaa")}
+ if(done){for(const [i,j] of pts)if(hs(i*7+j,phase)<.15){r(s[0]+i*sc2,s[1]+j*sc2+sc2,1,2+Math.floor(hs(i,j)*4),s[3])}}
+ 
+ const last=n>0?pts[Math.max(0,n-1)]:pts[0];
+ const o={walk:walkIn<1||lt>6000,face:walkIn<1?face:(lt>6000?-face:face),col:s[3]};
+ if(lt>=1800&&lt<6000){o.tx=s[0]+last[0]*sc2;o.ty=s[1]+last[1]*sc2;o.spray=doSpray;o.rattle=doRattle;o.walk=false;o.face=phase?1:-1}
+ const gx2=lt>6000?gxTarget+(phase?1:-1)*(lt-6000)/1000*10:gxx;
+ guy(gx2,FLOOR,t,o);
+}
+
+// ------------------------------------------------------- C
+function C(t){
+ bricks();
+ bubble("CREW",20,10,3,["#ff4fa0","#ffe14a"],99,"#ffffff","#1c1c22",t,0);
+ drawPix(STAR,226,12,"#ffe14a",2);
+ for(let i=0;i<5;i++)r(24,36+i*3,30,2,PAL[i]);
+ fans(t);mesh();
+ const T=12000,p=(t%T)/T,mx=130,my=60;
+ // mural pieces: list of [dx,dy,color,stage]
+ const px=[];
+ const disc2=(R)=>{for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){const d=dx*dx+dy*dy;if(d<=R*R+1)px.push([dx,dy,d>(R-1.4)*(R-1.4)?"edge":"fill"])}};
+ disc2(11);
+ const wing=(sg)=>{for(let k=0;k<4;k++){const len=22-k*4;for(let i=0;i<len;i++){for(let j=0;j<3;j++){px.push([sg*(11+i),-6+k*4+j-Math.floor(i*.25)+0,"wing"+k])}}}};
+ wing(1);wing(-1);
+ // stages: edge (0-.2), fill (.2-.4), seams (.4-.5), wings (.5-.75), shine (.75-.88), sign (.88-.95)
+ const gp=p;const order=(a)=>a[0]; // sweep left to right
+ const total=gp<.75?gp/.75:1; // progress through the main painting
+ let targetX=mx-30,targetY=my;
+ const revX=(u)=>mx-33+u*66;
+ const stageU=gp<.2?gp/.2:gp<.4?(gp-.2)/.2:gp<.5?(gp-.4)/.1:gp<.75?(gp-.5)/.25:1;
+ const rv=revX(stageU),fade=gp>.95?1-(gp-.95)/.05:1;x.globalAlpha=fade;
+ const wingCols=["#ffffff","#bfeaff","#7fd0ff","#35d4ff"];
+ for(const [dx,dy,k] of px){const X=mx+dx,Y=my+dy;
+  const isEdge=k==="edge"||k.startsWith("wing")&&false;
+  if(gp<.2){ if(k==="edge"&&X<=rv)r(X,Y,1,1,"#ffffff") ; if(k.startsWith("wing")&&X<=rv&&(dy%3===0||Math.abs(dx)>28))r(X,Y,1,1,"#ffffff66") }
+  else{
+   if(k==="edge")r(X,Y,1,1,"#1c1c22");
+   if(k==="fill"){const c=gp>=.2&&(gp>=.4||X<=rv)?"#ff8a1f":"#ffffff";r(X,Y,1,1,c)}
+   if(k.startsWith("wing")&&gp>=.5&&X<=rv+ (gp>=.75?99:0))r(X,Y,1,1,wingCols[parseInt(k[4])])
+   if(k.startsWith("wing")&&gp>=.2&&gp<.5)r(X,Y,1,1,"#ffffff33")
+  }}
+ if(gp>=.4){const u=gp<.5?(gp-.4)/.1:1,rx=mx-12+u*24;for(let i=-11;i<=11;i++){if(mx+i<=rx){r(mx+i,my,1,1,"#7a3a10");}}if(rx>=mx){for(let j=-11;j<=11;j++)r(mx,my+j,1,1,"#7a3a10")}
+  for(let a=-6;a<=6;a++){const yy=Math.round(Math.sqrt(Math.max(0,121-(a)*(a))*.45));if(mx+a<=rx){r(mx+a,my-yy+7-3,1,1,"#7a3a10");r(mx+a,my+yy-7+3,1,1,"#7a3a10")}}}
+ if(gp>=.75){const u=Math.min(1,(gp-.75)/.13);r(mx-7,my-8,3,3,"#ffffff");r(mx-6,my-7,1,1,"#ffe9b0");if(u>.3){for(let k=0;k<8;k++){const sx=mx-26+Math.floor(hs(k,2)*52),sy=my-16+Math.floor(hs(k,5)*30);if(Math.floor(t/120+k*3)%5<2){r(sx,sy,1,1,"#fff");r(sx-1,sy,3,1,"#fff6a0");r(sx,sy-1,1,3,"#fff6a0")}}}}
+ if(gp>=.88){const u=Math.min(1,(gp-.88)/.07);for(const [i,ch] of [...("KID")].entries()){const gg=G[ch];if(i*5<=u*15)for(let k=0;k<15;k++)if(gg[k]==="1")r(mx+22+i*5+(k%3),my+16+Math.floor(k/3),1,1,"#ffe14a")}}
+ x.globalAlpha=1;
+ // scaffold and the guy
+ let tx=mx-30+stageU*60,ty=my+(Math.sin(t/200)*4);
+ if(gp>=.75){tx=mx-8+Math.sin(t/200)*3;ty=my-6}
+ if(gp>=.88){tx=mx+24+((gp-.88)/.07)*10;ty=my+17}
+ if(gp>=.95){tx=mx-40}
+ const gxx=Math.max(20,Math.min(W-20,tx-14));
+ // crates (3 high)
+ const cb=FLOOR;for(let k=0;k<3;k++){const cy=cb-(k+1)*8;r(gxx-9,cy,18,8,"#a8743c");r(gxx-9,cy,18,1,"#c99456");r(gxx-9,cy+7,18,1,"#6b4423");r(gxx-9,cy,1,8,"#6b4423");r(gxx+8,cy,1,8,"#6b4423");line(gxx-8,cy+1,gxx+7,cy+7,"#7a4a22")}
+ r(gxx-8,cb,3,2,DK);r(gxx+5,cb,3,2,DK);
+ const col=gp<.2?"#ffffff":gp<.4?"#ff8a1f":gp<.5?"#1c1c22":gp<.75?"#35d4ff":gp<.88?"#ffffff":"#ffe14a";
+ guy(gxx,cb-24,t,{tx,ty,spray:gp<.95&&gp>.0,col,face:1,walk:false,rattle:gp>=.95});
+}
+const V={a:A,b:B,c:C};
+const cs=[...document.querySelectorAll('canvas')].map(k=>({ctx:k.getContext('2d'),f:V[k.dataset.v]}));
+function loop(now){for(const o of cs){x=o.ctx;o.ctx.clearRect(0,0,W,H);o.f(now)}requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+</script>

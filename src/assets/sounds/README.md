@@ -1,17 +1,26 @@
-# Ljud till Hoops
+# Hoops sounds
 
-Lägg ljudfiler i den här mappen. Filnamnet (utan ändelse) avgör vilket ljud det blir.
-Format som stöds: `.wav`, `.mp3`, `.ogg`, `.m4a`. Saknas en fil spelas bara inget ljud.
+Put sound files in this folder. The file name (without extension) decides which sound it is.
+Supported formats: `.wav`, `.mp3`, `.ogg`, `.m4a`. If a file is missing, nothing plays.
 
-| Filnamn      | När det spelas                                   |
+| File name    | When it plays                                    |
 | ------------ | ------------------------------------------------ |
-| `shoot`      | Du släpper bollen och skjuter                    |
-| `stretch`    | Du börjar dra i bollen                           |
-| `bounce`     | Bollen studsar mot golvet (volym efter kraft)    |
-| `wall`       | Bollen studsar mot en skärmkant                  |
-| `board`      | Bollen träffar bakplattan                        |
-| `rim`        | Bollen träffar ringen                            |
-| `swish`      | Mål! Bollen går genom nätet                      |
-| `confetti`   | Konfettin skjuts ut                              |
-| `appear`     | Korgen glider in                                 |
-| `ui`         | Klick i menyn                                    |
+| `shoot`      | You release the ball and shoot (exists)          |
+| `stretch`    | You start dragging the ball                      |
+| `bounce`     | The ball bounces (exists). Also used for wall, board and rim if they have no file of their own. The pitch is randomized every time. |
+| `wall`       | The ball bounces off a screen edge               |
+| `board`      | The ball hits the backboard                      |
+| `rim`        | The ball hits the rim                            |
+| `swish`      | Goal! The ball goes through the net (exists)     |
+| `swoosh2`    | Goal! Plays together with `swish` (second swoosh layer) |
+| `confetti`   | The confetti is fired                            |
+| `cheer`      | Goal! (exists: 8-bit power-up, freesound)        |
+| `boom`       | Goal! Plays at the same time (8-bit explosion)   |
+| `crowd`      | Goal! Crowd cheering (8-bit filtered)            |
+| `gasp`       | Near miss: the crowd sometimes gasps when the ball hits the rim without going in |
+| `milestone`  | Milestone: 25, 50, 100 goals and then every 100  |
+| `levelup`    | Milestone: plays together with `milestone` (8-bit level-up) |
+| `appear`     | The hoop slides in                               |
+| `ui`         | Click in the menu                                |
+| `achievement`  | Achievement unlocked: the ping |
+| `achievement2` | Achievement unlocked: plays together with `achievement` (the pop) |

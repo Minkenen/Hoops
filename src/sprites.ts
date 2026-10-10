@@ -1,6 +1,5 @@
 import { DARK, HALO } from "./draw";
 
-const BALL = ["#b8451a", "#ee7a24", "#ffa94d"];
 
 function haloCanvas(pix: (string | null)[], w: number, h: number): HTMLCanvasElement {
   const cv = document.createElement("canvas");
@@ -38,13 +37,12 @@ function haloCanvas(pix: (string | null)[], w: number, h: number): HTMLCanvasEle
 export const BALL_R = 10.5;
 export const BALL_SPRITE_SIZE = 23;
 
-function ballPixels(angle: number): (string | null)[] {
+function ballPixels(angle: number, BALL: string[], seamCol: string, lx = -0.5): (string | null)[] {
   const N = 21;
   const S = N + 2;
   const c0 = (N - 1) / 2;
   const Rr = N / 2;
   const pix: (string | null)[] = new Array(S * S).fill(null);
-  const lx = -0.5;
   const ly = -0.6;
   const lz = 0.65;
   const ln = Math.hypot(lx, ly, lz);
@@ -66,9 +64,9 @@ function ballPixels(angle: number): (string | null)[] {
         Math.abs(w) < 0.075 ||
         Math.abs(Math.hypot(u + 1.344, w) - 1.075) < 0.07 ||
         Math.abs(Math.hypot(u - 1.344, w) - 1.075) < 0.07;
-      if (seam) c = DARK;
+      if (seam) c = seamCol;
       if (d > Rr - 1.2) c = DARK;
-      else if (Math.hypot((x - (c0 - 0.38 * Rr)) / 1.7, (y - (c0 - 0.46 * Rr)) / 1.1) < 1) c = "#ffffff";
+      else if (Math.hypot((x - (c0 + 0.76 * lx * Rr)) / 1.7, (y - (c0 - 0.46 * Rr)) / 1.1) < 1) c = "#ffffff";
       pix[(y + 1) * S + x + 1] = c;
     }
   }
@@ -77,11 +75,15 @@ function ballPixels(angle: number): (string | null)[] {
 
 export const BALL_FRAMES = 72;
 
-export function makeBallFrames(): HTMLCanvasElement[] {
+export function makeBallFrame(pal: string[], seam: string, lx = -0.5): HTMLCanvasElement {
+  return haloCanvas(ballPixels(0.7, pal, seam, lx), BALL_SPRITE_SIZE, BALL_SPRITE_SIZE);
+}
+
+export function makeBallFrames(pal: string[], seam: string, lx = -0.5): HTMLCanvasElement[] {
   const S = BALL_SPRITE_SIZE;
   const out: HTMLCanvasElement[] = [];
   for (let i = 0; i < BALL_FRAMES; i++) {
-    out.push(haloCanvas(ballPixels((i / BALL_FRAMES) * 2 * Math.PI), S, S));
+    out.push(haloCanvas(ballPixels((i / BALL_FRAMES) * 2 * Math.PI, pal, seam, lx), S, S));
   }
   return out;
 }
@@ -105,9 +107,12 @@ export interface HoopSprite {
   rimCx: number;
   netLen: number;
   hull: [number, number][];
+  faceHull: [number, number][]; // the whole visible front of the backboard
+  silhouette: [number, number][]; // convex outline of the whole board box
   netGeom: NetGeom;
   shiftX: number;
   shiftY: number;
+  poleTop: [[number, number], [number, number]];
 }
 
 type Pt = [number, number];
@@ -122,8 +127,49 @@ function inPoly(x: number, y: number, pts: Pt[]): boolean {
   return c;
 }
 
-const ISO_W = 80;
-const ISO_H = 88;
+function convexHull(pts: [number, number][]): [number, number][] {
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: [number, number], a: [number, number], b: [number, number]): number =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: [number, number][] = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+    lower.push(q);
+  }
+  const upper: [number, number][] = [];
+  for (const q of [...p].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
+    upper.push(q);
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+const ISO_W = 130;
+const ISO_H = 150;
+
+/** Size of the backboard in iso units: half width, and the lowest and highest edge. */
+export interface BoardSpec {
+  aW: number;
+  zLo: number;
+  zHi: number;
+  gap?: number; // distance from the ring's edge to the board's front face
+  targetW?: number; // half width of the painted square
+  targetH?: number; // height of the painted square
+}
+
+/** The old small board. The ring keeps the spot it had with this one. */
+export const OLD_BOARD: BoardSpec = { aW: 12, zLo: -9, zHi: 19 };
+
+// 60 percent of a real board (1.71 : 1 against a 26 unit ring), with the real gap to the ring and target square.
+export const DEFAULT_BOARD: BoardSpec = { aW: 31, zLo: -9, zHi: 28, gap: 7, targetW: 10, targetH: 15 };
+
+/** The hoop and its pole sprite share one origin, so the pole lines up with whichever board is used. */
+function hoopOrigin(side: "left" | "right", board: BoardSpec): { ox: number; oy: number } {
+  const back = RING_R + (board.gap ?? 3) + 3; // distance from the ring centre to the back of the board
+  const oy = Math.max(44, Math.ceil(board.zHi + (board.aW + back) / 2 + 6));
+  const ox = side === "right" ? 26 : Math.max(50, board.aW + back + 2);
+  return { ox, oy };
+}
 const RING_R = 13;
 const NET_T = [0, 0.42, 0.72, 1];
 const NET_COLS = 12;
@@ -219,6 +265,71 @@ class Iso {
   }
 }
 
+
+function isoCylinder(
+  iso: Iso,
+  ca: number,
+  cb: number,
+  r: number,
+  z0: number,
+  z1: number,
+  shades: string[],
+  topColor: string,
+): void {
+  const n = 72;
+  const P = (a: number, b: number, z: number) => iso.p(a, b, z);
+  for (let i = 0; i < n; i++) {
+    const t0 = (i / n) * 2 * Math.PI;
+    const t1 = ((i + 1) / n) * 2 * Math.PI;
+    const tm = (t0 + t1) / 2;
+    if (Math.cos(tm) + Math.sin(tm) < 0) continue;
+    const lit = (Math.cos(tm) - Math.sin(tm) + Math.SQRT2) / (2 * Math.SQRT2);
+    const col = shades[Math.min(shades.length - 1, Math.floor(lit * shades.length))];
+    iso.poly(
+      [
+        P(ca + r * Math.cos(t0), cb + r * Math.sin(t0), z1),
+        P(ca + r * Math.cos(t1), cb + r * Math.sin(t1), z1),
+        P(ca + r * Math.cos(t1), cb + r * Math.sin(t1), z0),
+        P(ca + r * Math.cos(t0), cb + r * Math.sin(t0), z0),
+      ],
+      col,
+    );
+  }
+  const top: Pt[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = (i / n) * 2 * Math.PI;
+    top.push(P(ca + r * Math.cos(t), cb + r * Math.sin(t), z1));
+  }
+  iso.poly(top, topColor);
+  iso.outline(top, DARK);
+  let prev: Pt | null = null;
+  for (let i = 0; i < n; i++) {
+    const t = (i / n) * 2 * Math.PI;
+    if (Math.cos(t) + Math.sin(t) < 0) continue;
+    const pt = P(ca + r * Math.cos(t), cb + r * Math.sin(t), z0);
+    if (prev) iso.line(prev, pt, DARK);
+    prev = pt;
+  }
+  for (const th of [(3 * Math.PI) / 4, -Math.PI / 4]) {
+    iso.line(
+      P(ca + r * Math.cos(th), cb + r * Math.sin(th), z1),
+      P(ca + r * Math.cos(th), cb + r * Math.sin(th), z0),
+      DARK,
+    );
+  }
+}
+
+export type BaseSkin = "plate" | "round" | "concrete";
+
+const BASE_LOW: Record<BaseSkin, number> = {
+  plate: -4,
+  round: -11 + 0.7071 * 9,
+  concrete: -2,
+};
+
+/** Rows from the middle of the foot to the bottom edge of the pole sprite (measured), so the foot can stand on the court's centre line. */
+export const BASE_CENTER: Record<BaseSkin, number> = { plate: 14, round: 14, concrete: 18 };
+
 function ringArc(iso: Iso, front: boolean): void {
   const n = 260;
   for (let i = 0; i < n; i++) {
@@ -247,13 +358,12 @@ function ringArc(iso: Iso, front: boolean): void {
   }
 }
 
-export function makeHoopSprite(side: "left" | "right"): HoopSprite {
-  const iso = new Iso(side, side === "right" ? 26 : 50, 44);
-  const bF = -RING_R - 3;
+export function makeHoopSprite(side: "left" | "right", board: BoardSpec = DEFAULT_BOARD): HoopSprite {
+  const origin = hoopOrigin(side, board);
+  const iso = new Iso(side, origin.ox, origin.oy);
+  const bF = -RING_R - (board.gap ?? 3);
   const bB = -RING_R - 6;
-  const aW = 12;
-  const zLo = -9;
-  const zHi = 19;
+  const { aW, zLo, zHi } = board;
   iso.box(-aW, aW, bB, bF, zLo, zHi, { top: "#f2f4f7", front: "#eaf1f5", side: "#8a909c" }, DARK);
   const P = (a: number, b: number, z: number) => iso.p(a, b, z);
   const inner = [P(-aW + 2, bF, zHi - 2), P(aW - 2, bF, zHi - 2), P(aW - 2, bF, zLo + 2), P(-aW + 2, bF, zLo + 2)];
@@ -268,7 +378,9 @@ export function makeHoopSprite(side: "left" | "right"): HoopSprite {
     "#b8c8d4",
   );
   iso.outline(inner, "#8a909c");
-  iso.outline([P(-5, bF, 1), P(5, bF, 1), P(5, bF, 10), P(-5, bF, 10)], "#d8402f");
+  const tw = board.targetW ?? Math.round(aW * 0.42);
+  const th = 1 + (board.targetH ?? Math.round((zHi - zLo) * 0.32));
+  iso.outline([P(-tw, bF, 1), P(tw, bF, 1), P(tw, bF, th), P(-tw, bF, th)], "#d8402f");
   iso.box(-1, 1, bB + 3, -RING_R, -2, 0, { top: "#c4c9d2", front: "#8a909c", side: "#4a4f5a" }, DARK);
   ringArc(iso, false);
   iso.cur = iso.front;
@@ -329,6 +441,10 @@ export function makeHoopSprite(side: "left" | "right"): HoopSprite {
     return [pt[0] - sx, pt[1] - sy];
   };
   const hull: Pt[] = [cut(0, bB, zHi), cut(0, bF, zHi), cut(0, bF, zLo), cut(0, bB, zLo)];
+  const faceHull: Pt[] = [cut(-aW, bF, zHi), cut(aW, bF, zHi), cut(aW, bF, zLo), cut(-aW, bF, zLo)];
+  const corners: Pt[] = [];
+  for (const a of [-aW, aW]) for (const b of [bB, bF]) for (const z of [zLo, zHi]) corners.push(cut(a, b, z));
+  const silhouette = convexHull(corners);
   const reach = RING_R * Math.SQRT2;
   const cxr = iso.ox - sx;
   const open = side === "right" ? cxr - reach : cxr + reach;
@@ -344,24 +460,68 @@ export function makeHoopSprite(side: "left" | "right"): HoopSprite {
     rimCx: cxr,
     netLen: 26,
     hull,
+    faceHull,
+    silhouette,
     shiftX: sx,
     shiftY: sy,
+    poleTop: [cut(0, -24, 3), cut(0, -20, 3)],
     netGeom: { cols: NET_COLS, rows: geomRows, x: gx, y: gy, depth: gd },
   };
 }
 
-export function makePoleSprite(side: "left" | "right", height: number): HTMLCanvasElement {
+export function makePoleSprite(
+  side: "left" | "right",
+  height: number,
+  skin: BaseSkin = "plate",
+  board: BoardSpec = DEFAULT_BOARD,
+): HTMLCanvasElement {
   const h = Math.max(8, Math.ceil(height));
-  const ox = side === "right" ? 26 : 50;
-  const oy = 44;
+  const { ox, oy } = hoopOrigin(side, board);
   const iso = new Iso(side, ox, oy, h);
-  const cols = { top: "#c4c9d2", front: "#8a909c", side: "#4a4f5a" };
+  const steel = { top: "#c4c9d2", front: "#8a909c", side: "#4a4f5a" };
   const P = (a: number, b: number, z: number) => iso.p(a, b, z);
-  const bottom = -(h * 2 + 100);
-  iso.box(-2, 2, -24, -20, bottom, 3, cols, DARK);
-  const s0 = P(-0.9, -20, 3);
-  const s1 = P(-0.9, -20, bottom);
-  iso.line(s0, s1, "#dfe3ea");
-  iso.box(-1, 1, -20, -RING_R - 6, -5, -2, cols, DARK);
+  const z0 = oy + BASE_LOW[skin] - (h - 3);
+  let zTop: number;
+  if (skin === "plate") {
+    iso.box(-7, 7, -29, -15, z0, z0 + 3, { top: "#c4c9d2", front: "#6f7682", side: "#3a3e48" }, DARK);
+    for (const aa of [-5.5, 5.5]) {
+      for (const bb of [-27.5, -16.5]) {
+        iso.box(aa - 1, aa + 1, bb - 1, bb + 1, z0 + 3, z0 + 4.5, { top: "#eef1f5", front: "#aeb4be", side: "#6f7682" }, "");
+      }
+    }
+    zTop = z0 + 3;
+  } else if (skin === "round") {
+    isoCylinder(iso, 0, -22, 9, z0, z0 + 3, ["#3a3e48", "#5a606c", "#8a909c", "#aeb4be"], "#c4c9d2");
+    isoCylinder(iso, 0, -22, 6.5, z0 + 3, z0 + 6, ["#4a4f5a", "#6f7682", "#aeb4be", "#c4c9d2"], "#dfe3ea");
+    isoCylinder(iso, 0, -22, 3.4, z0 + 6, z0 + 8, ["#4a4f5a", "#6f7682", "#aeb4be", "#dfe3ea"], "#eef1f5");
+    zTop = z0 + 8;
+  } else {
+    iso.box(-9, 9, -31, -13, z0, z0 + 7, { top: "#c9c5bb", front: "#aaa69c", side: "#6e6b63" }, DARK);
+    iso.box(-8, 8, -30, -14, z0 + 7, z0 + 9, { top: "#d8d4ca", front: "#b4b0a6", side: "#7a776e" }, "");
+    for (let i = 0; i < 26; i++) {
+      const fa = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+      const fb = Math.abs(Math.sin(i * 78.233) * 43758.5453) % 1;
+      const q = P(-8 + 16 * fa, -14, z0 + 1 + 5 * fb);
+      iso.set(q[0], q[1], "#8e8a80");
+    }
+    for (const aa of [-5.5, 5.5]) {
+      const q = P(aa, -14, z0 + 5);
+      iso.set(q[0], q[1], "#4a4f5a");
+      iso.set(q[0] + 1, q[1], "#8a909c");
+    }
+    iso.box(-3.5, 3.5, -25.5, -18.5, z0 + 9, z0 + 12, { top: "#dfe3ea", front: "#8a909c", side: "#4a4f5a" }, DARK);
+    zTop = z0 + 12;
+  }
+  iso.box(-2, 2, -24, -20, zTop, 3, steel, DARK);
+  iso.line(P(-0.9, -20, 3), P(-0.9, -20, zTop), "#dfe3ea");
+  iso.box(-1, 1, -20, -RING_R - 6, -5, -2, steel, DARK);
+  if (skin === "plate") {
+    const g1: Pt[] = [P(2, -22, zTop), P(7, -22, zTop), P(2, -22, zTop + 8)];
+    iso.poly(g1, "#8a909c");
+    iso.outline(g1, DARK);
+    const g2: Pt[] = [P(0, -20, zTop), P(0, -15, zTop), P(0, -20, zTop + 8)];
+    iso.poly(g2, "#4a4f5a");
+    iso.outline(g2, DARK);
+  }
   return haloCanvas(iso.base, ISO_W, h);
 }
