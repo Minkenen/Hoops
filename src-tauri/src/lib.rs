@@ -122,6 +122,31 @@ fn quit_app(app: AppHandle) {
     app.exit(0);
 }
 
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !url.starts_with("https://ko-fi.com/") {
+        return Err("unsupported url".into());
+    }
+
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", &url]);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = std::process::Command::new("xdg-open");
+
+    #[cfg(target_os = "macos")]
+    cmd.arg(&url);
+    #[cfg(all(unix, not(target_os = "macos")))]
+    cmd.arg(&url);
+
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 #[cfg(target_os = "macos")]
 fn style_overlay(win: &WebviewWindow, over_fullscreen: bool) {
     use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior};
@@ -263,6 +288,7 @@ pub fn run() {
             set_capture,
             activate_overlay,
             set_over_fullscreen,
+            open_external,
             quit_app
         ])
         .setup(|app| {

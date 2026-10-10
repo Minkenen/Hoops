@@ -36,6 +36,7 @@ export const setHitRegions = (rects: Rect[]): Promise<void> => invoke("set_hit_r
 export const setCapture = (on: boolean): Promise<void> => invoke("set_capture", { on });
 export const activateOverlay = (label: string): Promise<void> => invoke("activate_overlay", { label });
 export const setOverFullscreen = (on: boolean): Promise<void> => invoke("set_over_fullscreen", { on });
+export const openExternal = (url: string): Promise<void> => invoke("open_external", { url });
 export const quitApp = (): Promise<void> => invoke("quit_app");
 
 export const sendHandoff = (label: string, payload: Handoff): Promise<void> => emitTo(label, "handoff", payload);

@@ -1,6 +1,6 @@
 import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
-import { type Rect, quitApp } from "./ipc";
+import { openExternal, type Rect, quitApp } from "./ipc";
 import { getScore, setOnboarded, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
 import { Preview } from "./preview";
@@ -8,6 +8,10 @@ import { ACHIEVEMENTS, getStats } from "./stats";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
 type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "onboarding";
+type DonateVariant = "button" | "footer";
+
+const DONATE_URL = "https://ko-fi.com/hoopsgame";
+const DONATE_AB_KEY = "hoops.donate.ab";
 
 const isMac = /Mac/i.test(navigator.platform);
 const SHORTCUT = isMac
@@ -36,13 +40,57 @@ const TROPHY = [
   "..oooooooo..",
 ];
 
+interface DonateStats {
+  next: DonateVariant;
+  button: { views: number; clicks: number };
+  footer: { views: number; clicks: number };
+}
+
+const DONATE_DEFAULTS: DonateStats = {
+  next: "button",
+  button: { views: 0, clicks: 0 },
+  footer: { views: 0, clicks: 0 },
+};
+
+function donateStats(): DonateStats {
+  try {
+    const v = JSON.parse(localStorage.getItem(DONATE_AB_KEY) ?? "");
+    return {
+      next: v.next === "footer" ? "footer" : "button",
+      button: {
+        views: Number(v.button?.views ?? 0) || 0,
+        clicks: Number(v.button?.clicks ?? 0) || 0,
+      },
+      footer: {
+        views: Number(v.footer?.views ?? 0) || 0,
+        clicks: Number(v.footer?.clicks ?? 0) || 0,
+      },
+    };
+  } catch {
+    return structuredClone(DONATE_DEFAULTS);
+  }
+}
+
+function saveDonateStats(stats: DonateStats): void {
+  try {
+    localStorage.setItem(DONATE_AB_KEY, JSON.stringify(stats));
+  } catch {
+    /* ignore */
+  }
+}
+
+function rate(views: number, clicks: number): string {
+  return views ? Math.round((clicks / views) * 100) + " %" : "0 %";
+}
+
 export class UI {
   view: View = "none";
   private step = 0;
-  private confirm = false;
+  private resetDialog = false;
   private toastMsg = "";
   private game!: Game;
   private awayTimer = 0;
+  private donateVariant: DonateVariant = "button";
 
   constructor(private host: HTMLElement) {
     host.addEventListener("click", (e) => this.onClick(e));
@@ -59,6 +107,7 @@ export class UI {
   }
 
   openMenu(): void {
+    this.pickDonateVariant();
     this.view = "menu";
     this.render();
   }
@@ -86,7 +135,7 @@ export class UI {
 
   close(): void {
     this.view = "none";
-    this.confirm = false;
+    this.resetDialog = false;
     this.render();
   }
 
@@ -173,6 +222,32 @@ export class UI {
     return `<div class="row"><div><div class="lb">${label}</div>${hint ? `<div class="hn">${hint}</div>` : ""}</div>${ctl}</div>`;
   }
 
+  private pickDonateVariant(): void {
+    const stats = donateStats();
+    const v = stats.next;
+    this.donateVariant = v;
+    stats[v].views++;
+    stats.next = v === "button" ? "footer" : "button";
+    saveDonateStats(stats);
+  }
+
+  private donateHtml(): string {
+    if (this.donateVariant === "footer") {
+      return `<button class="donate-footer" data-a="donate" data-v="footer"><span>Enjoying Hoops?</span><b>Donate a coffee</b></button>`;
+    }
+    return `<button class="pb full donate-cta" data-a="donate" data-v="button">Support Hoops</button>`;
+  }
+
+  private donateStatsHtml(): string {
+    const s = donateStats();
+    const b = s.button;
+    const f = s.footer;
+    return `<div class="h4">Donate test</div>
+${this.row("Orange button", `<span class="val">${b.clicks}/${b.views}</span>`, rate(b.views, b.clicks))}
+${this.row("Footer panel", `<span class="val">${f.clicks}/${f.views}</span>`, rate(f.views, f.clicks))}
+<button class="pb full" data-a="donatestats">Show donate test stats</button>`;
+  }
+
   private tile(k: "autostart" | "fullscreen", v: 0 | 1, title: string, desc: string): string {
     const on = !!settings[k] === (v === 1);
     return `<button class="tile${on ? " on" : ""}" data-a="opt" data-k="${k}" data-v="${v}"><b>${title}</b><span>${desc}</span></button>`;
@@ -194,7 +269,7 @@ ${this.row("Ball size", this.seg("ballScale", [[2, "S"], [3, "M"], [4, "L"]]))}
 <button class="pb full" data-a="ach">Achievements…</button>
 <button class="pb full" data-a="cos">Appearance…</button>
 <button class="pb full" data-a="inst">Settings…</button>
-<button class="pb full" data-a="reset">${this.confirm ? "Sure? Click again" : "Reset score"}</button>
+${this.donateHtml()}
 <button class="pb full danger" data-a="quit">Quit Hoops</button></div>`;
   }
 
@@ -220,8 +295,20 @@ ${this.row("Basketball court", this.tog("court"), "Shown while aiming")}
 ${this.row("Start automatically", this.tog("autostart"), "When your computer starts")}
 ${this.row("Over fullscreen apps", this.tog("fullscreen"), "Games and video")}
 ${this.row("Menu shortcut", SHORTCUT)}
-<div class="acts"><button class="pb" data-a="reset">${this.confirm ? "Sure? Click again" : "Reset score"}</button><button class="pb danger" data-a="quit">Quit Hoops</button></div>
+${this.donateStatsHtml()}
+<div class="acts"><button class="pb" data-a="reset">Reset score</button><button class="pb danger" data-a="quit">Quit Hoops</button></div>
 </div></div>`;
+  }
+
+  private resetDialogHtml(): string {
+    return `<div class="confirm-wrap" data-hit>
+<div class="px confirm">
+<div class="h4" style="margin-top:0">Reset score?</div>
+<div class="lb">Are you sure?</div>
+<div class="hn">This clears your score and current match stats.</div>
+<div class="acts"><button class="pb" data-a="cancelreset">Cancel</button><button class="pb danger" data-a="confirmreset">Reset score</button></div>
+</div>
+</div>`;
   }
 
   private skinTile(k: keyof Settings, id: string, name: string, preview: string, desc?: string): string {
@@ -325,6 +412,7 @@ ${rows}
     if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements") {
       html = `<div class="catch" data-hit data-a="dismiss"></div>${html}`;
     }
+    if (this.resetDialog) html += this.resetDialogHtml();
     if (this.toastMsg) html += `<div class="px toast">${this.toastMsg}</div>`;
     this.host.innerHTML = html;
     const pv = this.host.querySelector<HTMLCanvasElement>("#prev");
@@ -351,6 +439,11 @@ ${rows}
     if (a !== "dismiss") play("ui");
     switch (a) {
       case "dismiss":
+        if (this.resetDialog) {
+          this.resetDialog = false;
+          this.render();
+          break;
+        }
         this.close();
         break;
       case "set":
@@ -387,6 +480,22 @@ ${rows}
       case "cos":
         this.openCosmetics();
         break;
+      case "donatestats": {
+        const s = donateStats();
+        this.toast(`Donate test: button ${rate(s.button.views, s.button.clicks)}, footer ${rate(s.footer.views, s.footer.clicks)}`, 3200);
+        break;
+      }
+      case "donate": {
+        const variant = v === "footer" ? "footer" : "button";
+        const stats = donateStats();
+        stats[variant].clicks++;
+        saveDonateStats(stats);
+        void openExternal(DONATE_URL).catch(() => {
+          window.open(DONATE_URL, "_blank", "noopener,noreferrer");
+        });
+        this.close();
+        break;
+      }
       case "close":
         this.close();
         break;
@@ -403,20 +512,17 @@ ${rows}
         this.close();
         break;
       case "reset":
-        if (!this.confirm) {
-          this.confirm = true;
-          this.render();
-          setTimeout(() => {
-            if (this.confirm) {
-              this.confirm = false;
-              this.render();
-            }
-          }, 2500);
-        } else {
-          this.confirm = false;
-          this.game.resetScore();
-          this.toast("Score reset");
-        }
+        this.resetDialog = true;
+        this.render();
+        break;
+      case "cancelreset":
+        this.resetDialog = false;
+        this.render();
+        break;
+      case "confirmreset":
+        this.resetDialog = false;
+        this.game.resetScore();
+        this.toast("Score reset");
         break;
       case "quit":
         void quitApp();
