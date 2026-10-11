@@ -272,6 +272,8 @@ export class Game {
   private boardTouched = false;
   private shotFar = false;
   private gaspAt = 0;
+  /** How solid the ball is drawn: it turns see-through while it rests, so what is behind it shows. */
+  private ballAlpha = 1;
   private lastGasp = -1e9;
   private bounces = 0;
 
@@ -587,8 +589,13 @@ export class Game {
       this.milestone.active ||
       this.fire.active() ||
       this.crowd.skyBusy() ||
+      Math.abs(this.ballAlpha - this.ballTargetAlpha()) > 0.01 ||
       (!!this.bubble && now - this.bubble.t0 < settings.bubble * 1000)
     );
+  }
+
+  private ballTargetAlpha(): number {
+    return !this.ball.moving && !this.drag ? 1 - settings.ballFade : 1;
   }
 
   private tick(now: number): void {
@@ -761,8 +768,8 @@ export class Game {
       if (-vn > 0.8) play(sfx, clamp(-vn / 8, 0.25, 1));
       if (sfx === "rim" && -vn > 0.8) this.rimTouched = true;
       if (sfx === "rim" && -vn > 0.8 && this.hoop) this.hoop.net.rimHit(pvx >= 0 ? 1 : -1, clamp(-vn / 4, 0.35, 1.9));
-      // Only a rim hit can make the crowd gasp, and only some of the time (and not twice in a row), or it wears thin.
-      if (sfx === "rim" && -vn > 1.2 && !this.gasped && !this.gaspAt && performance.now() - this.lastGasp > 20000 && Math.random() < 0.4) {
+      // Only a hit on the top of the rim (the ball coming down onto it) can make the crowd gasp, and only some of the time (and not twice in a row), or it wears thin.
+      if (sfx === "rim" && ny < -0.35 && -vn > 1.2 && !this.gasped && !this.gaspAt && performance.now() - this.lastGasp > 20000 && Math.random() < 0.4) {
         this.gaspAt = performance.now() + 700;
       }
     }
@@ -1169,7 +1176,11 @@ export class Game {
 
     const turns = ((b.ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
     const bs = BALL_SPRITE_SIZE * this.fire.scale();
-    if (this.fire.visible())
+    const target = this.ballTargetAlpha();
+    this.ballAlpha += (target - this.ballAlpha) * (target < this.ballAlpha ? 0.12 : 0.4);
+    if (Math.abs(this.ballAlpha - target) < 0.01) this.ballAlpha = target;
+    if (this.fire.visible()) {
+      ctx.globalAlpha = this.ballAlpha;
       ctx.drawImage(
         this.framesFor(!!this.hoop && settings.court && settings.crowd === "arena", b.x)[Math.round((turns / (2 * Math.PI)) * BALL_FRAMES) % BALL_FRAMES],
         Math.round(b.x - bs / 2),
@@ -1177,6 +1188,8 @@ export class Game {
         Math.round(bs),
         Math.round(bs),
       );
+      ctx.globalAlpha = 1;
+    }
 
     this.fire.drawFront(ctx);
     this.fire.overlay(ctx, this.artW, this.artH);

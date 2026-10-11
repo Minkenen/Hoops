@@ -48,8 +48,30 @@ function audioCtx(): AudioContext | null {
       return null;
     }
   }
-  if (ctx.state === "suspended") void ctx.resume();
+  // WebKit also reports "interrupted" (sleep, a changed output device, another app taking the audio).
+  if (ctx.state !== "running") void ctx.resume().catch(() => {});
   return ctx;
+}
+
+/** Throws the audio context away and makes a new one: the decoded buffers can be reused, only the context was stuck. */
+function rebuildCtx(): AudioContext | null {
+  try {
+    void ctx?.close().catch(() => {});
+  } catch {
+    /* ignore */
+  }
+  ctx = null;
+  probe = null;
+  return audioCtx();
+}
+
+/** The context clock last time we played something; if it has not moved though time has, the context is stuck. */
+let probe: { t: number; at: number } | null = null;
+function stalled(c: AudioContext): boolean {
+  const now = performance.now();
+  const dead = !!probe && now - probe.at > 600 && c.currentTime === probe.t && c.state === "running";
+  if (!probe || now - probe.at > 600) probe = { t: c.currentTime, at: now };
+  return dead || c.state === "closed";
 }
 
 async function load(name: string): Promise<AudioBuffer | null> {
@@ -70,7 +92,8 @@ async function load(name: string): Promise<AudioBuffer | null> {
       return buf;
     })
     .catch(() => {
-      buffers.set(name, null);
+      // Do not remember the failure, so the sound gets another try next time.
+      loading.delete(name);
       return null;
     });
   loading.set(name, p);
@@ -122,19 +145,58 @@ export function play(name: Sfx, intensity = 1): void {
   lastPlayed.set(name, now);
   const rate = VARY.has(name) ? pickRate(intensity) : 1;
   void load(file).then((buf) => {
-    const c = audioCtx();
+    let c = audioCtx();
     if (!buf || !c) return;
-    const src = c.createBufferSource();
-    const gain = c.createGain();
-    gain.gain.value = Math.max(0, Math.min(1, settings.volume * intensity));
-    src.buffer = buf;
-    src.playbackRate.value = rate;
-    src.connect(gain).connect(c.destination);
-    src.start();
+    if (stalled(c)) c = rebuildCtx();
+    if (!c) return;
+    const vol = Math.max(0, Math.min(1, settings.volume * intensity));
+    const start = (cx: AudioContext): void => {
+      const src = cx.createBufferSource();
+      const gain = cx.createGain();
+      gain.gain.value = vol;
+      src.buffer = buf;
+      src.playbackRate.value = rate;
+      src.connect(gain).connect(cx.destination);
+      src.start();
+    };
+    if (c.state === "running") {
+      start(c);
+      return;
+    }
+    // Not running (suspended or interrupted): wait briefly for it to resume, otherwise start over with a new context.
+    const cx = c;
+    let done = false;
+    const go = (target: AudioContext | null): void => {
+      if (!done && target) {
+        done = true;
+        start(target);
+      }
+    };
+    void cx.resume().then(() => go(cx)).catch(() => go(rebuildCtx()));
+    setTimeout(() => {
+      if (!done && cx.state !== "running") go(rebuildCtx());
+    }, 350);
   });
 }
 
 /** Decode every sound once up front, so the first goal does not stall while the browser decodes them. */
 export function preloadSounds(): void {
   for (const name of urls.keys()) void load(name);
+}
+
+// Wake the audio up again when the window comes back (it may have been hidden, or the computer may have slept).
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && ctx && ctx.state !== "running") void ctx.resume().catch(() => {});
+});
+window.addEventListener("focus", () => {
+  if (ctx && ctx.state !== "running") void ctx.resume().catch(() => {});
+});
+
+// After sleep the webview may refuse to restart the audio unless it happens inside a real click or key press,
+// so every one of those gives a stopped context a nudge. (Fresh contexts also start out suspended until then.)
+for (const ev of ["pointerdown", "pointerup", "keydown"]) {
+  window.addEventListener(ev, () => {
+    if (ctx && ctx.state === "closed") ctx = null;
+    if (!ctx || ctx.state !== "running") audioCtx();
+  }, { capture: true, passive: true });
 }

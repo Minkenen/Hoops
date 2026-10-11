@@ -1,5 +1,5 @@
 // Which themes you own. Free themes are always owned, and Hoops Premium (one payment) unlocks every other theme.
-import { isPremiumUnlocked, setSetting, settings } from "./settings";
+import { clearLicenseKey, isPremiumUnlocked, setPremiumUnlocked, setSetting, settings } from "./settings";
 import { THEMES, type ThemeId, themeById } from "./themes";
 
 const KEY = "hoops.owned";
@@ -15,6 +15,18 @@ function bought(): ThemeId[] {
 
 export function isOwned(id: ThemeId): boolean {
   return themeById(id).price === null || isPremiumUnlocked() || bought().includes(id);
+}
+
+/** Dev/testing: forget every unlock, so the locked state can be tried again. */
+export function resetPurchases(): void {
+  setPremiumUnlocked(false);
+  clearLicenseKey();
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* ignore */
+  }
+  enforceOwned();
 }
 
 /** Ball, court and crowd you can pick one by one: the ones that come with a theme you own. */

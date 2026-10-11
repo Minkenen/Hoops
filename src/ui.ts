@@ -1,10 +1,11 @@
 import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
-import { openExternal, type Rect, quitApp } from "./ipc";
-import { getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
+import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
+import { PREMIUM_CHECKOUT_URL } from "./config";
+import { getScore, setLicenseKey, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
 import { Preview, setPreviewOverride } from "./preview";
-import { isItemOwned, isOwned } from "./purchases";
+import { isItemOwned, isOwned, resetPurchases } from "./purchases";
 import { THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, getStats } from "./stats";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
@@ -13,8 +14,6 @@ type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements
 type DonateVariant = "button" | "footer";
 
 const DONATE_URL = "https://ko-fi.com/hoopsgame";
-/** Placeholder until the real checkout link (Lemon Squeezy) is ready. */
-const PREMIUM_URL = "https://minkenen.github.io/Hoops/";
 const DONATE_AB_KEY = "hoops.donate.ab";
 
 const isMac = /Mac/i.test(navigator.platform);
@@ -26,6 +25,7 @@ const fmt: Record<string, (v: number) => string> = {
   confetti: (v) => (v === 0 ? "Av" : String(v)),
   bubble: (v) => v.toFixed(1) + " s",
   volume: (v) => Math.round(v * 100) + " %",
+  ballFade: (v) => (v === 0 ? "Solid" : Math.round(v * 100) + " %"),
 };
 
 const TROPHY_COL: Record<string, string> = { o: "#0d0e12", y: "#ffc83a", h: "#fff3b0", d: "#c98a12" };
@@ -92,6 +92,10 @@ export class UI {
   private step = 0;
   private resetDialog = false;
   private premiumDialog = false;
+  private licenseStep = false;
+  private licenseBusy = false;
+  private licenseError = "";
+  private licenseDraft = "";
   private toastMsg = "";
   private viewTheme: ThemeId | null = null;
   private game!: Game;
@@ -101,6 +105,9 @@ export class UI {
   constructor(private host: HTMLElement) {
     host.addEventListener("click", (e) => this.onClick(e));
     host.addEventListener("input", (e) => this.onInput(e));
+    host.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.target as HTMLElement).id === "lic") void this.activate();
+    });
   }
 
   attach(game: Game): void {
@@ -142,7 +149,7 @@ export class UI {
   close(): void {
     this.view = "none";
     this.resetDialog = false;
-    this.premiumDialog = false;
+    this.closePremium();
     this.render();
   }
 
@@ -295,7 +302,9 @@ ${this.row("Volume", this.sld("volume", 0, 1, 0.05))}
 <button class="pb full" data-a="mile">Play a milestone</button>
 <button class="pb full" data-a="achtest">Play an achievement</button>
 <button class="pb full" data-a="firetest">Light or put out the ball</button>
+${import.meta.env.DEV ? `<button class="pb full" data-a="resetpremium">Lock premium again (dev)</button>` : ""}
 <div class="h4">Appearance</div>
+${this.row("Ball see-through at rest", this.sld("ballFade", 0, 0.8, 0.05), "So you can see what is behind it")}
 ${this.row("Basketball court", this.tog("court"), "Shown while aiming")}
 <button class="pb full" data-a="cos" style="margin-top:6px">Edit appearance…</button>
 <div class="h4">System</div>
@@ -307,16 +316,56 @@ ${this.donateStatsHtml()}
 </div></div>`;
   }
 
+  private closePremium(): void {
+    this.premiumDialog = false;
+    this.licenseStep = false;
+    this.licenseBusy = false;
+    this.licenseError = "";
+    this.licenseDraft = "";
+  }
+
+  /** Checks the typed license key (in Rust) and unlocks Premium when it is good. */
+  private async activate(): Promise<void> {
+    const key = this.licenseDraft.trim();
+    if (this.licenseBusy) return;
+    if (!key) {
+      this.licenseError = "Enter your license key.";
+      this.render();
+      return;
+    }
+    this.licenseBusy = true;
+    this.licenseError = "";
+    this.render();
+    try {
+      await activateLicense(key);
+      setLicenseKey(key);
+      setPremiumUnlocked(true);
+      this.closePremium();
+      this.toast("Premium unlocked");
+    } catch (err) {
+      this.licenseBusy = false;
+      this.licenseError = typeof err === "string" ? err : "Could not check the license key. Try again.";
+      this.render();
+    }
+  }
+
   private premiumDialogHtml(): string {
+    const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    const body = this.licenseStep
+      ? `<div class="hn">Paste the license key from your purchase email.</div>
+<input class="lic" id="lic" type="text" value="${esc(this.licenseDraft)}" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" autocomplete="off" spellcheck="false"${this.licenseBusy ? " disabled" : ""}>
+${this.licenseError ? `<div class="err">${esc(this.licenseError)}</div>` : ""}
+<div class="acts"><button class="pb buy" data-a="activate"${this.licenseBusy ? " disabled" : ""}>${this.licenseBusy ? "Activating…" : "Activate"}</button><button class="pb" data-a="licback"${this.licenseBusy ? " disabled" : ""}>Cancel</button></div>`
+      : `<div class="hn">One payment unlocks every premium theme with its court, ball and crowd. No subscription.</div>
+<div class="acts" style="flex-direction:column;align-items:stretch">
+<button class="pb buy" data-a="buypremium" style="justify-content:center">Buy Premium</button>
+<button class="pb" data-a="haskey">I already have a license</button>
+<button class="lnk" data-a="notnow" style="align-self:center">Not now</button>
+</div>`;
     return `<div class="confirm-wrap" data-hit>
 <div class="px confirm">
 <div class="h4" style="margin-top:0">${this.lockIcon()} Unlock Premium Courts</div>
-<div class="hn">One payment unlocks every premium theme with its court, ball and crowd. No subscription.</div>
-<div class="acts" style="flex-direction:column;align-items:stretch">
-<button class="pb buy" data-a="buypremium" style="justify-content:center">Buy Premium Courts</button>
-<button class="pb" data-a="havepremium">I already bought this</button>
-<button class="lnk" data-a="notnow" style="align-self:center">Not now</button>
-</div>
+${body}
 </div>
 </div>`;
   }
@@ -365,7 +414,7 @@ ${this.donateStatsHtml()}
   }
 
   private priceBadge(price: string | null): string {
-    return price ? `<span class="badge">${this.coinIcon()}PREMIUM</span>` : `<span class="badge free">FREE</span>`;
+    return price ? `<span class="badge">${this.coinIcon()}${price}</span>` : `<span class="badge free">FREE</span>`;
   }
 
   private applyTheme(id: ThemeId): void {
@@ -387,14 +436,15 @@ ${this.donateStatsHtml()}
       const own = isOwned(t.id);
       const sk = COURT_SKINS.find((s) => s.id === t.court);
       const sw = sk ? `background:linear-gradient(90deg,${sk.zone[0]} 0 38%,${sk.wood[0]} 38% 69%,${sk.wood[1]} 69%)` : "";
-      const right = settings.theme === t.id ? this.checkIcon() : own ? "" : `<span class="pr">${this.lockIcon()}Premium</span>`;
-      return `<button class="trow${view.id === t.id ? " on" : ""}${own ? "" : " lk"}" data-a="viewtheme" data-v="${t.id}"><i class="tsw" style="${sw}"></i><span class="tn">${t.name}</span>${right}</button>`;
+      const price = settings.theme !== t.id && !own ? `<span class="pr">${this.lockIcon()}${t.price}</span>` : "";
+      const check = settings.theme === t.id ? this.checkIcon() : "";
+      return `<button class="trow${view.id === t.id ? " on" : ""}${own ? "" : " lk"}" data-a="viewtheme" data-v="${t.id}"><i class="tsw" style="${sw}"></i><span class="tn">${t.name}${price}</span>${check}</button>`;
     };
     const action = isOwned(view.id)
       ? settings.theme === view.id
         ? `<button class="pb on">In use</button>`
         : `<button class="pb on" data-a="usetheme" data-v="${view.id}">Use theme</button>`
-      : `<button class="pb buy" data-a="premium">${this.lockIcon()} Unlock Premium</button>`;
+      : `<button class="pb buy" data-a="premium">${this.lockIcon()} Unlock ${view.price}</button>`;
     const ballName = BALL_SKINS.find((s) => s.id === view.ball)?.name ?? "";
     const courtName = COURT_SKINS.find((s) => s.id === view.court)?.name ?? "";
     const crowdName = CROWD_STYLES.find((s) => s.id === view.crowd)?.name ?? "";
@@ -515,6 +565,10 @@ ${rows}
 
   private onInput(e: Event): void {
     const t = e.target as HTMLInputElement;
+    if (t.id === "lic") {
+      this.licenseDraft = t.value;
+      return;
+    }
     const k = t.dataset.k;
     if (!k || t.type !== "range") return;
     const v = Number(t.value);
@@ -534,7 +588,7 @@ ${rows}
       case "dismiss":
         if (this.resetDialog || this.premiumDialog) {
           this.resetDialog = false;
-          this.premiumDialog = false;
+          this.closePremium();
           this.render();
           break;
         }
@@ -559,18 +613,31 @@ ${rows}
         this.render();
         break;
       case "buypremium":
-        void openExternal(PREMIUM_URL).catch(() => {
-          window.open(PREMIUM_URL, "_blank", "noopener,noreferrer");
+        void openExternal(PREMIUM_CHECKOUT_URL).catch(() => {
+          window.open(PREMIUM_CHECKOUT_URL, "_blank", "noopener,noreferrer");
         });
         break;
-      case "havepremium":
-        // Dev stand-in: trusts the button until license keys can be checked.
-        setPremiumUnlocked(true);
-        this.premiumDialog = false;
-        this.toast("Premium unlocked");
+      case "haskey":
+        this.licenseStep = true;
+        this.licenseError = "";
+        this.render();
+        void focusWindow().catch(() => {});
+        this.host.querySelector<HTMLInputElement>("#lic")?.focus();
+        break;
+      case "activate":
+        void this.activate();
+        break;
+      case "licback":
+        this.licenseStep = false;
+        this.licenseError = "";
+        this.render();
+        break;
+      case "resetpremium":
+        resetPurchases();
+        this.toast("Premium locked again");
         break;
       case "notnow":
-        this.premiumDialog = false;
+        this.closePremium();
         this.render();
         break;
       case "tog":

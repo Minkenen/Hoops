@@ -5,6 +5,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
@@ -261,6 +263,101 @@ fn spawn_cursor_thread(app: AppHandle) {
     });
 }
 
+#[derive(Serialize)]
+struct LicenseActivation {
+    instance_id: String,
+}
+
+/// Lemon Squeezy ids of the Premium product. They are not secrets (the license API needs no API key),
+/// but they are set at build time, e.g. `HOOPS_LS_STORE_ID=12345 HOOPS_LS_PRODUCT_ID=67890 npm run tauri build`.
+fn ls_id(v: Option<&str>) -> u64 {
+    v.and_then(|s| s.parse().ok()).unwrap_or(0)
+}
+
+fn lemon_activate(key: &str, store_id: u64, product_id: u64) -> Result<LicenseActivation, String> {
+    let name = format!("Hoops on {}", std::env::consts::OS);
+    let body: serde_json::Value = match ureq::post("https://api.lemonsqueezy.com/v1/licenses/activate")
+        .set("Accept", "application/json")
+        .send_form(&[("license_key", key), ("instance_name", name.as_str())])
+    {
+        Ok(r) => r.into_json().map_err(|e| e.to_string())?,
+        // Lemon Squeezy answers a bad key with an error status and a JSON body that says why.
+        Err(ureq::Error::Status(_, r)) => r.into_json().map_err(|e| e.to_string())?,
+        Err(_) => return Err("Could not reach the license server. Check your internet connection.".into()),
+    };
+    if body["activated"].as_bool() != Some(true) {
+        let msg = body["error"].as_str().unwrap_or("That license key was not accepted.");
+        return Err(msg.to_string());
+    }
+    let meta = &body["meta"];
+    if meta["store_id"].as_u64() != Some(store_id) || meta["product_id"].as_u64() != Some(product_id) {
+        return Err("That license key is for a different product.".into());
+    }
+    let instance_id = body["instance"]["id"].as_str().unwrap_or_default().to_string();
+    Ok(LicenseActivation { instance_id })
+}
+
+/// Activates a Hoops Premium license key. The page only ever sees success or an error message.
+#[tauri::command]
+async fn activate_license(key: String) -> Result<LicenseActivation, String> {
+    let key = key.trim().to_string();
+    if key.is_empty() {
+        return Err("Enter your license key.".into());
+    }
+    let store_id = ls_id(option_env!("HOOPS_LS_STORE_ID"));
+    let product_id = ls_id(option_env!("HOOPS_LS_PRODUCT_ID"));
+    if store_id == 0 || product_id == 0 {
+        // Not set up yet. Only a debug build accepts a test key, so a release build can never unlock for free.
+        if cfg!(debug_assertions) && key == "HOOPS-TEST-KEY" {
+            return Ok(LicenseActivation { instance_id: "dev".into() });
+        }
+        return Err("Licensing is not set up in this build yet.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || lemon_activate(&key, store_id, product_id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Opens or closes the Hoops menu on the visible overlays: the same thing the global shortcut does.
+fn toggle_menu(app: &AppHandle) {
+    for (label, win) in app.webview_windows() {
+        if label.starts_with("overlay-") && win.is_visible().unwrap_or(false) {
+            let _ = app.emit_to(label.as_str(), "toggle-menu", ());
+        }
+    }
+}
+
+/// A menu bar / system tray icon: click it to start the game, right-click (or Ctrl-click) for Quit.
+fn build_tray(app: &AppHandle) -> tauri::Result<()> {
+    let open = MenuItem::with_id(app, "open", "Open Hoops", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Hoops", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let mut tray = TrayIconBuilder::with_id("hoops")
+        .tooltip("Hoops")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "open" => toggle_menu(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                toggle_menu(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -272,11 +369,7 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        for (label, win) in app.webview_windows() {
-                            if label.starts_with("overlay-") && win.is_visible().unwrap_or(false) {
-                                let _ = app.emit_to(label.as_str(), "toggle-menu", ());
-                            }
-                        }
+                        toggle_menu(app);
                     }
                 })
                 .build(),
@@ -289,6 +382,7 @@ pub fn run() {
             activate_overlay,
             set_over_fullscreen,
             open_external,
+            activate_license,
             quit_app
         ])
         .setup(|app| {
@@ -296,6 +390,9 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let handle = app.handle().clone();
             build_overlays(&handle)?;
+            if let Err(e) = build_tray(&handle) {
+                eprintln!("could not create the tray icon: {e}");
+            }
             let sc = Shortcut::new(
                 Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER),
                 Code::KeyB,

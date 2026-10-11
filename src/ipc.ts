@@ -37,6 +37,12 @@ export const setCapture = (on: boolean): Promise<void> => invoke("set_capture", 
 export const activateOverlay = (label: string): Promise<void> => invoke("activate_overlay", { label });
 export const setOverFullscreen = (on: boolean): Promise<void> => invoke("set_over_fullscreen", { on });
 export const openExternal = (url: string): Promise<void> => invoke("open_external", { url });
+export interface LicenseActivation {
+  instance_id: string;
+}
+/** Checks a Premium license key with the license server (done in Rust, never from the page). Rejects with a message to show. */
+export const activateLicense = (key: string): Promise<LicenseActivation> => invoke<LicenseActivation>("activate_license", { key });
+export const focusWindow = (): Promise<void> => getCurrentWindow().setFocus();
 export const quitApp = (): Promise<void> => invoke("quit_app");
 
 export const sendHandoff = (label: string, payload: Handoff): Promise<void> => emitTo(label, "handoff", payload);

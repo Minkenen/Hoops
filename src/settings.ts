@@ -10,6 +10,8 @@ export interface Settings {
   sound: boolean;
   volume: number;
   ballScale: number;
+  /** How see-through the ball is while it rests: 0 = solid. */
+  ballFade: number;
   autostart: boolean;
   fullscreen: boolean;
   baseSkin: "plate" | "round" | "concrete";
@@ -36,6 +38,7 @@ const DEFAULTS: Settings = {
   sound: true,
   volume: 0.7,
   ballScale: 3,
+  ballFade: 0.5,
   autostart: false,
   fullscreen: true,
   baseSkin: "plate",
@@ -171,6 +174,33 @@ export function setPremiumUnlocked(v: boolean): void {
   try {
     if (v) localStorage.setItem(PREMIUM_KEY, "1");
     else localStorage.removeItem(PREMIUM_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+const LICENSE_KEY = "hoops.license";
+
+/** The license key that unlocked Premium on this computer, kept for later re-checks. */
+export function getLicenseKey(): string {
+  try {
+    return localStorage.getItem(LICENSE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setLicenseKey(key: string): void {
+  try {
+    localStorage.setItem(LICENSE_KEY, key);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearLicenseKey(): void {
+  try {
+    localStorage.removeItem(LICENSE_KEY);
   } catch {
     /* ignore */
   }
