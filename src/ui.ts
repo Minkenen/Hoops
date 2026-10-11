@@ -7,7 +7,7 @@ import { addLicense, getScore, setOnboarded, setPremiumUnlocked, setSetting, set
 import type { Settings } from "./settings";
 import { Preview, setPreviewOverride } from "./preview";
 import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
-import { THEMES, type ThemeId, themeById } from "./themes";
+import { ALL_ACCESS_PRICE, ALL_ACCESS_VALUE, PRICE_VALUE, THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, getStats } from "./stats";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
@@ -407,13 +407,25 @@ ${this.donateStatsHtml()}
     }
   }
 
+  /** The big All Access button, with what it saves compared to buying the locked themes one by one. */
+  private allAccessButton(): string {
+    const left = THEMES.filter((t) => t.price !== null && !isOwned(t.id)).length;
+    const sum = left * PRICE_VALUE;
+    const save = sum - ALL_ACCESS_VALUE;
+    const line =
+      save >= 1
+        ? `Save $${save.toFixed(2)} (${Math.round((save / sum) * 100)}%) compared to buying ${left} themes one by one`
+        : "Every theme, one payment, and the ones to come";
+    return `<button class="pb buy allacc" data-a="premium"><span class="ah">${this.lockIcon()} Unlock All Access ${ALL_ACCESS_PRICE}</span><small>${line}</small></button>`;
+  }
+
   private premiumDialogHtml(): string {
     const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const theme = this.unlockTheme ? themeById(this.unlockTheme) : null;
     const title = theme ? `Unlock ${theme.name}` : "Unlock All Access";
     const summary = theme
       ? `Get ${theme.name} on its own, or unlock everything with All Access. No subscription.`
-      : "One payment unlocks every court, theme, ball and crowd. No subscription.";
+      : `One payment of ${ALL_ACCESS_PRICE} unlocks every court, theme, ball and crowd. No subscription.`;
     const body = this.licenseStep
       ? `<div class="hn">Paste the license key from your purchase email.</div>
 <input class="lic" id="lic" type="text" value="${esc(this.licenseDraft)}" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" autocomplete="off" spellcheck="false"${this.licenseBusy ? " disabled" : ""}>
@@ -422,7 +434,7 @@ ${this.licenseError ? `<div class="err">${esc(this.licenseError)}</div>` : ""}
       : `<div class="hn">${summary}</div>
 <div class="acts" style="flex-direction:column;align-items:stretch">
 ${theme && THEME_CHECKOUT_URLS[theme.id] ? `<button class="pb buy" data-a="buytheme" data-v="${theme.id}" style="justify-content:center">Buy ${theme.name}</button>` : ""}
-<button class="pb buy" data-a="buypremium" style="justify-content:center">Buy All Access</button>
+<button class="pb buy" data-a="buypremium" style="justify-content:center">Buy All Access ${ALL_ACCESS_PRICE}</button>
 <button class="pb" data-a="haskey">I already have a license</button>
 <button class="lnk" data-a="notnow" style="align-self:center">Not now</button>
 </div>`;
@@ -531,7 +543,7 @@ ${body}
 <div class="thead"><b>${view.name}</b>${this.priceBadge(view.price)}</div>
 <div class="hn">${crowdName}, ${courtName}, ${ballName} ball</div>
 <div class="acts" style="margin-top:6px">${action}</div></div></div>
-${lockedAny ? `<div class="acts"><button class="lnk" data-a="premium">Unlock All Access</button></div>` : ""}
+${lockedAny ? this.allAccessButton() : ""}
 <div class="h4">Your look${custom ? " (custom)" : ""}</div>
 <div class="h4" style="margin-top:2px">Ball</div><div class="tiles w">${balls}</div>
 <div class="h4">Court</div>${this.row("Show court", this.tog("court"), "While aiming")}<div class="tiles w">${courts}</div>

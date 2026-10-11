@@ -14,6 +14,10 @@ export interface Theme {
 }
 
 export const PRICE = "$2.99";
+/** The same prices as numbers, and what All Access costs, to show how much it saves. */
+export const PRICE_VALUE = 2.99;
+export const ALL_ACCESS_VALUE = 6.99;
+export const ALL_ACCESS_PRICE = "$6.99";
 
 export const THEMES: Theme[] = [
   { id: "gym", name: "Gym", price: null, ball: "classic", court: "parquet", crowd: "stands" },
