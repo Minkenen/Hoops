@@ -131,7 +131,8 @@ fn open_external(url: String) -> Result<(), String> {
             || url.starts_with("https://minkenen.github.io/Hoops/")
             || url.starts_with("https://lemonsqueezy.com/")
             || url.starts_with("https://www.lemonsqueezy.com/")
-            || url.starts_with("https://checkout.lemonsqueezy.com/");
+            || url.starts_with("https://checkout.lemonsqueezy.com/")
+            || url.starts_with("https://hoops.lemonsqueezy.com/");
     if !allowed {
         return Err("unsupported url".into());
     }
@@ -276,8 +277,8 @@ struct LicenseActivation {
 
 /// Lemon Squeezy ids of the Premium product. They are not secrets (the license API needs no API key),
 /// but they are set at build time, e.g. `HOOPS_LS_STORE_ID=12345 HOOPS_LS_PRODUCT_ID=67890 npm run tauri build`.
-fn ls_id(v: Option<&str>) -> u64 {
-    v.and_then(|s| s.parse().ok()).unwrap_or(0)
+fn ls_id(v: Option<&str>, fallback: u64) -> u64 {
+    v.and_then(|s| s.parse().ok()).unwrap_or(fallback)
 }
 
 fn lemon_activate(key: &str, store_id: u64, product_id: u64) -> Result<LicenseActivation, String> {
@@ -310,8 +311,8 @@ async fn activate_license(key: String) -> Result<LicenseActivation, String> {
     if key.is_empty() {
         return Err("Enter your license key.".into());
     }
-    let store_id = ls_id(option_env!("HOOPS_LS_STORE_ID"));
-    let product_id = ls_id(option_env!("HOOPS_LS_PRODUCT_ID"));
+    let store_id = ls_id(option_env!("HOOPS_LS_STORE_ID"), 495291);
+    let product_id = ls_id(option_env!("HOOPS_LS_PRODUCT_ID"), 1430835);
     if store_id == 0 || product_id == 0 {
         // Not set up yet. Only a debug build accepts a test key, so a release build can never unlock for free.
         if cfg!(debug_assertions) && key == "HOOPS-TEST-KEY" {
