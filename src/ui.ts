@@ -324,7 +324,7 @@ ${this.donateStatsHtml()}
     this.licenseDraft = "";
   }
 
-  /** Checks the typed license key (in Rust) and unlocks Premium when it is good. */
+  /** Checks the typed license key (in Rust) and unlocks All Access when it is good. */
   private async activate(): Promise<void> {
     const key = this.licenseDraft.trim();
     if (this.licenseBusy) return;
@@ -341,7 +341,7 @@ ${this.donateStatsHtml()}
       setLicenseKey(key);
       setPremiumUnlocked(true);
       this.closePremium();
-      this.toast("Premium unlocked");
+      this.toast("All Access unlocked");
     } catch (err) {
       this.licenseBusy = false;
       this.licenseError = typeof err === "string" ? err : "Could not check the license key. Try again.";
@@ -356,15 +356,15 @@ ${this.donateStatsHtml()}
 <input class="lic" id="lic" type="text" value="${esc(this.licenseDraft)}" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" autocomplete="off" spellcheck="false"${this.licenseBusy ? " disabled" : ""}>
 ${this.licenseError ? `<div class="err">${esc(this.licenseError)}</div>` : ""}
 <div class="acts"><button class="pb buy" data-a="activate"${this.licenseBusy ? " disabled" : ""}>${this.licenseBusy ? "Activating…" : "Activate"}</button><button class="pb" data-a="licback"${this.licenseBusy ? " disabled" : ""}>Cancel</button></div>`
-      : `<div class="hn">One payment unlocks every premium theme with its court, ball and crowd. No subscription.</div>
+      : `<div class="hn">One payment unlocks every court, theme, ball and crowd. No subscription.</div>
 <div class="acts" style="flex-direction:column;align-items:stretch">
-<button class="pb buy" data-a="buypremium" style="justify-content:center">Buy Premium</button>
+<button class="pb buy" data-a="buypremium" style="justify-content:center">Buy All Access</button>
 <button class="pb" data-a="haskey">I already have a license</button>
 <button class="lnk" data-a="notnow" style="align-self:center">Not now</button>
 </div>`;
     return `<div class="confirm-wrap" data-hit>
 <div class="px confirm">
-<div class="h4" style="margin-top:0">${this.lockIcon()} Unlock Premium Courts</div>
+<div class="h4" style="margin-top:0">${this.lockIcon()} Unlock All Access</div>
 ${body}
 </div>
 </div>`;
@@ -467,7 +467,7 @@ ${body}
 <div class="thead"><b>${view.name}</b>${this.priceBadge(view.price)}</div>
 <div class="hn">${crowdName}, ${courtName}, ${ballName} ball</div>
 <div class="acts" style="margin-top:6px">${action}</div></div></div>
-${lockedAny ? `<div class="acts"><button class="lnk" data-a="premium">Unlock all premium themes</button></div>` : ""}
+${lockedAny ? `<div class="acts"><button class="lnk" data-a="premium">Unlock All Access</button></div>` : ""}
 <div class="h4">Your look${custom ? " (custom)" : ""}</div>
 <div class="h4" style="margin-top:2px">Ball</div><div class="tiles w">${balls}</div>
 <div class="h4">Court</div>${this.row("Show court", this.tog("court"), "While aiming")}<div class="tiles w">${courts}</div>
@@ -634,7 +634,7 @@ ${rows}
         break;
       case "resetpremium":
         resetPurchases();
-        this.toast("Premium locked again");
+        this.toast("All Access locked again");
         break;
       case "notnow":
         this.closePremium();

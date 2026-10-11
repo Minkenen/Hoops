@@ -161,7 +161,7 @@ export function setOnboarded(): void {
 
 const PREMIUM_KEY = "hoops.premium";
 
-/** Whether the one-time Hoops Premium purchase is unlocked on this computer. */
+/** Whether the one-time Hoops All Access purchase is unlocked on this computer. */
 export function isPremiumUnlocked(): boolean {
   try {
     return localStorage.getItem(PREMIUM_KEY) === "1";
@@ -181,7 +181,7 @@ export function setPremiumUnlocked(v: boolean): void {
 
 const LICENSE_KEY = "hoops.license";
 
-/** The license key that unlocked Premium on this computer, kept for later re-checks. */
+/** The license key that unlocked All Access on this computer, kept for later re-checks. */
 export function getLicenseKey(): string {
   try {
     return localStorage.getItem(LICENSE_KEY) ?? "";

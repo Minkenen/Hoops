@@ -1,4 +1,4 @@
-// Which themes you own. Free themes are always owned, and Hoops Premium (one payment) unlocks every other theme.
+// Which themes you own. Free themes are always owned, and Hoops All Access (one payment) unlocks every other theme.
 import { clearLicenseKey, isPremiumUnlocked, setPremiumUnlocked, setSetting, settings } from "./settings";
 import { THEMES, type ThemeId, themeById } from "./themes";
 

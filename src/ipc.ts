@@ -40,7 +40,7 @@ export const openExternal = (url: string): Promise<void> => invoke("open_externa
 export interface LicenseActivation {
   instance_id: string;
 }
-/** Checks a Premium license key with the license server (done in Rust, never from the page). Rejects with a message to show. */
+/** Checks an All Access license key with the license server (done in Rust, never from the page). Rejects with a message to show. */
 export const activateLicense = (key: string): Promise<LicenseActivation> => invoke<LicenseActivation>("activate_license", { key });
 export const focusWindow = (): Promise<void> => getCurrentWindow().setFocus();
 export const quitApp = (): Promise<void> => invoke("quit_app");

@@ -275,7 +275,7 @@ struct LicenseActivation {
     instance_id: String,
 }
 
-/// Lemon Squeezy ids of the Premium product. They are not secrets (the license API needs no API key),
+/// Lemon Squeezy ids of the All Access product. They are not secrets (the license API needs no API key),
 /// but they are set at build time, e.g. `HOOPS_LS_STORE_ID=12345 HOOPS_LS_PRODUCT_ID=67890 npm run tauri build`.
 fn ls_id(v: Option<&str>, fallback: u64) -> u64 {
     v.and_then(|s| s.parse().ok()).unwrap_or(fallback)
@@ -304,7 +304,7 @@ fn lemon_activate(key: &str, store_id: u64, product_id: u64) -> Result<LicenseAc
     Ok(LicenseActivation { instance_id })
 }
 
-/// Activates a Hoops Premium license key. The page only ever sees success or an error message.
+/// Activates a Hoops All Access license key. The page only ever sees success or an error message.
 #[tauri::command]
 async fn activate_license(key: String) -> Result<LicenseActivation, String> {
     let key = key.trim().to_string();
