@@ -298,32 +298,32 @@ fn licensed_products() -> Vec<LicensedProduct> {
             theme_id: "",
         },
         LicensedProduct {
-            product_id: ls_id(option_env!("HOOPS_LS_THEME_STREET_PRODUCT_ID"), 0),
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_STREET_PRODUCT_ID"), 1431014),
             unlock: "theme",
             theme_id: "street",
         },
         LicensedProduct {
-            product_id: ls_id(option_env!("HOOPS_LS_THEME_ARENA_PRODUCT_ID"), 0),
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_ARENA_PRODUCT_ID"), 1431019),
             unlock: "theme",
             theme_id: "arena",
         },
         LicensedProduct {
-            product_id: ls_id(option_env!("HOOPS_LS_THEME_LED_PRODUCT_ID"), 0),
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_LED_PRODUCT_ID"), 1431020),
             unlock: "theme",
             theme_id: "led",
         },
         LicensedProduct {
-            product_id: ls_id(option_env!("HOOPS_LS_THEME_TRAIN_DAY_PRODUCT_ID"), 0),
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_TRAIN_DAY_PRODUCT_ID"), 1431022),
             unlock: "theme",
             theme_id: "train-day",
         },
         LicensedProduct {
-            product_id: ls_id(option_env!("HOOPS_LS_THEME_TRAIN_NIGHT_PRODUCT_ID"), 0),
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_TRAIN_NIGHT_PRODUCT_ID"), 1431023),
             unlock: "theme",
             theme_id: "train-night",
         },
         LicensedProduct {
-            product_id: ls_id(option_env!("HOOPS_LS_THEME_TRAIN_CANYON_PRODUCT_ID"), 0),
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_TRAIN_CANYON_PRODUCT_ID"), 1431024),
             unlock: "theme",
             theme_id: "train-canyon",
         },
