@@ -39,8 +39,10 @@ export const setOverFullscreen = (on: boolean): Promise<void> => invoke("set_ove
 export const openExternal = (url: string): Promise<void> => invoke("open_external", { url });
 export interface LicenseActivation {
   instance_id: string;
+  unlock: "all" | "theme";
+  theme_id: string;
 }
-/** Checks an All Access license key with the license server (done in Rust, never from the page). Rejects with a message to show. */
+/** Checks a Lemon Squeezy license key with the license server (done in Rust, never from the page). Rejects with a message to show. */
 export const activateLicense = (key: string): Promise<LicenseActivation> => invoke<LicenseActivation>("activate_license", { key });
 export const focusWindow = (): Promise<void> => getCurrentWindow().setFocus();
 export const quitApp = (): Promise<void> => invoke("quit_app");

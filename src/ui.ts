@@ -1,11 +1,11 @@
 import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
-import { PREMIUM_CHECKOUT_URL } from "./config";
+import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
 import { getScore, setLicenseKey, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
 import { Preview, setPreviewOverride } from "./preview";
-import { isItemOwned, isOwned, resetPurchases } from "./purchases";
+import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
 import { THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, getStats } from "./stats";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
@@ -96,6 +96,7 @@ export class UI {
   private licenseBusy = false;
   private licenseError = "";
   private licenseDraft = "";
+  private unlockTheme: ThemeId | null = null;
   private toastMsg = "";
   private viewTheme: ThemeId | null = null;
   private game!: Game;
@@ -322,6 +323,7 @@ ${this.donateStatsHtml()}
     this.licenseBusy = false;
     this.licenseError = "";
     this.licenseDraft = "";
+    this.unlockTheme = null;
   }
 
   /** Checks the typed license key (in Rust) and unlocks All Access when it is good. */
@@ -337,11 +339,16 @@ ${this.donateStatsHtml()}
     this.licenseError = "";
     this.render();
     try {
-      await activateLicense(key);
+      const result = await activateLicense(key);
       setLicenseKey(key);
-      setPremiumUnlocked(true);
+      if (result.unlock === "all") {
+        setPremiumUnlocked(true);
+        this.toast("All Access unlocked");
+      } else {
+        addOwnedTheme(result.theme_id as ThemeId);
+        this.toast(`${themeById(result.theme_id).name} unlocked`);
+      }
       this.closePremium();
-      this.toast("All Access unlocked");
     } catch (err) {
       this.licenseBusy = false;
       const msg = typeof err === "string" ? err : "Could not check the license key. Try again.";
@@ -354,20 +361,26 @@ ${this.donateStatsHtml()}
 
   private premiumDialogHtml(): string {
     const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    const theme = this.unlockTheme ? themeById(this.unlockTheme) : null;
+    const title = theme ? `Unlock ${theme.name}` : "Unlock All Access";
+    const summary = theme
+      ? `Get ${theme.name} on its own, or unlock everything with All Access. No subscription.`
+      : "One payment unlocks every court, theme, ball and crowd. No subscription.";
     const body = this.licenseStep
       ? `<div class="hn">Paste the license key from your purchase email.</div>
 <input class="lic" id="lic" type="text" value="${esc(this.licenseDraft)}" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" autocomplete="off" spellcheck="false"${this.licenseBusy ? " disabled" : ""}>
 ${this.licenseError ? `<div class="err">${esc(this.licenseError)}</div>` : ""}
 <div class="acts"><button class="pb buy" data-a="activate"${this.licenseBusy ? " disabled" : ""}>${this.licenseBusy ? "Activating…" : "Activate"}</button><button class="pb" data-a="licback"${this.licenseBusy ? " disabled" : ""}>Cancel</button></div>`
-      : `<div class="hn">One payment unlocks every court, theme, ball and crowd. No subscription.</div>
+      : `<div class="hn">${summary}</div>
 <div class="acts" style="flex-direction:column;align-items:stretch">
+${theme && THEME_CHECKOUT_URLS[theme.id] ? `<button class="pb buy" data-a="buytheme" data-v="${theme.id}" style="justify-content:center">Buy ${theme.name}</button>` : ""}
 <button class="pb buy" data-a="buypremium" style="justify-content:center">Buy All Access</button>
 <button class="pb" data-a="haskey">I already have a license</button>
 <button class="lnk" data-a="notnow" style="align-self:center">Not now</button>
 </div>`;
     return `<div class="confirm-wrap" data-hit>
 <div class="px confirm">
-<div class="h4" style="margin-top:0">${this.lockIcon()} Unlock All Access</div>
+<div class="h4" style="margin-top:0">${this.lockIcon()} ${title}</div>
 ${body}
 </div>
 </div>`;
@@ -447,7 +460,7 @@ ${body}
       ? settings.theme === view.id
         ? `<button class="pb on">In use</button>`
         : `<button class="pb on" data-a="usetheme" data-v="${view.id}">Use theme</button>`
-      : `<button class="pb buy" data-a="premium">${this.lockIcon()} Unlock ${view.price}</button>`;
+      : `<button class="pb buy" data-a="themeunlock" data-v="${view.id}">${this.lockIcon()} Unlock ${view.price}</button>`;
     const ballName = BALL_SKINS.find((s) => s.id === view.ball)?.name ?? "";
     const courtName = COURT_SKINS.find((s) => s.id === view.court)?.name ?? "";
     const crowdName = CROWD_STYLES.find((s) => s.id === view.crowd)?.name ?? "";
@@ -604,7 +617,10 @@ ${rows}
         break;
       case "viewtheme":
         this.viewTheme = v as ThemeId;
-        if (!isOwned(this.viewTheme)) this.premiumDialog = true;
+        if (!isOwned(this.viewTheme)) {
+          this.unlockTheme = this.viewTheme;
+          this.premiumDialog = true;
+        }
         this.render();
         break;
       case "usetheme":
@@ -612,9 +628,24 @@ ${rows}
         this.render();
         break;
       case "premium":
+        this.unlockTheme = null;
         this.premiumDialog = true;
         this.render();
         break;
+      case "themeunlock":
+        this.unlockTheme = v as ThemeId;
+        this.premiumDialog = true;
+        this.render();
+        break;
+      case "buytheme": {
+        const url = THEME_CHECKOUT_URLS[v as ThemeId];
+        if (url) {
+          void openExternal(url).catch(() => {
+            window.open(url, "_blank", "noopener,noreferrer");
+          });
+        }
+        break;
+      }
       case "buypremium":
         void openExternal(PREMIUM_CHECKOUT_URL).catch(() => {
           window.open(PREMIUM_CHECKOUT_URL, "_blank", "noopener,noreferrer");

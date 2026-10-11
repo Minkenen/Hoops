@@ -273,15 +273,67 @@ fn spawn_cursor_thread(app: AppHandle) {
 #[derive(Serialize)]
 struct LicenseActivation {
     instance_id: String,
+    unlock: String,
+    theme_id: String,
 }
 
-/// Lemon Squeezy ids of the All Access product. They are not secrets (the license API needs no API key),
-/// but they are set at build time, e.g. `HOOPS_LS_STORE_ID=12345 HOOPS_LS_PRODUCT_ID=67890 npm run tauri build`.
+#[derive(Clone, Copy)]
+struct LicensedProduct {
+    product_id: u64,
+    unlock: &'static str,
+    theme_id: &'static str,
+}
+
+/// Lemon Squeezy product ids. They are not secrets (the license API needs no API key),
+/// but they can be set at build time, e.g. `HOOPS_LS_STORE_ID=12345 HOOPS_LS_PRODUCT_ID=67890 npm run tauri build`.
 fn ls_id(v: Option<&str>, fallback: u64) -> u64 {
     v.and_then(|s| s.parse().ok()).unwrap_or(fallback)
 }
 
-fn lemon_activate(key: &str, store_id: u64, product_id: u64) -> Result<LicenseActivation, String> {
+fn licensed_products() -> Vec<LicensedProduct> {
+    [
+        LicensedProduct {
+            product_id: ls_id(option_env!("HOOPS_LS_PRODUCT_ID"), 1430835),
+            unlock: "all",
+            theme_id: "",
+        },
+        LicensedProduct {
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_STREET_PRODUCT_ID"), 0),
+            unlock: "theme",
+            theme_id: "street",
+        },
+        LicensedProduct {
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_ARENA_PRODUCT_ID"), 0),
+            unlock: "theme",
+            theme_id: "arena",
+        },
+        LicensedProduct {
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_LED_PRODUCT_ID"), 0),
+            unlock: "theme",
+            theme_id: "led",
+        },
+        LicensedProduct {
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_TRAIN_DAY_PRODUCT_ID"), 0),
+            unlock: "theme",
+            theme_id: "train-day",
+        },
+        LicensedProduct {
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_TRAIN_NIGHT_PRODUCT_ID"), 0),
+            unlock: "theme",
+            theme_id: "train-night",
+        },
+        LicensedProduct {
+            product_id: ls_id(option_env!("HOOPS_LS_THEME_TRAIN_CANYON_PRODUCT_ID"), 0),
+            unlock: "theme",
+            theme_id: "train-canyon",
+        },
+    ]
+    .into_iter()
+    .filter(|p| p.product_id != 0)
+    .collect()
+}
+
+fn lemon_activate(key: &str, store_id: u64, products: &[LicensedProduct]) -> Result<LicenseActivation, String> {
     let name = format!("Hoops on {}", std::env::consts::OS);
     let body: serde_json::Value = match ureq::post("https://api.lemonsqueezy.com/v1/licenses/activate")
         .set("Accept", "application/json")
@@ -297,14 +349,22 @@ fn lemon_activate(key: &str, store_id: u64, product_id: u64) -> Result<LicenseAc
         return Err(msg.to_string());
     }
     let meta = &body["meta"];
-    if meta["store_id"].as_u64() != Some(store_id) || meta["product_id"].as_u64() != Some(product_id) {
+    let product_id = meta["product_id"].as_u64().unwrap_or_default();
+    let Some(product) = products.iter().find(|p| p.product_id == product_id) else {
+        return Err("That license key is for a different product.".into());
+    };
+    if meta["store_id"].as_u64() != Some(store_id) {
         return Err("That license key is for a different product.".into());
     }
     let instance_id = body["instance"]["id"].as_str().unwrap_or_default().to_string();
-    Ok(LicenseActivation { instance_id })
+    Ok(LicenseActivation {
+        instance_id,
+        unlock: product.unlock.into(),
+        theme_id: product.theme_id.into(),
+    })
 }
 
-/// Activates a Hoops All Access license key. The page only ever sees success or an error message.
+/// Activates a Hoops license key. The page only ever sees success or an error message.
 #[tauri::command]
 async fn activate_license(key: String) -> Result<LicenseActivation, String> {
     let key = key.trim().to_string();
@@ -312,15 +372,19 @@ async fn activate_license(key: String) -> Result<LicenseActivation, String> {
         return Err("Enter your license key.".into());
     }
     let store_id = ls_id(option_env!("HOOPS_LS_STORE_ID"), 495291);
-    let product_id = ls_id(option_env!("HOOPS_LS_PRODUCT_ID"), 1430835);
-    if store_id == 0 || product_id == 0 {
+    let products = licensed_products();
+    if store_id == 0 || products.is_empty() {
         // Not set up yet. Only a debug build accepts a test key, so a release build can never unlock for free.
         if cfg!(debug_assertions) && key == "HOOPS-TEST-KEY" {
-            return Ok(LicenseActivation { instance_id: "dev".into() });
+            return Ok(LicenseActivation {
+                instance_id: "dev".into(),
+                unlock: "all".into(),
+                theme_id: "".into(),
+            });
         }
         return Err("Licensing is not set up in this build yet.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || lemon_activate(&key, store_id, product_id))
+    tauri::async_runtime::spawn_blocking(move || lemon_activate(&key, store_id, &products))
         .await
         .map_err(|e| e.to_string())?
 }
