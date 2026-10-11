@@ -9,6 +9,7 @@ export interface Stats {
   banks: number; // goals after hitting the board
   rimGoals: number; // goals after a rim bounce
   far: number; // goals from the far side of the screen
+  heroes: number; // flying heroes shot down
   unlocked: Record<string, number>;
 }
 
@@ -22,7 +23,7 @@ export interface Achievement {
 
 const KEY = "hoops.stats";
 
-const DEFAULT: Stats = { throws: 0, goals: 0, streak: 0, bestStreak: 0, swishes: 0, banks: 0, rimGoals: 0, far: 0, unlocked: {} };
+const DEFAULT: Stats = { throws: 0, goals: 0, streak: 0, bestStreak: 0, swishes: 0, banks: 0, rimGoals: 0, far: 0, heroes: 0, unlocked: {} };
 
 const count = (pick: (s: Stats) => number, n: number) => (s: Stats): [number, number] => [Math.min(pick(s), n), n];
 
@@ -42,6 +43,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "swish-10", name: "Clean shooter", desc: "Score 10 clean swishes", progress: count((s) => s.swishes, 10) },
   { id: "bank-1", name: "Off the glass", desc: "Score after hitting the backboard", progress: count((s) => s.banks, 1) },
   { id: "rim-1", name: "Lucky bounce", desc: "Score after a bounce off the rim", progress: count((s) => s.rimGoals, 1) },
+  { id: "hero-down", name: "Man down", desc: "Shoot down the flying hero in the Park", progress: count((s) => s.heroes, 1) },
   { id: "far-1", name: "Long range", desc: "Score from the far side of the screen", progress: count((s) => s.far, 1) },
   { id: "sharp", name: "Sharpshooter", desc: "Keep 50% accuracy over at least 50 shots", progress: (s) => [s.throws >= 50 && s.goals / s.throws >= 0.5 ? 1 : 0, 1] },
 ];
@@ -95,6 +97,14 @@ export function recordGoal(info: { clean: boolean; bank: boolean; rim: boolean; 
   if (info.bank) s.banks++;
   if (info.rim) s.rimGoals++;
   if (info.far) s.far++;
+  const fresh = evaluate(s);
+  save(s);
+  return fresh;
+}
+
+export function recordHeroDown(): Achievement[] {
+  const s = getStats();
+  s.heroes++;
   const fresh = evaluate(s);
   save(s);
   return fresh;

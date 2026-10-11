@@ -2,10 +2,13 @@
 // The drawing code works in the little 260-wide picture it was designed in (y = game y + 20); draw() places it in the game.
 
 const GLYPHS: Record<string, string> = {
-  "0": "111101101101111", "1": "010110010010111", "2": "111001111100111", "3": "111001111001111", "4": "101101111001001",
-  A: "010101111101101", B: "110101110101110", C: "111100100100111", D: "110101101101110", E: "111100110100111", H: "101101111101101",
-  I: "111010010010111", K: "101101110101101", L: "100100100100111", M: "101111111101101", O: "111101101101111", P: "111101111100100",
-  R: "110101110101101", S: "111100111001111", V: "101101101101010", W: "101101111111101", " ": "000000000000000",
+  A: "010101111101101", B: "110101110101110", C: "111100100100111", D: "110101101101110", E: "111100110100111", F: "111100110100100",
+  G: "111100101101111", H: "101101111101101", I: "111010010010111", J: "001001001101111", K: "101101110101101", L: "100100100100111",
+  M: "101111111101101", N: "110101101101101", O: "111101101101111", P: "111101111100100", Q: "111101101111001", R: "110101110101101",
+  S: "111100111001111", T: "111010010010010", U: "101101101101111", V: "101101101101010", W: "101101111111101", X: "101101010101101",
+  Y: "101101010010010", Z: "111001010100111", "0": "111101101101111", "1": "010110010010111", "2": "111001111100111",
+  "3": "111001111001111", "4": "101101111001001", "5": "111100111001111", "6": "111100111101111", "7": "111001010010010",
+  "8": "111101111101111", "9": "111101111001111", " ": "000000000000000",
 };
 
 const PAL = ["#ff4fa0", "#35d4ff", "#ffe14a", "#5de06a", "#ff8a1f", "#9b5cff"];
@@ -13,8 +16,9 @@ const DK = "#1c1c22";
 const OY = 20;
 const FLOOR = 112;
 const TILE = 260;
-const SCENES = [10000, 14000, 12000];
-const TOTAL = SCENES.reduce((a, b) => a + b, 0);
+const SCENES = [10000, 14000, 12000, 15000, 15000];
+/** The abseiler needs a tall wall: this many art pixels between the top and the fence. */
+const ROPE_MIN_WALL = 130;
 
 const STAR = ["0001000", "0001000", "0011100", "1111111", "0111110", "0110110", "0100010"];
 const BOLT = ["0001100", "0011000", "0110000", "1111110", "0001100", "0011000", "0110000", "0100000"];
@@ -37,9 +41,9 @@ function r(a: number, b: number, w: number, h: number, col: string): void {
 
 const ease = (u: number): number => (u < 0 ? 0 : u > 1 ? 1 : u * u * (3 - 2 * u));
 
-function line(x1: number, y1: number, x2: number, y2: number, col: string): void {
+function line(x1: number, y1: number, x2: number, y2: number, col: string, th = 1): void {
   const n = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1)) || 1;
-  for (let i = 0; i <= n; i++) r(x1 + ((x2 - x1) * i) / n, y1 + ((y2 - y1) * i) / n, 1, 1, col);
+  for (let i = 0; i <= n; i++) r(x1 + ((x2 - x1) * i) / n, y1 + ((y2 - y1) * i) / n, th, th, col);
 }
 
 function drawPix(rows: string[], x0: number, y0: number, col: string, sc = 1): void {
@@ -158,17 +162,6 @@ function guy(gx: number, base: number, t: number, o: Pose): void {
 
 // ---- scene 0: tagging a name ------------------------------------------------
 
-function wallA(): void {
-  bubble("OK", 30, 46, 3, ["#35d4ff", "#ff4fa0"], 99, "#ffffff", DK, 0);
-  drawPix(CROWN, 176, 48, "#ffe14a", 2);
-  r(176, 60, 14, 2, "#c9a000");
-  disc(228, 54, 8, "#ffe14a", "#c9a000");
-  r(225, 51, 2, 2, DK);
-  r(230, 51, 2, 2, DK);
-  r(224, 57, 8, 1, DK);
-  r(225, 58, 6, 1, DK);
-  for (let i = 0; i < 5; i++) r(110, 46 + i * 3, 40, 2, PAL[i]);
-}
 
 function frontA(t: number, lt: number, alpha: number): void {
   const T = SCENES[0];
@@ -189,23 +182,139 @@ function frontA(t: number, lt: number, alpha: number): void {
   }
 }
 
+// ---- the wall: the same all the time, built up in layers like a real graffiti wall -----
+
+/** Marker tag: a scribble across w x h, with a shadow, an underline and a dot. */
+function tag(x0: number, y0: number, w: number, h: number, col: string, seed: number, th = 1): void {
+  const n = 8;
+  const pts: [number, number][] = [];
+  for (let i = 0; i < n; i++) pts.push([x0 + (i * w) / (n - 1), y0 + (i % 2 ? h : 0) + (hs(seed, i) - 0.5) * h * 0.8]);
+  for (const sh of [1, 0]) {
+    for (let i = 0; i < n - 1; i++) line(pts[i][0] + sh, pts[i][1] + sh, pts[i + 1][0] + sh, pts[i + 1][1] + sh, sh ? "#1c1c2288" : col, th);
+  }
+  line(x0, y0 + h + 3, x0 + w * 0.8, y0 + h + 2, col, 1);
+  r(x0 + w + 2, y0 - 2, 2, 2, col);
+}
+
+function sticker(x0: number, y0: number, kind: number, col: string): void {
+  r(x0 - 1, y0 - 1, 10, 8, "#f4f6fb");
+  r(x0, y0, 8, 6, col);
+  if (kind === 0) {
+    r(x0 + 2, y0 + 1, 1, 1, DK);
+    r(x0 + 5, y0 + 1, 1, 1, DK);
+    r(x0 + 2, y0 + 4, 4, 1, DK);
+  } else if (kind === 1) {
+    r(x0 + 3, y0 + 1, 2, 4, "#fff");
+    r(x0 + 1, y0 + 2, 6, 1, "#fff");
+  } else disc(x0 + 4, y0 + 3, 2, "#ff8a1f");
+}
+
+/** Old pieces painted over with roller paint. */
+function buff(x0: number, y0: number, w: number, h: number, col: string, seed: number): void {
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const edge = i < 2 || j < 2 || i > w - 3 || j > h - 3;
+      if (edge && hs(i + seed, j) < 0.4) continue;
+      r(x0 + i, y0 + j, 1, 1, col);
+    }
+  }
+  for (let i = 6; i < w; i += 9) r(x0 + i, y0 + 2, 1, h - 4, "#00000022");
+  for (let j = 5; j < h; j += 8) r(x0 + 3, y0 + j, w - 6, 1, "#ffffff12");
+}
+
+/** A torn wheat-paste poster. */
+function poster(x0: number, y0: number, w: number, h: number): void {
+  r(x0, y0, w, h, "#e8e0cc");
+  for (let i = 0; i < w; i += 3) if (hs(i, x0) < 0.5) r(x0 + i, y0 + h - 1, 2, 1, "#8a4a3a");
+  r(x0 + 2, y0 + 2, w - 4, 6, "#e8392b");
+  r(x0 + 3, y0 + 3, w - 6, 1, "#fff");
+  disc(x0 + w / 2, y0 + h / 2 + 2, 5, DK);
+  r(x0 + w / 2 - 2, y0 + h / 2, 2, 2, "#e8e0cc");
+  r(x0 + w / 2 + 1, y0 + h / 2, 2, 2, "#e8e0cc");
+  r(x0 + 2, y0 + h - 7, w - 4, 1, DK);
+  r(x0 + 2, y0 + h - 5, w - 8, 1, DK);
+  for (let k = 0; k < 4; k++) r(x0 + w - k - 1, y0 + h - k - 1, k + 1, 1, "#c9c2ae");
+}
+
+const WORDS = ["BOLT", "KID", "SAD", "OK", "ACE", "JAM", "DUNK", "HOOP", "NET", "RIM", "SWISH", "FLY", "ZONE", "MVP", "CREW", "KING", "ROCK", "TAG", "WOW", "GAME", "SKY", "FIRE", "COOL", "JUMP", "WIN", "RAW", "LUCK", "BEAST", "HYPE", "SLAM"];
+const PALS = [["#ff4fa0", "#ffe14a"], ["#35d4ff", "#9b5cff"], ["#5de06a", "#ffe14a"], ["#ff8a1f", "#ffe14a"], ["#c9ced8", "#c9ced8"], ["#ffffff", "#35d4ff"], ["#9b5cff", "#ff4fa0"], ["#ffe14a", "#ff8a1f"], ["#35d4ff", "#5de06a"]];
+const BUFFS = ["#8b6b5e", "#6f7a86", "#a89478", "#7f8f7a"];
+const TAGCOLS = ["#ffffff", "#ff8a1f", "#ffe14a", "#35d4ff", "#ff4fa0", "#5de06a"];
+const STICKCOLS = ["#ffe14a", "#e8392b", "#3a5493", "#5de06a", "#ff4fa0"];
+
+function pick<T>(a: T[], s1: number, s2: number): T {
+  return a[Math.floor(hs(s1, s2) * a.length)];
+}
+
+const wordW = (s: string, sc: number): number => s.length * 4 * sc - sc;
+
+/** Block letters with a 3D side. */
+function block(str: string, x0: number, y0: number, sc: number, face: string, side: string, outline: string, depth: number): void {
+  const P = glyphPixels(str, sc);
+  const set = new Set(P.map((p) => p[0] + "," + p[1]));
+  for (let d = depth; d >= 1; d--) for (const [a, b] of P) r(x0 + a + d, y0 + b + d, 1, 1, side);
+  for (const [a, b] of P) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) if (!set.has(a + dx + "," + (b + dy)) && (dx || dy)) r(x0 + a + dx, y0 + b + dy, 1, 1, outline);
+    }
+  }
+  for (const [a, b] of P) r(x0 + a, y0 + b, 1, 1, face);
+  for (const [a, b] of P) if (!set.has(a - 1 + "," + b) || !set.has(a + "," + (b - 1))) r(x0 + a, y0 + b, 1, 1, "#ffffff");
+}
+
+const CELL_W = 62;
+const CELL_H = 44;
+
+/** The kind of piece in a cell; never the same as the one to the left or above. */
+function cellType(i: number, j: number): number {
+  let t = Math.floor(hs(i * 7 + 1, j * 13 + 5) * 10);
+  const left = i > 0 ? cellType(i - 1, j) : -1;
+  const up = j > 0 ? cellType(i, j - 1) : -1;
+  for (let n = 0; n < 10 && (t === left || t === up); n++) t = (t + 1) % 10;
+  return t;
+}
+
+/** One cell of the wall: a piece (or nothing) placed with a little jitter. Every cell is different and a lot of them are empty. */
+function cell(i: number, j: number, fenceY: number): void {
+  const oy0 = fenceY - (j + 1) * CELL_H;
+  if (hs(i * 3 + 2, j * 5 + 1) < 0.14) {
+    buff(i * CELL_W + 8 + hs(i, j) * 20, oy0 + 6 + hs(j, i) * 10, 34 + Math.floor(hs(i, j + 3) * 34), 24 + Math.floor(hs(j, i + 4) * 24), pick(BUFFS, i, j), i * 9 + j);
+  }
+  if (hs(i * 11 + 7, j * 3 + 9) < 0.5) return;
+  const t = cellType(i, j);
+  const ox = i * CELL_W + 4 + (hs(i, j + 9) - 0.5) * 14;
+  const oy = oy0 + 4 + (hs(j, i + 9) - 0.5) * 8;
+  const sd = i * 31 + j * 17;
+  const pal = pick(PALS, i + 11, j + 3);
+  const word = pick(WORDS, i + 5, j + 9);
+  if (t <= 2) {
+    const sc = word.length > 3 ? 3 : 4;
+    bubble(word, ox + (CELL_W - wordW(word, sc)) / 2, oy + 4, sc, pal, 99, DK, "#00000066", 1);
+  } else if (t === 3) {
+    const wd = pick(["OK", "ACE", "JAM", "WOW"], i, j);
+    bubble(wd, ox + (CELL_W - wordW(wd, 5)) / 2, oy + 2, 5, [pal[0]], 99, "#ffffff", DK, 1);
+  } else if (t <= 5) {
+    tag(ox + 4, oy + 10, 38 + hs(i, j + 1) * 14, 6, pick(TAGCOLS, i, j + 2), sd, hs(i, j) > 0.6 ? 2 : 1);
+  } else if (t === 6) {
+    const k = Math.floor(hs(i, j + 6) * 4);
+    if (k === 0) drawPix(CROWN, ox + 20, oy + 10, "#ffe14a", 3);
+    else if (k === 1) drawPix(STAR, ox + 20, oy + 8, "#ffe14a", 3);
+    else if (k === 2) drawPix(BOLT, ox + 22, oy + 6, "#9b5cff", 3);
+    else drawPix(HEART, ox + 20, oy + 10, "#ff4fa0", 3);
+  } else if (t === 7) {
+    sticker(ox + 6, oy + 8, Math.floor(hs(i, j + 1) * 3), pick(STICKCOLS, i, j));
+    sticker(ox + 26, oy + 18, Math.floor(hs(i, j + 2) * 3), pick(STICKCOLS, i + 1, j));
+    sticker(ox + 42, oy + 6, Math.floor(hs(i, j + 3) * 3), "#9b5cff");
+  } else if (t === 8) {
+    poster(ox + 18, oy + 2, 22, 32);
+  } else {
+    const w3 = word.slice(0, 3);
+    block(w3, ox + (CELL_W - wordW(w3, 3)) / 2 - 3, oy + 6, 3, pal[0], "#2a2f4a", DK, 3);
+  }
+}
+
 // ---- scene 1: a wall full of art, a new piece on top -------------------------
 
-function wallB(): void {
-  bubble("BALL", 18, 46, 3, ["#35d4ff", "#9b5cff"], 99, "#ffffff", DK, 1);
-  drawPix(CROWN, 112, 50, "#ffe14a", 2);
-  r(112, 62, 14, 2, "#c9a000");
-  disc(170, 56, 8, "#ffe14a", "#c9a000");
-  r(167, 53, 2, 2, DK);
-  r(172, 53, 2, 2, DK);
-  r(166, 59, 9, 1, DK);
-  r(167, 60, 7, 1, DK);
-  disc(218, 54, 9, "#ff8a1f", "#7a3a10");
-  r(209, 54, 18, 1, "#7a3a10");
-  r(218, 45, 1, 18, "#7a3a10");
-  drawPix(BOLT, 66, 46, "#9b5cff", 2);
-  for (let i = 0; i < 6; i++) r(235, 46 + i * 3, 18, 2, PAL[i]);
-}
 
 function fenceB(): void {
   bubble("HOOPS", 24, 80, 2, ["#ff4fa0", "#ffe14a", "#5de06a", "#35d4ff", "#ff8a1f"], 99, DK, "#00000066", 1);
@@ -249,11 +358,6 @@ function frontB(t: number, lt: number): void {
 
 // ---- scene 2: a mural from a rolling scaffold -------------------------------
 
-function wallC(): void {
-  bubble("CREW", 20, 46, 3, ["#ff4fa0", "#ffe14a"], 99, "#ffffff", DK, 0);
-  drawPix(STAR, 226, 46, "#ffe14a", 2);
-  for (let i = 0; i < 5; i++) r(90, 50 + i * 3, 30, 2, PAL[i]);
-}
 
 function frontC(t: number, lt: number, alpha: number): void {
   const gp = lt / SCENES[2];
@@ -352,46 +456,234 @@ function frontC(t: number, lt: number, alpha: number): void {
   guy(gx, FLOOR - 24, t, { tx, ty, spray: gp < 0.95, col, face: 1, rattle: gp >= 0.95 });
 }
 
-// ---- placing the scenes in the game -----------------------------------------
+// ---- scene 3: the abseiler -----------------------------------------------
 
-function which(t: number): { scene: number; lt: number; alpha: number } {
-  let lt = t % TOTAL;
-  let scene = 0;
-  while (lt >= SCENES[scene]) lt -= SCENES[scene++];
-  const T = SCENES[scene];
-  return { scene, lt, alpha: Math.min(1, lt / 600, (T - lt) / 600) };
+/** The guy hanging in a harness from a rope tied at (ax, top). (gx, gy) = his waist. */
+function ropeGuy(ax: number, top: number, gx: number, gy: number, t: number, o: Pose & { kick?: number }): void {
+  line(ax, top, gx, gy - 8, "#d8d2c0");
+  line(ax + 1, top, gx + 1, gy - 8, "#8a8470");
+  const kick = o.kick ?? 0;
+  line(gx - 1, gy - 5, gx - 3 - kick, gy, "#2a3a6a", 2);
+  line(gx + 1, gy - 5, gx + 3 + kick * 0.4, gy - 1, "#2a3a6a", 2);
+  r(gx - 5 - kick, gy, 3, 1, "#f4f6fb");
+  r(gx + 3 + kick * 0.4, gy - 1, 3, 1, "#f4f6fb");
+  r(gx - 3, gy - 6, 6, 1, "#ffe14a");
+  r(gx - 1, gy - 7, 2, 3, "#ffe14a");
+  line(gx, gy - 8, gx, gy - 9, "#9aa1ad");
+  r(gx - 3, gy - 13, 6, 7, SHIRT[0]);
+  r(gx - 3, gy - 13, 6, 1, SHIRT[1]);
+  r(gx - 2, gy - 17, 4, 4, "#f2c9a0");
+  r(gx - 2, gy - 18, 4, 2, "#e8392b");
+  r(gx + 2, gy - 17, 2, 1, "#e8392b");
+  r(gx - 1, gy - 16, 1, 1, DK);
+  r(gx + 1, gy - 16, 1, 1, DK);
+  line(gx - 2, gy - 12, gx - 3, gy - 19, SHIRT[0]);
+  r(gx - 3, gy - 19, 1, 1, "#f2c9a0");
+  const sx = gx + 2;
+  const sy = gy - 12;
+  let hx = gx + 5;
+  let hy = gy - 9;
+  if (o.tx !== undefined && o.ty !== undefined) {
+    const dx = o.tx - sx;
+    const dy = o.ty - sy;
+    const d = Math.hypot(dx, dy) || 1;
+    const len = Math.min(7, d);
+    hx = sx + (dx / d) * len;
+    hy = sy + (dy / d) * len;
+  }
+  if (o.rattle) {
+    hx += Math.sin(t / 25) * 1.5;
+    hy += Math.cos(t / 30) * 1.5;
+  }
+  line(sx, sy, hx, hy, SHIRT[0]);
+  r(hx, hy, 1, 1, "#f2c9a0");
+  const col = o.col ?? PAL[0];
+  const cx = Math.round(hx);
+  const cy = Math.round(hy) - 3;
+  r(cx, cy, 2, 4, col);
+  r(cx, cy, 2, 1, "#9aa1ad");
+  r(cx + 1, cy - 1, 1, 1, "#dde1e8");
+  if (o.spray && o.tx !== undefined && o.ty !== undefined) {
+    const nx = hx + 2;
+    const ny = hy - 4;
+    const sl = Math.floor(t / 40);
+    for (let k = 0; k < 14; k++) {
+      const u = ((t / 45 + k * 1.7) % 7) / 7;
+      const sp = u * 3;
+      r(nx + (o.tx - nx) * u + (hs(k, sl) - 0.5) * sp * 2, ny + (o.ty - ny) * u + (hs(k + 9, sl) - 0.5) * sp * 2, 1, 1, k % 3 ? col : "#ffffffaa");
+    }
+    for (let k = 0; k < 8; k++) r(o.tx + (hs(k, Math.floor(t / 60)) - 0.5) * 9, o.ty + (hs(k + 4, Math.floor(t / 60)) - 0.5) * 7, 1, 1, col + "88");
+  }
 }
 
-/** Pieces on the brick wall (draw before the fans and the fence). local y = the street's own coordinates. fill = the wall goes all the way up. */
-export function drawGraffitiWall(c: CanvasRenderingContext2D, t: number, w: number, fill: boolean, topY: number): void {
-  x = c;
-  const { scene, alpha } = which(t);
-  const pieces = [wallA, wallB, wallC][scene];
-  const rows = fill ? Math.min(4, Math.ceil((45 - topY - 20) / 36)) : 0;
-  const base0 = Math.round(w / 2 - TILE / 2);
-  c.save();
-  c.globalAlpha = alpha;
-  for (let row = 0; row <= rows; row++) {
-    for (let k = -3; k <= 3; k++) {
-      const bx = base0 + k * TILE + (row % 2) * 130;
-      if (bx > w || bx < -TILE) continue;
-      if (row > 0 && hs(k * 7 + scene, row) > 0.2) continue;
-      c.save();
-      c.translate(bx, -OY - row * 36);
-      pieces();
-      c.restore();
+/** He abseils down, bobs and swings along the wall and sprays a huge GO HOOPS, then is hauled back up. */
+function frontRope(t: number, lt: number, alpha: number, w: number, topY: number): void {
+  const p = lt / SCENES[3];
+  const sc = 7;
+  const word = "GO HOOPS";
+  const wd = word.length * 4 * sc - sc;
+  const x00 = Math.round((w - wd) / 2);
+  const y0 = Math.round(topY + (45 - topY) * 0.29);
+  const down = ease(p / 0.1);
+  const paint = p > 0.1 && p < 0.74;
+  const up = ease((p - 0.8) / 0.14);
+  const reveal = p < 0.1 ? 0 : p < 0.74 ? ((p - 0.1) / 0.64) * wd : wd;
+  x.globalAlpha = alpha * (p > 0.94 ? 1 - (p - 0.94) / 0.06 : 1);
+  bubble(word, x00, y0, sc, PAL, reveal, "#ffffff", DK, p > 0.74 ? 1 : 0);
+  x.globalAlpha = alpha;
+  const front = x00 + reveal;
+  let gx = paint ? front - 20 + Math.sin(t / 300) * 7 : p < 0.1 ? x00 - 24 : front - 20;
+  if (p >= 0.74) gx = x00 + wd - 20;
+  const rest = topY - 24;
+  const target = y0 + 36;
+  const bob = Math.sin(t / 170) * 4 + Math.sin(t / 410) * 2;
+  const gy = p < 0.1 ? rest + down * (target - rest) : p < 0.8 ? target + bob : target + (rest - target) * up;
+  ropeGuy(Math.max(30, Math.min(w - 30, gx + 10)), topY, gx, gy, t, {
+    tx: front + 2,
+    ty: y0 + 18 + Math.sin(t / 160) * 10,
+    spray: paint,
+    col: PAL[Math.min(5, Math.floor(reveal / (4 * sc)))],
+    kick: Math.max(0, Math.sin(t / 260)) * 3,
+    rattle: p > 0.72 && p < 0.74,
+  });
+}
+
+// ---- scene 4: the hanging chair --------------------------------------------
+
+/** Block letters, painted down to maxY. */
+function blockTo(str: string, x0: number, y0: number, sc: number, face: string, side: string, depth: number, maxY: number): void {
+  const P0 = glyphPixels(str, sc);
+  const set = new Set(P0.map((p) => p[0] + "," + p[1]));
+  const P = P0.filter((p) => y0 + p[1] <= maxY);
+  for (let d = depth; d >= 1; d--) for (const [a, b] of P) r(x0 + a + d, y0 + b + d, 1, 1, side);
+  for (const [a, b] of P) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) if (!set.has(a + dx + "," + (b + dy)) && (dx || dy)) r(x0 + a + dx, y0 + b + dy, 1, 1, DK);
     }
   }
+  for (const [a, b] of P) r(x0 + a, y0 + b, 1, 1, face);
+  for (const [a, b] of P) if (!set.has(a - 1 + "," + b) || !set.has(a + "," + (b - 1))) r(x0 + a, y0 + b, 1, 1, "#ffffff");
+}
+
+/** The guy sitting on a plank hung from two ropes, with a paint roller. (gx, gy) = his waist. */
+function chairGuy(top: number, gx: number, gy: number, tx: number, ty: number, col: string): void {
+  for (const off of [-7, 7]) {
+    line(gx + off, top, gx + off, gy + 4, "#d8d2c0");
+    line(gx + off + 1, top, gx + off + 1, gy + 4, "#8a8470");
+  }
+  r(gx - 9, gy + 4, 18, 2, "#a8743c");
+  r(gx - 9, gy + 4, 18, 1, "#c99456");
+  r(gx - 4, gy - 1, 3, 3, "#2a3a6a");
+  r(gx, gy - 1, 3, 3, "#2a3a6a");
+  r(gx - 5, gy + 2, 3, 2, "#2a3a6a");
+  r(gx + 1, gy + 2, 3, 2, "#2a3a6a");
+  r(gx - 5, gy + 3, 3, 1, "#f4f6fb");
+  r(gx + 1, gy + 3, 3, 1, "#f4f6fb");
+  r(gx - 3, gy - 6, 6, 1, "#ffe14a");
+  r(gx - 1, gy - 7, 2, 3, "#ffe14a");
+  r(gx - 3, gy - 13, 6, 7, SHIRT[0]);
+  r(gx - 3, gy - 13, 6, 1, SHIRT[1]);
+  r(gx - 2, gy - 17, 4, 4, "#f2c9a0");
+  r(gx - 2, gy - 18, 4, 2, "#e8392b");
+  r(gx + 2, gy - 17, 2, 1, "#e8392b");
+  r(gx - 1, gy - 16, 1, 1, DK);
+  r(gx + 1, gy - 16, 1, 1, DK);
+  line(gx - 2, gy - 12, gx - 3, gy - 19, SHIRT[0]);
+  r(gx - 3, gy - 19, 1, 1, "#f2c9a0");
+  const sx = gx + 2;
+  const sy = gy - 12;
+  const dx = tx - sx;
+  const dy = ty - sy;
+  const d = Math.hypot(dx, dy) || 1;
+  const len = Math.min(7, d);
+  const hx = sx + (dx / d) * len;
+  const hy = sy + (dy / d) * len;
+  line(sx, sy, hx, hy, SHIRT[0]);
+  r(hx, hy, 1, 1, "#f2c9a0");
+  r(hx, hy - 2, 1, 3, "#9aa1ad");
+  r(hx - 3, hy - 4, 8, 3, col);
+  r(hx - 3, hy - 4, 8, 1, "#ffffff66");
+  // the bucket hanging beside him
+  line(gx - 19, top, gx - 19, gy + 8, "#d8d2c0");
+  r(gx - 23, gy + 8, 8, 7, "#6b7280");
+  r(gx - 23, gy + 8, 8, 2, col);
+  r(gx - 22, gy + 6, 6, 1, "#9aa1ad");
+}
+
+/** He is lowered on the plank and rolls a huge 3D HOOPS onto the wall from the top down, then is hauled back up. */
+function frontChair(t: number, lt: number, alpha: number, w: number, topY: number): void {
+  const p = lt / SCENES[4];
+  const sc = 10;
+  const wd = 5 * 4 * sc - sc;
+  const x0 = Math.round((w - wd) / 2) - 5;
+  const y0 = Math.round(topY + (45 - topY) * 0.27);
+  const h = 58;
+  const down = ease(p / 0.1);
+  const up = ease((p - 0.8) / 0.14);
+  const paintU = p < 0.1 ? 0 : p < 0.72 ? (p - 0.1) / 0.62 : 1;
+  const yR = y0 + paintU * h;
+  x.globalAlpha = alpha * (p > 0.95 ? 1 - (p - 0.95) / 0.05 : 1);
+  blockTo("HOOPS", x0, y0, sc, "#ffe14a", "#c2410c", 7, p >= 0.72 ? 9999 : yR);
+  if (p >= 0.76) {
+    for (let k = 0; k < 7; k++) {
+      const sx = x0 + Math.floor(hs(k, 2) * wd);
+      const sy = y0 + Math.floor(hs(k, 5) * 50);
+      if (Math.floor(t / 120 + k * 3) % 5 < 2) {
+        r(sx, sy, 1, 1, "#fff");
+        r(sx - 2, sy, 5, 1, "#fff6a0");
+        r(sx, sy - 2, 1, 5, "#fff6a0");
+      }
+    }
+  }
+  if (p > 0.1 && p < 0.72) r(0, yR, w, 1, "#ffffff22");
+  x.globalAlpha = alpha;
+  const rest = topY - 30;
+  const low = y0 + h + 46;
+  const bob = Math.sin(t / 170) * 3 + Math.sin(t / 410) * 1.5;
+  const gy = p < 0.1 ? rest + down * (y0 + 46 - rest) : p < 0.72 ? yR + 46 + bob : p < 0.8 ? low + bob : low + (rest - low) * up;
+  const gx = w / 2 + Math.sin(t / 1100) * (p < 0.72 ? 70 : 20);
+  chairGuy(topY, gx, gy, gx + 9, yR + Math.sin(t / 220) * 5, "#ffe14a");
+}
+
+// ---- placing the scenes in the game -----------------------------------------
+
+function which(t: number, ropeOk: boolean): { scene: number; lt: number; alpha: number } {
+  const list = ropeOk ? SCENES : SCENES.slice(0, 3);
+  const total = list.reduce((a, b) => a + b, 0);
+  let lt = t % total;
+  let scene = 0;
+  while (lt >= list[scene]) lt -= list[scene++];
+  return { scene, lt, alpha: Math.min(1, lt / 600, (list[scene] - lt) / 600) };
+}
+
+/** The wall: always the same. A different piece in every cell of an even grid, many cells left bare, filling the whole wall whatever its size. */
+export function drawGraffitiWall(c: CanvasRenderingContext2D, t: number, w: number, fill: boolean, topY: number): void {
+  x = c;
+  void t;
+  void fill;
+  const fenceY = 45;
+  const rows = Math.ceil((fenceY - topY) / CELL_H);
+  const cols = Math.ceil(w / CELL_W) + 1;
+  c.save();
+  c.beginPath();
+  c.rect(0, topY, w, fenceY - topY);
+  c.clip();
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) cell(i, j, fenceY);
   c.restore();
 }
 
 /** Paint on the fence and the guy with the can (draw after the fence). */
-export function drawGraffitiFront(c: CanvasRenderingContext2D, t: number, w: number): void {
+export function drawGraffitiFront(c: CanvasRenderingContext2D, t: number, w: number, topY: number): void {
   x = c;
-  const { scene, lt, alpha } = which(t);
+  const { scene, lt, alpha } = which(t, 45 - topY >= ROPE_MIN_WALL);
   const base0 = Math.round(w / 2 - TILE / 2);
   c.save();
   c.globalAlpha = alpha;
+  if (scene === 3 || scene === 4) {
+    (scene === 3 ? frontRope : frontChair)(t, lt, alpha, w, topY);
+    c.restore();
+    return;
+  }
   if (scene === 1) {
     for (let k = -3; k <= 3; k++) {
       const bx = base0 + k * TILE;

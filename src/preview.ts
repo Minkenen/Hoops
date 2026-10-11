@@ -13,6 +13,12 @@ const BALL_X = 205;
 
 let hoopSp: HoopSprite | null = null;
 
+/** Show another look than the current settings in the preview (a theme you are only looking at). */
+let override: { ballSkin: string; courtSkin: string; crowd: string } | null = null;
+export function setPreviewOverride(o: { ballSkin: string; courtSkin: string; crowd: string } | null): void {
+  override = o;
+}
+
 /** Live preview of the scene (crowd, court, hoop, ball) for the Appearance window. */
 export class Preview {
   static readonly W = W;
@@ -43,16 +49,19 @@ export class Preview {
 
   private draw(now: number): void {
     const c = this.ctx;
+    const ballSkin = (override?.ballSkin ?? settings.ballSkin) as typeof settings.ballSkin;
+    const courtSkin = (override?.courtSkin ?? settings.courtSkin) as typeof settings.courtSkin;
+    const crowdStyle = (override?.crowd ?? settings.crowd) as typeof settings.crowd;
     hoopSp ??= makeHoopSprite("left");
     const sp = hoopSp;
-    if (this.courtKey !== settings.courtSkin) {
-      this.court = makeCourtSprite("left", W, settings.courtSkin);
-      this.courtKey = settings.courtSkin;
+    if (this.courtKey !== courtSkin) {
+      this.court = makeCourtSprite("left", W, courtSkin);
+      this.courtKey = courtSkin;
     }
-    if (this.ballKey !== settings.ballSkin + settings.crowd + settings.arenaFill) {
-      const s = BALL_SKINS.find((k) => k.id === settings.ballSkin) ?? BALL_SKINS[0];
-      this.ball = makeBallFrame(s.pal, s.seam, settings.crowd === "arena" ? Math.max(-0.8, Math.min(0.8, (W / 2 - BALL_X) / (this.crowd.keyH(FLOOR, settings.arenaFill) * 1.6))) : -0.5);
-      this.ballKey = settings.ballSkin + settings.crowd + settings.arenaFill;
+    if (this.ballKey !== ballSkin + crowdStyle + settings.arenaFill) {
+      const s = BALL_SKINS.find((k) => k.id === ballSkin) ?? BALL_SKINS[0];
+      this.ball = makeBallFrame(s.pal, s.seam, crowdStyle === "arena" ? Math.max(-0.8, Math.min(0.8, (W / 2 - BALL_X) / (this.crowd.keyH(FLOOR, settings.arenaFill) * 1.6))) : -0.5);
+      this.ballKey = ballSkin + crowdStyle + settings.arenaFill;
     }
     const bottom = settings.court ? FLOOR + BASE_CENTER[settings.baseSkin] - 2 : H;
     const y0 = Math.max(RIM_Y, sp.rimY + 4) - sp.rimY;
@@ -68,16 +77,16 @@ export class Preview {
     if (settings.court && this.court) {
       const top = FLOOR - Math.round(this.court.cy);
       this.crowd.setBall(BALL_X, FLOOR, FLOOR - 10.5);
-      this.crowd.draw(c, settings.crowd, now, W, top + 1, settings.arenaFill);
+      this.crowd.draw(c, crowdStyle, now, W, top + 1, settings.arenaFill);
       c.drawImage(this.court.canvas, 0, top);
-      if (settings.crowd === "arena") this.crowd.arenaFloor(c, now, W, top, this.court.h);
+      if (crowdStyle === "arena") this.crowd.arenaFloor(c, now, W, top, this.court.h);
     }
     c.drawImage(this.pole!, -sp.shiftX, y0 - sp.shiftY);
     c.drawImage(sp.canvas, 0, y0);
     this.net?.draw(c, "back");
     const bx = Math.round(BALL_X - 11.5);
     const by = Math.round(FLOOR - 10.5 - 11.5);
-    const lit = settings.court && settings.crowd === "arena";
+    const lit = settings.court && crowdStyle === "arena";
     const tl = (BALL_X - W / 2) / this.crowd.keyH(FLOOR, settings.arenaFill);
     const srx = 9 + (lit ? 10 * Math.abs(tl) * 1.3 : 0);
     const off = lit ? Math.round(10 * tl * 0.8) + Math.sign(tl) * 3 : 0;

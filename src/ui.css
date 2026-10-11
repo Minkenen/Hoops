@@ -90,3 +90,23 @@
 .ach-toast .n{font-size:18px;font-weight:500}
 @keyframes achIn{from{transform:translateY(-200px);opacity:0}to{transform:none;opacity:1}}
 @keyframes achOut{to{transform:translateY(-30px);opacity:0}}
+
+#ui .two{display:grid;grid-template-columns:170px 1fr;gap:12px;margin:8px 0}
+#ui .tlist{display:flex;flex-direction:column;gap:6px}
+#ui .trow{display:flex;align-items:center;gap:8px;text-align:left;background:var(--btn);padding:5px 8px;
+  box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .trow.on{background:var(--acc);color:#1c1c22}
+#ui .trow.lk .tsw{filter:saturate(.45) brightness(.7)}
+#ui .trow .tsw{width:34px;height:20px;border:2px solid #1c1c22;flex:none}
+#ui .trow .tn{flex:1;font-size:14px}
+#ui .trow .pr{display:flex;align-items:center;gap:4px;color:#ffc83a;font-size:12px}
+#ui .trow.on .pr{color:#1c1c22}
+#ui .tbig .prev{width:100%;height:auto}
+#ui .thead{display:flex;justify-content:space-between;align-items:center;margin:8px 0 2px}
+#ui .thead b{font-weight:500;font-size:16px}
+#ui .badge{display:inline-flex;align-items:center;gap:4px;background:#12141c;color:#ffc83a;padding:1px 6px;font-size:12px;
+  box-shadow:-1px 0 0 var(--o),1px 0 0 var(--o),0 -1px 0 var(--o),0 1px 0 var(--o)}
+#ui .badge.free{color:#5de06a}
+#ui .pb.buy{background:#ffc83a;color:#1c1c22;display:inline-flex;align-items:center;gap:6px}
+#ui .lnk{color:var(--mut);text-decoration:underline;font-size:12px;padding:0}
+#ui .note{display:flex;gap:6px;align-items:center;color:var(--mut);font-size:12px;background:rgba(255,255,255,.05);padding:6px 8px;margin-top:6px}

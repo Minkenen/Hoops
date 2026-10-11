@@ -16,6 +16,8 @@ export type Sfx =
   | "levelup"
   | "achievement"
   | "achievement2"
+  | "ignite"
+  | "extinguish"
   | "gasp"
   | "crowd"
   | "appear"
@@ -92,6 +94,8 @@ const GROUP: Record<Sfx, "sfxBounce" | "sfxShoot" | "sfxGoal" | "sfxMilestone" |
   levelup: "sfxMilestone",
   achievement: "sfxAchievement",
   achievement2: "sfxAchievement",
+  ignite: "sfxGoal",
+  extinguish: "sfxGoal",
   gasp: "sfxGoal",
   appear: "sfxUi",
   ui: "sfxUi",

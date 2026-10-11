@@ -14,6 +14,7 @@ import {
   setOverFullscreen,
 } from "./ipc";
 import { preloadSounds } from "./audio";
+import { enforceOwned } from "./purchases";
 import { onSettingChange, settings } from "./settings";
 import { UI } from "./ui";
 
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
   const cv = document.getElementById("game") as HTMLCanvasElement;
   const host = document.getElementById("ui") as HTMLElement;
   const ui = new UI(host);
+  enforceOwned();
   const game = new Game(cv, me, monitors);
   ui.attach(game);
   game.ui = ui;

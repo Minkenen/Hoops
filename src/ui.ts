@@ -1,9 +1,11 @@
 import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
 import { openExternal, type Rect, quitApp } from "./ipc";
-import { getScore, setOnboarded, setSetting, settings } from "./settings";
+import { getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
-import { Preview } from "./preview";
+import { Preview, setPreviewOverride } from "./preview";
+import { isItemOwned, isOwned } from "./purchases";
+import { THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, getStats } from "./stats";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
@@ -11,6 +13,8 @@ type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements
 type DonateVariant = "button" | "footer";
 
 const DONATE_URL = "https://ko-fi.com/hoopsgame";
+/** Placeholder until the real checkout link (Lemon Squeezy) is ready. */
+const PREMIUM_URL = "https://minkenen.github.io/Hoops/";
 const DONATE_AB_KEY = "hoops.donate.ab";
 
 const isMac = /Mac/i.test(navigator.platform);
@@ -87,7 +91,9 @@ export class UI {
   view: View = "none";
   private step = 0;
   private resetDialog = false;
+  private premiumDialog = false;
   private toastMsg = "";
+  private viewTheme: ThemeId | null = null;
   private game!: Game;
   private awayTimer = 0;
   private donateVariant: DonateVariant = "button";
@@ -136,6 +142,7 @@ export class UI {
   close(): void {
     this.view = "none";
     this.resetDialog = false;
+    this.premiumDialog = false;
     this.render();
   }
 
@@ -264,10 +271,9 @@ ${this.row("Footer panel", `<span class="val">${f.clicks}/${f.views}</span>`, ra
 <div class="row" style="padding:2px 0"><span class="lb">Score</span><b class="score">${getScore()}</b></div><div class="hr"></div>
 ${this.row("Aim line", this.seg("arrow", [["arrow", "Arrow"], ["dots", "Dotted"]]))}
 ${this.row("Sound", this.tog("sound"))}
-${this.row("Ball size", this.seg("ballScale", [[2, "S"], [3, "M"], [4, "L"]]))}
 <div class="hr"></div>
-<button class="pb full" data-a="ach">Achievements…</button>
 <button class="pb full" data-a="cos">Appearance…</button>
+<button class="pb full" data-a="ach">Achievements…</button>
 <button class="pb full" data-a="inst">Settings…</button>
 ${this.donateHtml()}
 <button class="pb full danger" data-a="quit">Quit Hoops</button></div>`;
@@ -279,6 +285,7 @@ ${this.donateHtml()}
 <div class="wb">
 <div class="h4">Game</div>
 ${this.row("Keep the court open", this.tog("stayOpen"), "Click outside the ball or press Esc to close")}
+${this.row("Ball on fire", this.seg("fireStyle", [["pop", "Fireball"], ["shatter", "Shatter"]]), "How the ball lights up after three goals in a row")}
 ${this.row("Line while aiming", this.seg("arrow", [["arrow", "Arrow"], ["dots", "Dotted"]]))}
 ${this.row("Confetti", this.sld("confetti", 0, 300, 10))}
 ${this.row("Score bubble", this.sld("bubble", 1, 5, 0.5), "How long it stays")}
@@ -287,8 +294,8 @@ ${this.row("Volume", this.sld("volume", 0, 1, 0.05))}
 <button class="pb full" data-a="snd" style="margin-top:6px">Advanced sound…</button>
 <button class="pb full" data-a="mile">Play a milestone</button>
 <button class="pb full" data-a="achtest">Play an achievement</button>
+<button class="pb full" data-a="firetest">Light or put out the ball</button>
 <div class="h4">Appearance</div>
-${this.row("Ball size", this.seg("ballScale", [[2, "Small"], [3, "Medium"], [4, "Large"]]), "Visible on the ball right away")}
 ${this.row("Basketball court", this.tog("court"), "Shown while aiming")}
 <button class="pb full" data-a="cos" style="margin-top:6px">Edit appearance…</button>
 <div class="h4">System</div>
@@ -298,6 +305,20 @@ ${this.row("Menu shortcut", SHORTCUT)}
 ${this.donateStatsHtml()}
 <div class="acts"><button class="pb" data-a="reset">Reset score</button><button class="pb danger" data-a="quit">Quit Hoops</button></div>
 </div></div>`;
+  }
+
+  private premiumDialogHtml(): string {
+    return `<div class="confirm-wrap" data-hit>
+<div class="px confirm">
+<div class="h4" style="margin-top:0">${this.lockIcon()} Unlock Premium Courts</div>
+<div class="hn">One payment unlocks every premium theme with its court, ball and crowd. No subscription.</div>
+<div class="acts" style="flex-direction:column;align-items:stretch">
+<button class="pb buy" data-a="buypremium" style="justify-content:center">Buy Premium Courts</button>
+<button class="pb" data-a="havepremium">I already bought this</button>
+<button class="lnk" data-a="notnow" style="align-self:center">Not now</button>
+</div>
+</div>
+</div>`;
   }
 
   private resetDialogHtml(): string {
@@ -316,23 +337,93 @@ ${this.donateStatsHtml()}
     return `<button class="tile${on ? " on" : ""}" data-a="set" data-k="${k}" data-v="${id}">${preview}<b>${name}</b>${desc ? `<span>${desc}</span>` : ""}</button>`;
   }
 
+  private pixIcon(rows: string[], cols: string[], sz = 2): string {
+    let r = "";
+    rows.forEach((row, j) => [...row].forEach((c, i) => c !== "." && (r += `<rect x="${i}" y="${j}" width="1" height="1" fill="${cols[Number(c) - 1]}"/>`)));
+    return `<svg width="${rows[0].length * sz}" height="${rows.length * sz}" viewBox="0 0 ${rows[0].length} ${rows.length}" style="shape-rendering:crispEdges;display:block">${r}</svg>`;
+  }
+
+  private lockIcon(sz = 2): string {
+    return this.pixIcon(["...1111...", "..11..11..", "..11..11..", "..11..11..", ".22222222.", ".22222222.", ".22211222.", ".22211222.", ".22222222.", ".22222222."], ["#ffc83a", "#ffc83a"], sz);
+  }
+
+  private coinIcon(sz = 2): string {
+    const rows: string[] = [];
+    for (let j = -4; j <= 4; j++) {
+      let r = "";
+      for (let i = -4; i <= 4; i++) {
+        const d = i * i + j * j;
+        r += d > 17 ? "." : d > 10 ? "1" : i === 0 && j > -3 && j < 3 ? "3" : "2";
+      }
+      rows.push(r);
+    }
+    return this.pixIcon(rows, ["#a8791a", "#ffd84a", "#fff6c0"], sz);
+  }
+
+  private checkIcon(sz = 2): string {
+    return this.pixIcon(["........1", ".......11", "1.....11.", "11...11..", ".11.11...", "..111....", "...1....."], ["#1c1c22"], sz);
+  }
+
+  private priceBadge(price: string | null): string {
+    return price ? `<span class="badge">${this.coinIcon()}PREMIUM</span>` : `<span class="badge free">FREE</span>`;
+  }
+
+  private applyTheme(id: ThemeId): void {
+    const t = themeById(id);
+    setSetting("ballSkin", t.ball);
+    setSetting("courtSkin", t.court);
+    setSetting("crowd", t.crowd);
+    setSetting("theme", id);
+    this.viewTheme = null;
+  }
+
   private cosmeticsHtml(): string {
-    const balls = BALL_SKINS.map((s) =>
-      this.skinTile("ballSkin", s.id, s.name, `<i class="sw ball" style="background:radial-gradient(circle at 35% 30%,${s.pal[2]},${s.pal[1]} 55%,${s.pal[0]})"></i>`),
-    ).join("");
-    const courts = COURT_SKINS.map((s) =>
-      this.skinTile("courtSkin", s.id, s.name, `<i class="sw plan" style="background:linear-gradient(90deg,${s.zone[0]} 0 38%,${s.wood[0]} 38% 69%,${s.wood[1]} 69%)"></i>`),
-    ).join("");
-    const crowds = CROWD_STYLES.map((s) => this.skinTile("crowd", s.id, s.name, "", s.description)).join("");
+    const view = themeById(this.viewTheme ?? settings.theme);
+    const using = !this.viewTheme || this.viewTheme === settings.theme;
+    setPreviewOverride(using ? null : { ballSkin: view.ball, courtSkin: view.court, crowd: view.crowd });
+    const cur = themeById(settings.theme);
+    const custom = cur.ball !== settings.ballSkin || cur.court !== settings.courtSkin || cur.crowd !== settings.crowd;
+    const row = (t: (typeof THEMES)[number]): string => {
+      const own = isOwned(t.id);
+      const sk = COURT_SKINS.find((s) => s.id === t.court);
+      const sw = sk ? `background:linear-gradient(90deg,${sk.zone[0]} 0 38%,${sk.wood[0]} 38% 69%,${sk.wood[1]} 69%)` : "";
+      const right = settings.theme === t.id ? this.checkIcon() : own ? "" : `<span class="pr">${this.lockIcon()}Premium</span>`;
+      return `<button class="trow${view.id === t.id ? " on" : ""}${own ? "" : " lk"}" data-a="viewtheme" data-v="${t.id}"><i class="tsw" style="${sw}"></i><span class="tn">${t.name}</span>${right}</button>`;
+    };
+    const action = isOwned(view.id)
+      ? settings.theme === view.id
+        ? `<button class="pb on">In use</button>`
+        : `<button class="pb on" data-a="usetheme" data-v="${view.id}">Use theme</button>`
+      : `<button class="pb buy" data-a="premium">${this.lockIcon()} Unlock Premium</button>`;
+    const ballName = BALL_SKINS.find((s) => s.id === view.ball)?.name ?? "";
+    const courtName = COURT_SKINS.find((s) => s.id === view.court)?.name ?? "";
+    const crowdName = CROWD_STYLES.find((s) => s.id === view.crowd)?.name ?? "";
+    const balls = BALL_SKINS.filter((s) => isItemOwned("ball", s.id))
+      .map((s) => this.skinTile("ballSkin", s.id, s.name, `<i class="sw ball" style="background:radial-gradient(circle at 35% 30%,${s.pal[2]},${s.pal[1]} 55%,${s.pal[0]})"></i>`))
+      .join("");
+    const courts = COURT_SKINS.filter((s) => isItemOwned("court", s.id))
+      .map((s) => this.skinTile("courtSkin", s.id, s.name, `<i class="sw plan" style="background:linear-gradient(90deg,${s.zone[0]} 0 38%,${s.wood[0]} 38% 69%,${s.wood[1]} 69%)"></i>`))
+      .join("");
+    const crowds = CROWD_STYLES.filter((s) => isItemOwned("crowd", s.id))
+      .map((s) => this.skinTile("crowd", s.id, s.name, "", s.description))
+      .join("");
     const bases = BASE_SKINS.map((s) => this.skinTile("baseSkin", s.id, s.name, "")).join("");
-    return `<div class="px win" data-hit style="width:min(520px,94vw)">
+    const lockedAny = THEMES.some((t) => !isOwned(t.id));
+    return `<div class="px win" data-hit style="width:min(600px,94vw)">
 <div class="wt"><span>Appearance</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
 <div class="wb">
-<canvas class="prev" id="prev" width="${Preview.W}" height="${Preview.H}" aria-label="Preview"></canvas><div class="hn" style="margin:4px 0 0">Click the preview to hear the crowd cheer</div>
-<div class="h4">Ball</div><div class="tiles w">${balls}</div>
+<div class="two"><div class="tlist">${THEMES.map(row).join("")}</div>
+<div class="tbig"><canvas class="prev" id="prev" width="${Preview.W}" height="${Preview.H}" aria-label="Preview"></canvas>
+<div class="thead"><b>${view.name}</b>${this.priceBadge(view.price)}</div>
+<div class="hn">${crowdName}, ${courtName}, ${ballName} ball</div>
+<div class="acts" style="margin-top:6px">${action}</div></div></div>
+${lockedAny ? `<div class="acts"><button class="lnk" data-a="premium">Unlock all premium themes</button></div>` : ""}
+<div class="h4">Your look${custom ? " (custom)" : ""}</div>
+<div class="h4" style="margin-top:2px">Ball</div><div class="tiles w">${balls}</div>
 <div class="h4">Court</div>${this.row("Show court", this.tog("court"), "While aiming")}<div class="tiles w">${courts}</div>
 <div class="h4">Crowd</div>${this.row("Fill the screen", this.tog("arenaFill"), "Crowd and arena reach the top")}<div class="tiles w">${crowds}</div>
 <div class="h4">Pole base</div><div class="tiles w">${bases}</div>
+${lockedAny ? `<div class="note">${this.lockIcon()}<span>More choices appear when you unlock more themes.</span></div>` : ""}
 <div class="acts"><button class="pb" data-a="inst">Settings…</button></div>
 </div></div>`;
   }
@@ -402,6 +493,7 @@ ${rows}
   }
 
   render(): void {
+    if (this.view !== "cosmetics") setPreviewOverride(null);
     let html = "";
     if (this.view === "menu") html = this.menuHtml();
     else if (this.view === "settings") html = this.settingsHtml();
@@ -413,6 +505,7 @@ ${rows}
       html = `<div class="catch" data-hit data-a="dismiss"></div>${html}`;
     }
     if (this.resetDialog) html += this.resetDialogHtml();
+    if (this.premiumDialog) html += this.premiumDialogHtml();
     if (this.toastMsg) html += `<div class="px toast">${this.toastMsg}</div>`;
     this.host.innerHTML = html;
     const pv = this.host.querySelector<HTMLCanvasElement>("#prev");
@@ -439,8 +532,9 @@ ${rows}
     if (a !== "dismiss") play("ui");
     switch (a) {
       case "dismiss":
-        if (this.resetDialog) {
+        if (this.resetDialog || this.premiumDialog) {
           this.resetDialog = false;
+          this.premiumDialog = false;
           this.render();
           break;
         }
@@ -448,6 +542,34 @@ ${rows}
         break;
       case "set":
         if (k) setSetting(k, (Number.isNaN(Number(v)) ? v : Number(v)) as never);
+        if (k === "ballSkin" || k === "courtSkin" || k === "crowd") this.viewTheme = null;
+        this.render();
+        break;
+      case "viewtheme":
+        this.viewTheme = v as ThemeId;
+        this.render();
+        break;
+      case "usetheme":
+        this.applyTheme(v as ThemeId);
+        this.render();
+        break;
+      case "premium":
+        this.premiumDialog = true;
+        this.render();
+        break;
+      case "buypremium":
+        void openExternal(PREMIUM_URL).catch(() => {
+          window.open(PREMIUM_URL, "_blank", "noopener,noreferrer");
+        });
+        break;
+      case "havepremium":
+        // Dev stand-in: trusts the button until license keys can be checked.
+        setPremiumUnlocked(true);
+        this.premiumDialog = false;
+        this.toast("Premium unlocked");
+        break;
+      case "notnow":
+        this.premiumDialog = false;
         this.render();
         break;
       case "tog":
@@ -469,6 +591,9 @@ ${rows}
         break;
       case "mile":
         this.game.previewMilestone();
+        break;
+      case "firetest":
+        this.game.previewFire();
         break;
       case "achtest":
         this.game.previewAchievement();

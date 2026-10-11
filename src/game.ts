@@ -1,7 +1,8 @@
 import { MAXPULL, drawAim, geff, maxSpeed } from "./aim";
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { play } from "./audio";
-import { type Achievement, recordGoal, recordMiss, recordThrow } from "./stats";
+import { BallFire } from "./fire";
+import { type Achievement, getStats, recordGoal, recordHeroDown, recordMiss, recordThrow } from "./stats";
 import { Confetti } from "./confetti";
 import { Crowd } from "./crowd";
 import { clamp, layer, rnd, text, textWidth } from "./draw";
@@ -98,6 +99,14 @@ export class Game {
   private bubble: { t0: number; cx: number; top: number } | null = null;
   private confetti = new Confetti();
   private milestone = new Milestone();
+  private fire = new BallFire();
+  private fireAt = 0;
+  private burning = getStats().streak >= 3;
+  /** The flames are lit: the streak is alive and the scene is up. */
+  private fireOn = false;
+  /** This shot has already counted as a goal or a miss. */
+  private shotResolved = false;
+  private sceneWasUp = false;
   private ballFrames = this.buildBall();
   private lightFrames = new Map<number, HTMLCanvasElement[]>();
   private crowd = new Crowd();
@@ -445,6 +454,7 @@ export class Game {
       this.floorHit = false;
       this.bounces = 0;
       this.shot = true;
+      this.shotResolved = false;
       this.hideAt = null;
       this.announce(recordThrow());
       addShot();
@@ -575,6 +585,8 @@ export class Game {
       !!this.hoop ||
       this.confetti.active ||
       this.milestone.active ||
+      this.fire.active() ||
+      this.crowd.skyBusy() ||
       (!!this.bubble && now - this.bubble.t0 < settings.bubble * 1000)
     );
   }
@@ -686,11 +698,8 @@ export class Game {
     b.moving = false;
     b.entering = false;
     if (this.shot) {
+      if (!b.scored) this.markMiss();
       this.shot = false;
-      if (!b.scored) {
-        recordMiss();
-        pushLast10(false);
-      }
       const soon = now + 600;
       this.hideAt = this.hideAt === null ? now + 700 : Math.min(this.hideAt, soon);
     }
@@ -856,6 +865,9 @@ export class Game {
       if (py > h.rimY && b.y <= h.rimY && b.vy < 0 && b.x > l && b.x < r) b.noScore = true;
       if (!b.scored && !b.noScore && py < h.rimY && b.y >= h.rimY && b.vy > 0 && b.x > l + 1 && b.x < r - 1) {
         this.goal(h);
+      } else if (!b.scored && b.vy > 0 && b.y > h.rimY + 30) {
+        // Fell past the net without going in: that was a miss, and the fire goes out right away.
+        this.markMiss();
       }
     }
     if (h) {
@@ -883,7 +895,9 @@ export class Game {
       b.y = fy;
       b.noScore = false;
       if (b.vy > 1.2) {
+        if (!b.scored) this.markMiss();
         play("bounce", clamp(b.vy / 9, 0.2, 1));
+        if (this.burning) this.fire.bounce(b.x, b.y);
         // First bounces as before, then they die out faster so hard shots do not make you wait.
         const e = this.bounces < 2 ? 0.74 : Math.max(0.35, 0.62 - (this.bounces - 2) * 0.1);
         this.bounces++;
@@ -947,6 +961,24 @@ export class Game {
   private demoN = 0;
 
   /** Plays a milestone the way it looks and sounds in a game, without touching the score. */
+  /** Lights the ball the way a third goal in a row does, or puts it out again. */
+  previewFire(): void {
+    if (!this.active) return;
+    this.ui.close();
+    if (this.burning) {
+      this.burning = false;
+      this.fireOn = false;
+      this.putOutFire(this.ball.x, this.ball.y);
+    } else {
+      this.burning = true;
+      this.fireOn = true;
+      this.fire.mode = settings.fireStyle;
+      this.fire.ignite();
+      play("ignite");
+    }
+    this.start();
+  }
+
   previewAchievement(): void {
     this.ui.showAchievement("Nothing but net");
     play("achievement");
@@ -992,9 +1024,30 @@ export class Game {
     next();
   }
 
+  /** The fire on the ball goes out, with smoke and a hiss. */
+  private putOutFire(x: number, y: number): void {
+    this.fire.extinguish(x, y);
+    play("extinguish");
+  }
+
+  /** The shot missed: the streak ends and the fire is put out at once. */
+  private markMiss(): void {
+    if (!this.shot || this.shotResolved) return;
+    this.shotResolved = true;
+    const b = this.ball;
+    recordMiss();
+    pushLast10(false);
+    if (this.burning) {
+      this.burning = false;
+      this.fireOn = false;
+      this.putOutFire(b.x, b.y);
+    }
+  }
+
   private goal(h: Hoop): void {
     const b = this.ball;
     b.scored = true;
+    this.shotResolved = true;
     b.postGoal = true;
     this.gaspAt = 0;
     pushLast10(true);
@@ -1007,6 +1060,14 @@ export class Game {
         far: this.shotFar,
       }),
     );
+    // The ball catches fire on the third goal in a row.
+    if (getStats().streak === 3) {
+      this.burning = true;
+      this.fireOn = true;
+      this.fire.mode = settings.fireStyle;
+      this.fire.ignite();
+      play("ignite");
+    }
     h.net.impulse(rnd(-0.25, 0.25), 0.3);
     this.hideAt = performance.now() + 1500;
     const s = getScore() + 1;
@@ -1037,6 +1098,10 @@ export class Game {
     const ctx = this.ctx;
     ctx.globalAlpha = 1;
     ctx.clearRect(0, 0, this.artW, this.artH);
+    // A short camera shake when the ball explodes.
+    const [shx, shy] = this.fire.shake();
+    ctx.save();
+    ctx.translate(shx, shy);
     const b = this.ball;
 
     const ch = this.hoop;
@@ -1081,12 +1146,40 @@ export class Game {
 
     this.confetti.draw(ctx);
 
+    if (this.ball.moving && this.crowd.shootAtHero(settings.crowd, b.x, b.y, BALL_R)) {
+      this.announce(recordHeroDown());
+      play("boom", 0.9);
+    }
+    const fdt = Math.min(0.033, (now - (this.fireAt || now)) / 1000);
+    this.fireAt = now;
+    // The fire goes out with the scene (smoke) and catches again when you grab the ball and the scene returns.
+    const sceneUp = !!this.hoop && this.hoop.phase !== "out";
+    if (this.burning && sceneUp !== this.sceneWasUp) {
+      if (sceneUp) {
+        this.fireOn = true;
+        this.fire.relight();
+      } else if (this.fireOn) {
+        this.fireOn = false;
+        this.putOutFire(b.x, b.y);
+      }
+    }
+    this.sceneWasUp = sceneUp;
+    this.fire.update(fdt, { x: b.x, y: b.y, vx: b.vx * 60, vy: b.vy * 60 }, this.floorY, this.burning && this.fireOn);
+    this.fire.drawBack(ctx);
+
     const turns = ((b.ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-    ctx.drawImage(
-      this.framesFor(!!this.hoop && settings.court && settings.crowd === "arena", b.x)[Math.round((turns / (2 * Math.PI)) * BALL_FRAMES) % BALL_FRAMES],
-      Math.round(b.x - BALL_SPRITE_SIZE / 2),
-      Math.round(b.y - BALL_SPRITE_SIZE / 2),
-    );
+    const bs = BALL_SPRITE_SIZE * this.fire.scale();
+    if (this.fire.visible())
+      ctx.drawImage(
+        this.framesFor(!!this.hoop && settings.court && settings.crowd === "arena", b.x)[Math.round((turns / (2 * Math.PI)) * BALL_FRAMES) % BALL_FRAMES],
+        Math.round(b.x - bs / 2),
+        Math.round(b.y - bs / 2),
+        Math.round(bs),
+        Math.round(bs),
+      );
+
+    this.fire.drawFront(ctx);
+    this.fire.overlay(ctx, this.artW, this.artH);
 
     if (h) {
       h.net.draw(ctx, "front");
@@ -1109,6 +1202,7 @@ export class Game {
       }
     }
     this.milestone.draw(ctx);
+    ctx.restore();
   }
 
   private drawBubble(e: number, dur: number): void {

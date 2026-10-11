@@ -28,7 +28,7 @@ export const BALL_SKINS: BallSkin[] = [
   { id: "night", name: "Night", pal: ["#2a2d38", "#4a4f5e", "#8a91a6"], seam: "#c9cfdd" },
 ];
 
-export type CourtSkinId = "parquet" | "arena" | "blacktop" | "worn" | "concrete";
+export type CourtSkinId = "parquet" | "arena" | "blacktop" | "worn" | "concrete" | "roofday" | "roofnight" | "roofcanyon";
 export interface CourtSkin {
   id: CourtSkinId;
   name: string;
@@ -84,9 +84,40 @@ export const COURT_SKINS: CourtSkin[] = [
     hi: "#d3d1c6",
     slab: "#8a897f",
     tex: { grain: ["#b7b5ab", "#bebcb1", "#c4c2b7", "#aeaca2"], weights: [0.3, 0.35, 0.2, 0.15], joints: "tiles", cracks: 3, wear: 0.12, puddle: false, patches: 0, curb: false, edge: "#6fc47e" },
-  },];
+  },
+  {
+    id: "roofday",
+    name: "Train roof",
+    wood: ["#a9b4c6", "#b4bece"],
+    zone: ["#6a7a96", "#627290"],
+    line: "#ffffff",
+    hi: "#d6deea",
+    slab: "#7d8aa0",
+    tex: { grain: ["#a9b4c6", "#b0bace", "#b4bece", "#a0acbf"], weights: [0.3, 0.35, 0.2, 0.15], joints: "tiles", cracks: 0, wear: 0.06, puddle: false, patches: 0, curb: true, edge: "#8a95a8" },
+  },
+  {
+    id: "roofnight",
+    name: "Night roof",
+    wood: ["#343f62", "#3a466a"],
+    zone: ["#242c46", "#2a3252"],
+    line: "#d6e0ff",
+    hi: "#4a5a86",
+    slab: "#242c46",
+    tex: { grain: ["#343f62", "#38446a", "#3a466a", "#2f3a5a"], weights: [0.3, 0.35, 0.2, 0.15], joints: "tiles", cracks: 0, wear: 0.05, puddle: false, patches: 0, curb: true, edge: "#4a5a86" },
+  },
+  {
+    id: "roofcanyon",
+    name: "Canyon roof",
+    wood: ["#8f6a50", "#9a7458"],
+    zone: ["#6a4a38", "#74503c"],
+    line: "#ffe9c0",
+    hi: "#b08a6a",
+    slab: "#6a4a38",
+    tex: { grain: ["#8f6a50", "#967056", "#9a7458", "#86624a"], weights: [0.3, 0.35, 0.2, 0.15], joints: "tiles", cracks: 0, wear: 0.1, puddle: false, patches: 0, curb: true, edge: "#b08a6a" },
+  },
+];
 
-export type CrowdStyle = "stands" | "arena" | "led" | "street" | "city" | "park" | "none";
+export type CrowdStyle = "stands" | "arena" | "led" | "street" | "city" | "park" | "trainday" | "trainnight" | "traincanyon" | "none";
 export const CROWD_STYLES: { id: CrowdStyle; name: string; description: string }[] = [
   { id: "stands", name: "Crowd", description: "Six rows of fans that jump on goals" },
   { id: "arena", name: "Arena lights", description: "Dark arena with moving spotlights and a goal light show" },
@@ -94,5 +125,8 @@ export const CROWD_STYLES: { id: CrowdStyle; name: string; description: string }
   { id: "street", name: "Street fence", description: "Brick wall, graffiti and fans at a chain-link fence" },
   { id: "city", name: "Evening city", description: "Dusk skyline, lit windows and street lamps" },
   { id: "park", name: "Park", description: "Trees, clouds and fans on park benches" },
+  { id: "trainday", name: "Train: countryside", description: "Green hills and telephone poles rush past, a bullet train with two kung fu fighters runs alongside, and another train comes the other way" },
+  { id: "trainnight", name: "Train: night city", description: "A lit skyline, neon and rain, with a lit train roaring past" },
+  { id: "traincanyon", name: "Train: canyon", description: "Sunset over red mesas, a trestle bridge and tunnels" },
   { id: "none", name: "None", description: "Just the court" },
 ];

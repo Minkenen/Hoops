@@ -24,3 +24,5 @@ Supported formats: `.wav`, `.mp3`, `.ogg`, `.m4a`. If a file is missing, nothing
 | `ui`         | Click in the menu                                |
 | `achievement`  | Achievement unlocked: the ping |
 | `achievement2` | Achievement unlocked: plays together with `achievement` (the pop) |
+| `ignite` | The ball catches fire: the third goal in a row |
+| `extinguish` | The fire on the ball goes out (a miss, or the scene hiding) |

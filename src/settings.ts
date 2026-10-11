@@ -1,7 +1,10 @@
 import type { BallSkinId, CourtSkinId, CrowdStyle } from "./skins";
+import type { ThemeId } from "./themes";
 
 export interface Settings {
   arrow: "arrow" | "dots";
+  fireStyle: "pop" | "shatter";
+  theme: ThemeId;
   confetti: number;
   bubble: number;
   sound: boolean;
@@ -26,6 +29,8 @@ export interface Settings {
 
 const DEFAULTS: Settings = {
   arrow: "arrow",
+  fireStyle: "pop",
+  theme: "gym",
   confetti: 140,
   bubble: 2.5,
   sound: true,
@@ -146,6 +151,26 @@ export function isOnboarded(): boolean {
 export function setOnboarded(): void {
   try {
     localStorage.setItem(ONB_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+const PREMIUM_KEY = "hoops.premium";
+
+/** Whether the one-time Hoops Premium purchase is unlocked on this computer. */
+export function isPremiumUnlocked(): boolean {
+  try {
+    return localStorage.getItem(PREMIUM_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setPremiumUnlocked(v: boolean): void {
+  try {
+    if (v) localStorage.setItem(PREMIUM_KEY, "1");
+    else localStorage.removeItem(PREMIUM_KEY);
   } catch {
     /* ignore */
   }

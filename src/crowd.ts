@@ -1,3 +1,5 @@
+import { drawParkSky, heroHit, skyBusy } from "./parksky";
+import { drawTrain } from "./trainsky";
 import { drawGraffitiFront, drawGraffitiWall } from "./graffiti";
 import { LedScreen, SCREEN_NEEDS } from "./ledscreen";
 import type { CrowdStyle } from "./skins";
@@ -34,6 +36,24 @@ const FONT: Record<string, string[]> = {
   T: ["11111", "00100", "00100", "00100", "00100"],
   "!": ["00100", "00100", "00100", "00000", "00100"],
   "*": ["00000", "01010", "00100", "01010", "00000"],
+  B: ["11110", "10001", "11110", "10001", "11110"],
+  C: ["01111", "10000", "10000", "10000", "01111"],
+  D: ["11110", "10001", "10001", "10001", "11110"],
+  F: ["11111", "10000", "11110", "10000", "10000"],
+  J: ["00111", "00010", "00010", "10010", "01100"],
+  K: ["10010", "10100", "11000", "10100", "10010"],
+  Q: ["01110", "10001", "10101", "10010", "01101"],
+  R: ["11110", "10001", "11110", "10100", "10010"],
+  U: ["10001", "10001", "10001", "10001", "01110"],
+  Z: ["11111", "00010", "00100", "01000", "11111"],
+  "0": ["01110", "10011", "10101", "11001", "01110"],
+  "1": ["00100", "01100", "00100", "00100", "01110"],
+  ".": ["00000", "00000", "00000", "00000", "00100"],
+  ":": ["00000", "00100", "00000", "00100", "00000"],
+  ",": ["00000", "00000", "00000", "00100", "01000"],
+  "'": ["00100", "00100", "00000", "00000", "00000"],
+  "-": ["00000", "00000", "11111", "00000", "00000"],
+  "%": ["11001", "11010", "00100", "01011", "10011"],
   " ": ["00000", "00000", "00000", "00000", "00000"],
 };
 // Tiny 3 x 5 letters for the signs held by the small fans in the upper rows.
@@ -81,7 +101,28 @@ function carPixel(lx: number, ly: number, clean: boolean, t: number): string | n
   if (clean) return ly === 2 && lx >= 3 && lx <= 10 ? "#8cc4ff" : "#2f7fd6";
   return adHash(lx, ly) < 0.3 ? "#4e3622" : "#7a5a38";
 }
-const LED_TEXT = "HOOPS * GOAL! * HOOPS * ";
+/** The banners joke around until there is a goal; then they shout GOAL! */
+const JOKES = [
+  "NOTHING BUT NET. USUALLY.",
+  "AIR BALL INSURANCE: ASK US",
+  "SPONSORED BY GRAVITY",
+  "BRICKS ARE FOR WALLS",
+  "DRIBBLE RESPONSIBLY",
+  "WARNING: RIM MAY BITE",
+  "CALL YOUR COACH. HE IS WORRIED",
+  "LUCKY SOCKS NOT INCLUDED",
+  "BUY ONE BALL, GET GRAVITY FREE",
+  "THIS BANNER INTENTIONALLY LEFT BLANK",
+  "SMELLS LIKE TEAM SPIRIT",
+  "EAT PIZZA. SHOOT HOOPS.",
+  "HYDRATE. THEN MISS AGAIN.",
+  "MOM SAW THAT SHOT",
+  "SHOT CLOCK: YOUR LUNCH BREAK",
+  "YOUR AIM: 100% CONFIDENCE",
+];
+/** The same jokes in a different order for each banner, so they do not all say the same thing at once. */
+const JOKE_MSGS = [0, 5, 10, 3].map((shift) => JOKES.map((_, i) => JOKES[(i + shift) % JOKES.length]).join(" * ") + " * ");
+const GOAL_MSG = "GOAL! * GOAL! * GOAL! * ";
 
 const SH = ["#e8731f", "#f4f6fb", "#3a5493", "#9aa1ad", "#3fae5c", "#d94a6a"];
 
@@ -120,6 +161,9 @@ const hs = (a: number, b: number): number => {
 export class Crowd {
   private cheerAt = -1e9;
   private lastCh = 0;
+  /** Clock for the scrolling banners: speeds up on goals without making the text jump. */
+  private tc = 0;
+  private tcLast = 0;
   private fill = false;
 
   shotStart(now: number): void {
@@ -158,10 +202,14 @@ export class Crowd {
     const age = now - this.cheerAt;
     const ch = age >= 0 && age < 2200 ? Math.max(0, 1 - Math.max(0, age - 1500) / 700) : 0;
     this.lastCh = ch;
+    // The scrolling text runs three times as fast while a goal is celebrated.
+    this.tc += Math.min(100, Math.max(0, now - this.tcLast)) * (ch > 0 ? 3 : 1);
+    this.tcLast = now;
     this.fill = fill;
     if (style === "stands") this.stands(ctx, now, w, baseY, ch);
     else if (style === "arena") this.arenaBehind(ctx, now, w, baseY, ch);
     else if (style === "led") this.led(ctx, now, w, baseY, ch);
+    else if (style === "trainday" || style === "trainnight" || style === "traincanyon") this.train(ctx, now, w, baseY, style);
     else if (style === "street") this.street(ctx, now, w, baseY, ch);
     else if (style === "city") this.city(ctx, now, w, baseY, ch);
     else this.park(ctx, now, w, baseY, ch);
@@ -492,16 +540,18 @@ export class Crowd {
     const roofBottom = 22;
     const part = (baseY - roofBottom - 18) / 3;
     const boards: [number, number, string][] = [
-      [roofBottom + part + 9, 1, "HOOPS * GOAL! * "],
-      [roofBottom + 2 * part + 18, -1, "GOAL! * HOOPS * "],
+      [roofBottom + part + 9, 1, JOKE_MSGS[1]],
+      [roofBottom + 2 * part + 18, -1, JOKE_MSGS[2]],
     ];
-    for (const [bottom, dir, msg] of boards) {
+    for (const [bottom, dir, jokes] of boards) {
+      const msg = ch > 0 ? GOAL_MSG : jokes;
       const by = Math.round(bottom) - 1;
-      this.r(c, 0, by - 9, w, 9, DK);
-      this.r(c, 0, by - 8, w, 7, "#0e0f18");
+      const flashOn = ch > 0 && Math.floor(t / 110) % 2 === 0;
+      this.r(c, 0, by - 9, w, 9, flashOn ? "#e8731f" : DK);
+      this.r(c, 0, by - 8, w, 7, flashOn ? "#7a3a10" : "#0e0f18");
       this.r(c, 0, by - 8, w, 1, "#2a2e50");
       const adv = msg.length * 6;
-      const off = (((dir > 0 ? Math.floor(t / 50) : -Math.floor(t / 50)) % adv) + adv) % adv;
+      const off = (((dir > 0 ? Math.floor(this.tc / 50) : -Math.floor(this.tc / 50)) % adv) + adv) % adv;
       const col = ch > 0 && Math.floor(t / 120) % 2 ? "#fff6a0" : "#ff9a4a";
       for (let k = -1; k <= Math.ceil(w / adv) + 1; k++) {
         for (let j = 0; j < msg.length; j++) {
@@ -532,10 +582,18 @@ export class Crowd {
 
   private podA: HTMLCanvasElement | null = null;
 
-  private scrollText(c: CanvasRenderingContext2D, x: number, y: number, w: number, msg: string, t: number, col: string, dir: number): void {
-    this.r(c, x, y, w, 7, "#05060e");
+  private scrollText(c: CanvasRenderingContext2D, x: number, y: number, w: number, msg: string, col: string, dir: number): void {
+    // On a goal the band blinks with a blue glow around it.
+    const blink = this.lastCh > 0 && Math.floor(this.tc / 330) % 2 === 0;
+    if (blink) {
+      c.fillStyle = "rgba(80,160,255,0.28)";
+      c.fillRect(x - 3, y - 3, w + 6, 13);
+      c.fillStyle = "rgba(80,160,255,0.45)";
+      c.fillRect(x - 1, y - 1, w + 2, 9);
+    }
+    this.r(c, x, y, w, 7, blink ? "#1f4fb0" : "#05060e");
     const adv = msg.length * 6;
-    const off = (((Math.floor(t / 60) * dir) % adv) + adv) % adv;
+    const off = (((Math.floor(this.tc / 60) * dir) % adv) + adv) % adv;
     for (let k = -1; k <= Math.ceil(w / adv) + 1; k++) {
       for (let j = 0; j < msg.length; j++) {
         const g = FONT[msg[j]] ?? FONT[" "];
@@ -817,7 +875,7 @@ export class Crowd {
     }
     this.r(a, x0 - 28, 39, 56, 10, DK);
     this.r(a, x0 - 27, 40, 54, 8, "#0e1a2a");
-    this.scrollText(a, x0 - 27, 40, 54, "GOAL! * HOOPS * ", t, "#7fe0ff", -1);
+    this.scrollText(a, x0 - 27, 40, 54, ch > 0 ? GOAL_MSG : JOKE_MSGS[3], ch > 0 ? "#ffffff" : "#7fe0ff", -1);
     for (let y = 0; y < 6; y++) {
       const w2 = 56 - y * 4;
       const x = x0 - Math.floor(w2 / 2);
@@ -920,13 +978,15 @@ export class Crowd {
     }
     // LED-lista
     const y = baseY - 9;
-    this.r(c, 0, y, w, 9, DK);
-    this.r(c, 0, y + 1, w, 7, "#0e0f18");
-    const adv = LED_TEXT.length * 6;
-    const off = Math.floor(t / 60) % adv;
+    const flashOn = ch > 0 && Math.floor(t / 110) % 2 === 0;
+    this.r(c, 0, y, w, 9, flashOn ? "#e8731f" : DK);
+    this.r(c, 0, y + 1, w, 7, flashOn ? "#7a3a10" : "#0e0f18");
+    const ledMsg = ch > 0 ? GOAL_MSG : JOKE_MSGS[0];
+    const adv = ledMsg.length * 6;
+    const off = Math.floor(this.tc / 60) % adv;
     for (let k = -1; k <= Math.ceil(w / adv) + 1; k++) {
-      for (let i = 0; i < LED_TEXT.length; i++) {
-        const g = FONT[LED_TEXT[i]] ?? FONT[" "];
+      for (let i = 0; i < ledMsg.length; i++) {
+        const g = FONT[ledMsg[i]] ?? FONT[" "];
         const gx = 2 + k * adv + i * 6 - off;
         for (let rr = 0; rr < 5; rr++) {
           for (let cc = 0; cc < 5; cc++) {
@@ -935,6 +995,13 @@ export class Crowd {
         }
       }
     }
+  }
+
+  private train(c: CanvasRenderingContext2D, t: number, w: number, baseY: number, style: CrowdStyle): void {
+    c.save();
+    c.translate(0, baseY - 92);
+    drawTrain(c, style === "trainday" ? "day" : style === "trainnight" ? "night" : "canyon", t, w, this.fill ? -(baseY - 92) : 21);
+    c.restore();
   }
 
   private street(c: CanvasRenderingContext2D, t: number, w: number, baseY: number, ch: number): void {
@@ -949,7 +1016,7 @@ export class Crowd {
        for(let y=fy;y<88;y++)for(let x=0;x<w;x++){if(((x+y)%5===0)||((x-y+500)%5===0))this.r(c,x,y,1,1,'rgba(190,196,208,0.75)')}
        this.r(c,0,fy-1,w,2,DK);this.r(c,0,fy,w,1,'#c4cad4');for(let x=12;x<w;x+=48){this.r(c,x,fy-2,4,90-fy+2,DK);this.r(c,x+1,fy-1,2,90-fy,'#b8bec8')}
        this.r(c,0,88,w,4,'#8a8f99');this.r(c,0,88,w,1,DK);
-       drawGraffitiFront(c,t,w);
+       drawGraffitiFront(c,t,w,topFill);
        for(const x of[14,w-24]){this.person(c,x,92,x*3,t,ch,SH[x%4],false)}
     c.restore();
   }
@@ -972,11 +1039,12 @@ export class Crowd {
   }
 
   private park(c: CanvasRenderingContext2D, t: number, w: number, baseY: number, ch: number): void {
+    this.parkDy = baseY - 92;
     c.save();
     c.translate(0, baseY - 92);
     const top = 91 - 70;
        for(let y=this.fill?-(baseY-92):top;y<76;y++)this.r(c,0,y,w,1,y<top+30?'#9ed0ff':'#cfe9ff');if(!this.fill)this.r(c,0,top,w,1,DK);
-       for(let i=0;i<3;i++){const cx=((t/90+i*110)%(w+60))-30,cy=top+8+i*9;for(const[dx,dy,w] of[[0,0,20],[-6,3,14],[6,3,16],[0,5,26]])this.r(c,cx+dx,cy+dy,w,3,'#ffffff')}
+       drawParkSky(c,t,w,this.fill?-(baseY-92):top);
        for(let tx=30;tx<w+30;tx+=64){const sw=Math.round(Math.sin(t/700+tx)*1),ty=76;this.r(c,tx,ty-30,5,32,DK);this.r(c,tx+1,ty-30,3,31,'#7a4a2a');
         for(const[dx,dy,r] of[[2,-40,14],[-8,-34,10],[12,-34,10]]){for(let yy=-r;yy<=r;yy++)for(let xx=-r;xx<=r;xx++){const d=Math.hypot(xx,yy);if(d>r)continue;this.r(c,tx+dx+xx+sw,ty+dy+yy,1,1,d>r-1.2?DK:(xx+yy<-3?'#5ac878':'#2f8f4a'))}}}
        this.r(c,0,76,w,16,'#4aa35a');this.r(c,0,76,w,1,DK);for(let i=0;i<40;i++)this.r(c,Math.floor(hs(i,3)*w),78+Math.floor(hs(i,4)*12),2,1,'#6fc47e');
@@ -1161,6 +1229,19 @@ export class Crowd {
   }
 
   private screen = new LedScreen();
+  /** Where the park's local coordinates start on the screen. */
+  private parkDy = 0;
+
+  /** Does the ball (in screen art pixels) hit the flying hero in the Park theme's sky? */
+  shootAtHero(style: CrowdStyle, x: number, y: number, rad: number): boolean {
+    return style === "park" && heroHit(x, y - this.parkDy, rad);
+  }
+
+  /** Something in the sky is still going on (smoke, a falling hero), so keep drawing. */
+  skyBusy(): boolean {
+    return skyBusy();
+  }
+
   private liveSide: "left" | "right" = "right";
   private liveHx = -1;
   private liveRimY = 0;
