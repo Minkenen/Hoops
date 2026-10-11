@@ -2,7 +2,7 @@ import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
-import { getScore, setLicenseKey, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
+import { addLicense, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
 import { Preview, setPreviewOverride } from "./preview";
 import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
@@ -340,7 +340,7 @@ ${this.donateStatsHtml()}
     this.render();
     try {
       const result = await activateLicense(key);
-      setLicenseKey(key);
+      addLicense({ key, unlock: result.unlock, theme: result.theme_id });
       if (result.unlock === "all") {
         setPremiumUnlocked(true);
         this.toast("All Access unlocked");

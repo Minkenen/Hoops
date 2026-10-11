@@ -15,6 +15,7 @@ import {
 } from "./ipc";
 import { preloadSounds } from "./audio";
 import { enforceOwned } from "./purchases";
+import { recheckLicenses } from "./licensing";
 import { onSettingChange, settings } from "./settings";
 import { UI } from "./ui";
 
@@ -28,6 +29,7 @@ async function main(): Promise<void> {
   const host = document.getElementById("ui") as HTMLElement;
   const ui = new UI(host);
   enforceOwned();
+  if (me.index === 0) void recheckLicenses().then((changed) => changed && ui.refresh());
   const game = new Game(cv, me, monitors);
   ui.attach(game);
   game.ui = ui;

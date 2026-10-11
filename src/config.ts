@@ -15,10 +15,16 @@ export const PREMIUM_CHECKOUT_URL: string =
  * or pass them as VITE_THEME_*_URL when building.
  */
 export const THEME_CHECKOUT_URLS: Partial<Record<ThemeId, string>> = {
-  street: (import.meta.env.VITE_THEME_STREET_URL as string | undefined) ?? "",
-  arena: (import.meta.env.VITE_THEME_ARENA_URL as string | undefined) ?? "",
-  led: (import.meta.env.VITE_THEME_LED_URL as string | undefined) ?? "",
-  "train-day": (import.meta.env.VITE_THEME_TRAIN_DAY_URL as string | undefined) ?? "",
-  "train-night": (import.meta.env.VITE_THEME_TRAIN_NIGHT_URL as string | undefined) ?? "",
-  "train-canyon": (import.meta.env.VITE_THEME_TRAIN_CANYON_URL as string | undefined) ?? "",
+  street: (import.meta.env.VITE_THEME_STREET_URL as string | undefined) ??
+    "https://hoops.lemonsqueezy.com/checkout/buy/585a0c43-729e-4268-b7e8-530c86ab72db",
+  arena: (import.meta.env.VITE_THEME_ARENA_URL as string | undefined) ??
+    "https://hoops.lemonsqueezy.com/checkout/buy/60a540dc-2b71-48b1-9339-eac3bfe9acc1",
+  led: (import.meta.env.VITE_THEME_LED_URL as string | undefined) ??
+    "https://hoops.lemonsqueezy.com/checkout/buy/a1330903-22b6-4ae9-83fa-43ce4fc2c7ae",
+  "train-day": (import.meta.env.VITE_THEME_TRAIN_DAY_URL as string | undefined) ??
+    "https://hoops.lemonsqueezy.com/checkout/buy/f45143ed-d26c-4878-9cb6-7d86df7c50be",
+  "train-night": (import.meta.env.VITE_THEME_TRAIN_NIGHT_URL as string | undefined) ??
+    "https://hoops.lemonsqueezy.com/checkout/buy/fca9d28a-80c5-453f-a81f-bf271c0ea67b",
+  "train-canyon": (import.meta.env.VITE_THEME_TRAIN_CANYON_URL as string | undefined) ??
+    "https://hoops.lemonsqueezy.com/checkout/buy/50e23fe4-b77c-49b9-be13-68317e38f0fd",
 };

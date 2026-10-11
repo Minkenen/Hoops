@@ -179,28 +179,43 @@ export function setPremiumUnlocked(v: boolean): void {
   }
 }
 
-const LICENSE_KEY = "hoops.license";
+const LICENSES_KEY = "hoops.licenses";
 
-/** The license key that unlocked All Access on this computer, kept for later re-checks. */
-export function getLicenseKey(): string {
+/** A license key that was activated on this computer: All Access ("all") or one theme ("theme"). */
+export interface StoredLicense {
+  key: string;
+  unlock: "all" | "theme";
+  theme: string;
+}
+
+export function getLicenses(): StoredLicense[] {
   try {
-    return localStorage.getItem(LICENSE_KEY) ?? "";
+    const v = JSON.parse(localStorage.getItem(LICENSES_KEY) ?? "[]");
+    return Array.isArray(v) ? v : [];
   } catch {
-    return "";
+    return [];
   }
 }
 
-export function setLicenseKey(key: string): void {
+function saveLicenses(list: StoredLicense[]): void {
   try {
-    localStorage.setItem(LICENSE_KEY, key);
+    localStorage.setItem(LICENSES_KEY, JSON.stringify(list));
   } catch {
     /* ignore */
   }
 }
 
-export function clearLicenseKey(): void {
+export function addLicense(l: StoredLicense): void {
+  saveLicenses([...getLicenses().filter((x) => x.key !== l.key), l]);
+}
+
+export function removeLicense(key: string): void {
+  saveLicenses(getLicenses().filter((x) => x.key !== key));
+}
+
+export function clearLicenses(): void {
   try {
-    localStorage.removeItem(LICENSE_KEY);
+    localStorage.removeItem(LICENSES_KEY);
   } catch {
     /* ignore */
   }

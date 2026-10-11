@@ -44,6 +44,8 @@ export interface LicenseActivation {
 }
 /** Checks a Lemon Squeezy license key with the license server (done in Rust, never from the page). Rejects with a message to show. */
 export const activateLicense = (key: string): Promise<LicenseActivation> => invoke<LicenseActivation>("activate_license", { key });
+/** Asks the license server if a key is still good. Resolves false when it is not; rejects when the server cannot be reached. */
+export const validateLicense = (key: string): Promise<boolean> => invoke<boolean>("validate_license", { key });
 export const focusWindow = (): Promise<void> => getCurrentWindow().setFocus();
 export const quitApp = (): Promise<void> => invoke("quit_app");
 

@@ -389,6 +389,29 @@ async fn activate_license(key: String) -> Result<LicenseActivation, String> {
         .map_err(|e| e.to_string())?
 }
 
+fn lemon_validate(key: &str) -> Result<bool, String> {
+    let body: serde_json::Value = match ureq::post("https://api.lemonsqueezy.com/v1/licenses/validate")
+        .set("Accept", "application/json")
+        .send_form(&[("license_key", key)])
+    {
+        Ok(r) => r.into_json().map_err(|e| e.to_string())?,
+        Err(ureq::Error::Status(_, r)) => r.into_json().map_err(|e| e.to_string())?,
+        Err(_) => return Err("Could not reach the license server.".into()),
+    };
+    Ok(body["valid"].as_bool() == Some(true))
+}
+
+/// Checks that a license key is still valid (for example not refunded). An error means "could not tell", not "invalid".
+#[tauri::command]
+async fn validate_license(key: String) -> Result<bool, String> {
+    if cfg!(debug_assertions) && key == "HOOPS-TEST-KEY" {
+        return Ok(true);
+    }
+    tauri::async_runtime::spawn_blocking(move || lemon_validate(&key))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Opens or closes the Hoops menu on the visible overlays: the same thing the global shortcut does.
 fn toggle_menu(app: &AppHandle) {
     for (label, win) in app.webview_windows() {
@@ -454,6 +477,7 @@ pub fn run() {
             set_over_fullscreen,
             open_external,
             activate_license,
+            validate_license,
             quit_app
         ])
         .setup(|app| {

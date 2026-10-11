@@ -1,6 +1,6 @@
 // Which themes you own. Free themes are always owned, Hoops All Access unlocks all themes,
 // and single-theme purchases unlock one theme at a time.
-import { clearLicenseKey, isPremiumUnlocked, setPremiumUnlocked, setSetting, settings } from "./settings";
+import { clearLicenses, isPremiumUnlocked, setPremiumUnlocked, setSetting, settings } from "./settings";
 import { THEMES, type ThemeId, themeById } from "./themes";
 
 const KEY = "hoops.owned";
@@ -28,10 +28,19 @@ export function addOwnedTheme(id: ThemeId): void {
   }
 }
 
+/** Replaces the single-theme purchases with exactly these themes (used when a license turns out to be gone). */
+export function setOwnedThemes(ids: ThemeId[]): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(Array.from(new Set(ids))));
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Dev/testing: forget every unlock, so the locked state can be tried again. */
 export function resetPurchases(): void {
   setPremiumUnlocked(false);
-  clearLicenseKey();
+  clearLicenses();
   try {
     localStorage.removeItem(KEY);
   } catch {
