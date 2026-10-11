@@ -8,7 +8,7 @@
 :root{--bg:#12142a;--bg2:#1b1e3e;--panel:#232850;--line:#0a0b18;--text:#f4f1ea;--mut:#a9aed0;--acc:#ff8a1f;--acc2:#ffd84a;--red:#e8392b;--green:#3ab36a}
 *{box-sizing:border-box}html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);font-family:'Pixelify Sans',ui-monospace,monospace;font-size:17px;line-height:1.5}
-img{max-width:100%;image-rendering:pixelated;display:block}
+img,video{max-width:100%;image-rendering:pixelated;display:block}video{width:100%;background:#000}.clipcard{background:var(--panel);padding:12px}.clipcard h3{margin:12px 6px 4px;font-size:21px;font-weight:500;color:var(--acc2)}.clipcard p{margin:0 6px 8px;color:var(--mut);font-size:16px}
 a{color:inherit}
 .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
 .pxb{box-shadow:-4px 0 0 var(--line),4px 0 0 var(--line),0 -4px 0 var(--line),0 4px 0 var(--line)}
@@ -60,13 +60,13 @@ footer a{margin-right:14px}
 .doc h1{font-size:40px;margin:0 0 6px}.doc h2{font-size:24px;margin:28px 0 6px}.doc p,.doc li{color:var(--mut)}
 .doc .when{font-size:14px;margin:0 0 20px}
 @media(max-width:820px){.hero{grid-template-columns:1fr}nav a.h{display:none}}
-</style></head><body><div class="wrap"><nav><a class="logo" href="./"><img src="img/icon.png" alt="">Hoops</a><div class="sp"></div><a class="h" href="./#features">Features</a><a class="h" href="./#themes">Themes</a><a class="h" href="./#pricing">Pricing</a><a class="btn pxb" href="./#download" style="padding:8px 16px;font-size:16px">Download</a></nav></div>
+</style></head><body><div class="wrap"><nav><a class="logo" href="./"><img src="img/icon.png" alt="">Hoops</a><div class="sp"></div><a class="h" href="./#features">Features</a><a class="h" href="./#play">Videos</a><a class="h" href="./#themes">Themes</a><a class="h" href="./#pricing">Pricing</a><a class="btn pxb" href="./#download" style="padding:8px 16px;font-size:16px">Download</a></nav></div>
 <div class="wrap"><header class="hero">
 <div><h1>Shoot hoops <em>over</em> your work.</h1>
 <p>Hoops is a tiny pixel-art basketball game that lives on top of your desktop. Pull the ball back, let go, and sink it, then get back to what you were doing.</p>
 <a class="btn pxb" href="#download">Download for Mac</a><a class="btn alt pxb" href="#download">Download for Windows</a>
 <small>Free to play. Three themes included, more when you want them.</small></div>
-<div class="stage pxb"><img src="img/theme-arena.png" alt="Hoops running with the Arena theme" width="900" height="414"></div>
+<div class="stage pxb"><video src="video/fire.mp4" poster="video/fire.jpg" autoplay muted loop playsinline aria-label="Hoops: the ball catches fire after three goals in a row"></video></div>
 </header></div>
 <section id="features"><div class="wrap"><h2>A game that stays out of your way</h2><p class="lead">The court is see-through and your clicks fall right through it, so it only takes the space you give it.</p>
 <div class="grid3">
@@ -76,6 +76,11 @@ footer a{margin-right:14px}
 <div class="card pxb"><h3>Alive backdrops</h3><p>Cheering crowds, a LED board with replays, planes, a train ride and more.</p></div>
 <div class="card pxb"><h3>Real sound</h3><p>Swishes, rim hits and a crowd. One switch turns it all off.</p></div>
 <div class="card pxb"><h3>Always one click away</h3><p>Open it from the menu bar icon or a keyboard shortcut, and it can start with your computer.</p></div>
+</div></div></section>
+<section id="play"><div class="wrap"><h2>See it play</h2><p class="lead">Recordings made with the game's own graphics, the way you will see them on your desktop.</p><div class="grid3">
+<div class="clipcard pxb"><video src="video/swish.mp4" poster="video/swish.jpg" autoplay muted loop playsinline></video><h3>Pull and shoot</h3><p>Drag the ball back, let go and watch the net.</p></div>
+<div class="clipcard pxb"><video src="video/fire.mp4" poster="video/fire.jpg" autoplay muted loop playsinline></video><h3>On fire</h3><p>Three in a row and the ball explodes into flame.</p></div>
+<div class="clipcard pxb"><video src="video/canyon.mp4" poster="video/canyon.jpg" autoplay muted loop playsinline></video><h3>Alive backdrops</h3><p>A canyon with gangs on horseback behind the court.</p></div>
 </div></div></section>
 <section id="themes"><div class="wrap"><h2>Pick a place to play</h2><p class="lead">Three themes are free. The rest are $2.99 each, or all of them with All Access.</p><div class="themes"><div class="th pxb"><img src="img/theme-gym.png" alt="Gym theme" loading="lazy"><b>Gym</b><span>Wooden court and a cheering crowd</span><i class="tag free">FREE</i></div><div class="th pxb"><img src="img/theme-park.png" alt="Park theme" loading="lazy"><b>Park</b><span>Birds, planes and a flying hero</span><i class="tag free">FREE</i></div><div class="th pxb"><img src="img/theme-city.png" alt="City night theme" loading="lazy"><b>City night</b><span>A dusk skyline over a blue court</span><i class="tag free">FREE</i></div><div class="th pxb"><img src="img/theme-street.png" alt="Street theme" loading="lazy"><b>Street</b><span>Graffiti fence and rope artists</span><i class="tag ">$2.99</i></div><div class="th pxb"><img src="img/theme-arena.png" alt="Arena theme" loading="lazy"><b>Arena</b><span>Light show and full stands</span><i class="tag ">$2.99</i></div><div class="th pxb"><img src="img/theme-led.png" alt="LED board theme" loading="lazy"><b>LED board</b><span>A screen with goals and replays</span><i class="tag ">$2.99</i></div><div class="th pxb"><img src="img/theme-train-day.png" alt="Train: countryside theme" loading="lazy"><b>Train: countryside</b><span>Bullet train and a kung fu fight</span><i class="tag ">$2.99</i></div><div class="th pxb"><img src="img/theme-train-night.png" alt="Train: night city theme" loading="lazy"><b>Train: night city</b><span>Night skyline, layer on layer</span><i class="tag ">$2.99</i></div><div class="th pxb"><img src="img/theme-train-canyon.png" alt="Train: canyon theme" loading="lazy"><b>Train: canyon</b><span>Tunnels and gangs on horseback</span><i class="tag ">$2.99</i></div></div></div></section>
 <section id="pricing"><div class="wrap"><h2>Pricing</h2><p class="lead">Pay once. No subscription, no account.</p>
