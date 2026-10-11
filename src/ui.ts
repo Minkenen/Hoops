@@ -547,6 +547,7 @@ ${rows}
         break;
       case "viewtheme":
         this.viewTheme = v as ThemeId;
+        if (!isOwned(this.viewTheme)) this.premiumDialog = true;
         this.render();
         break;
       case "usetheme":
