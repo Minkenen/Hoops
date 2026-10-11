@@ -1109,7 +1109,11 @@ function gFallPos(x0: number, y0: number, t2: number): { x: number; y: number; l
 }
 
 function gTrackX(R: GRider, u: number): number {
-  if (u < G_T_IN) return -110 - R.ent + (R.rest + 110 + R.ent) * gEase(u / G_T_IN);
+  // they come in from the right edge (we are catching up with them from behind) and slow down into their place
+  if (u < G_T_IN) {
+    const from = W + 110 + R.ent;
+    return from + (R.rest - from) * gEase(u / G_T_IN);
+  }
   if (u < R.ex) return R.rest + Math.sin(u * 1.7 + R.ph) * 3;
   const d = u - R.ex;
   return R.rest + Math.sin(R.ex * 1.7 + R.ph) * 3 - d * d * 75;
