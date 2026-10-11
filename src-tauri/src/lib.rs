@@ -126,7 +126,13 @@ fn quit_app(app: AppHandle) {
 
 #[tauri::command]
 fn open_external(url: String) -> Result<(), String> {
-    if !url.starts_with("https://ko-fi.com/") {
+    let allowed =
+        url.starts_with("https://ko-fi.com/")
+            || url.starts_with("https://minkenen.github.io/Hoops/")
+            || url.starts_with("https://lemonsqueezy.com/")
+            || url.starts_with("https://www.lemonsqueezy.com/")
+            || url.starts_with("https://checkout.lemonsqueezy.com/");
+    if !allowed {
         return Err("unsupported url".into());
     }
 
