@@ -67,7 +67,24 @@ function rebuildCtx(): AudioContext | null {
 
 /** The context clock last time we played something; if it has not moved though time has, the context is stuck. */
 let probe: { t: number; at: number } | null = null;
+/**
+ * After the computer sleeps or the screen locks, the audio output can be gone even though the context says it is running
+ * (the clock keeps moving, but nothing is heard). A ticking timer notices the gap: when it did not run for a while,
+ * the context is thrown away and a new one made the next time something should play.
+ */
+let lastTick = Date.now();
+let stale = false;
+window.setInterval(() => {
+  const now = Date.now();
+  if (now - lastTick > 4000) stale = true;
+  lastTick = now;
+}, 1000);
+
 function stalled(c: AudioContext): boolean {
+  if (stale) {
+    stale = false;
+    return true;
+  }
   const now = performance.now();
   const dead = !!probe && now - probe.at > 600 && c.currentTime === probe.t && c.state === "running";
   if (!probe || now - probe.at > 600) probe = { t: c.currentTime, at: now };
@@ -185,7 +202,10 @@ export function preloadSounds(): void {
 }
 
 // Wake the audio up again when the window comes back (it may have been hidden, or the computer may have slept).
+let hiddenAt = 0;
 document.addEventListener("visibilitychange", () => {
+  if (document.hidden) hiddenAt = Date.now();
+  else if (hiddenAt && Date.now() - hiddenAt > 8000) stale = true;
   if (!document.hidden && ctx && ctx.state !== "running") void ctx.resume().catch(() => {});
 });
 window.addEventListener("focus", () => {
