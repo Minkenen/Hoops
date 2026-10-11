@@ -368,7 +368,28 @@ function bulletTrain(t: number): void {
 
 // ---- night city: a deep skyline in layers, a Bat-signal on one tower and Batman on another
 
-const CYC = 36000;
+/**
+ * The night city round. The two landmark towers must slide in from beyond the right edge and out past the left edge
+ * before the round starts over, or they would pop in and out. So the length of the round, and when the signal and
+ * Batman come on, depend on how wide the picture is.
+ */
+interface Round {
+  cyc: number;
+  sigMid: number;
+  batStart: number;
+  batMid: number;
+}
+let TL: Round = { cyc: 56000, sigMid: 16, batStart: 23.5, batMid: 29.5 };
+
+function roundFor(w: number): Round {
+  const need = w + 120; // a tower has to cross the picture and its own width plus some
+  const lead = 0.3 * w + 20; // how far it still has to go from the right edge to the spot where the signal shows
+  const sigMid = Math.max(16, lead / 12 + 2);
+  const batStart = sigMid + 7.5;
+  const batMid = Math.max(batStart + 6, lead / 24 + 2);
+  const cyc = Math.max(sigMid - lead / 12 + need / 12 + 2, batMid - lead / 24 + need / 24 + 2, batStart + 14);
+  return { cyc: cyc * 1000, sigMid, batStart, batMid };
+}
 const WD = -1; // the wind blows to the left, the way the train is going
 
 interface Layer {
@@ -426,7 +447,7 @@ function drawLayer(t: number, L: (typeof LAY)[number], cfg: Layer, antennas = fa
 
 /** A landmark tower in a layer: its position is fixed to the time of the round, so the signal and Batman come on cue. */
 function landmark(t: number, cfg: Layer, Tmid: number, xmid: number, w: number, hgt: number, withRoof: boolean): { x: number; top: number; w: number } {
-  const x = Math.round(xmid + (Tmid - mod(t, CYC) / 1000) * cfg.v);
+  const x = Math.round(xmid + (Tmid - mod(t, TL.cyc) / 1000) * cfg.v);
   const top = Math.round(cfg.base - hgt * cfg.hm);
   r(x, top, w, cfg.base - top, "#0e1226");
   r(x, top, w, 2, "#1a2040");
@@ -447,17 +468,19 @@ function landmark(t: number, cfg: Layer, Tmid: number, xmid: number, w: number, 
 }
 
 function sigK(t: number): number {
-  const T = mod(t, CYC);
-  if (T < 4000 || T > 13000) return 0;
-  const a = T - 4000;
+  const T = mod(t, TL.cyc);
+  const S = (TL.sigMid - 4.5) * 1000;
+  if (T < S || T > S + 9000) return 0;
+  const a = T - S;
   if (a < 1400) return (Math.floor(a / 110) % 3 === 0 ? 0 : 1) * Math.min(1, a / 700);
   return a > 8000 ? Math.max(0, (9000 - a) / 1000) : 1;
 }
 
 function batK(t: number): number {
-  const T = mod(t, CYC);
-  if (T < 16000 || T > 28000) return 0;
-  const a = T - 16000;
+  const T = mod(t, TL.cyc);
+  const B = TL.batStart * 1000;
+  if (T < B || T > B + 12000) return 0;
+  const a = T - B;
   if (a < 1500) return a / 1500;
   return a > 10500 ? Math.max(0, (12000 - a) / 1500) : 1;
 }
@@ -587,6 +610,7 @@ function batman(x: number, y: number, t: number): void {
 }
 
 function nightCity(t: number, w: number, TOP: number): void {
+  TL = roundFor(w);
   bands(["#070a1a", "#0a0f26", "#101a3a", "#1a2650", "#23326a"], TOP, 236);
   if (TOP < 0) r(0, TOP, W, -TOP + 1, "#070a1a");
   stars(t, Math.round(50 * Math.max(1, w / 500)), 7, 140);
@@ -619,7 +643,7 @@ function nightCity(t: number, w: number, TOP: number): void {
     drawLayer(t, LAY[idx], cfg, idx >= 2);
     if (idx === 1) {
       // a lit clock tower in the mid-far layer
-      const cx2 = mod(300 - (mod(t, CYC) * cfg.v) / 1000, 700) - 60;
+      const cx2 = mod(300 - (t * cfg.v) / 1000, Math.max(700, w + 120)) - 60;
       const ct = cfg.base - 120 * cfg.hm;
       r(cx2, ct - 10, 28, 120 * cfg.hm + 10, "#111b3c");
       r(cx2 + 3, ct - 18, 22, 10, "#161e44");
@@ -629,14 +653,14 @@ function nightCity(t: number, w: number, TOP: number): void {
       r(cx2 + 14, Math.round(ct - 8), 4, 1, DK);
     }
     if (idx === 1) {
-      sTop = landmark(t, cfg, 8.5, 350, 46, 170, true);
+      sTop = landmark(t, cfg, TL.sigMid, 0.7 * w, 46, 170, true);
       signal();
     }
-    if (idx === 2) bTower = landmark(t, cfg, 22, 300, 44, 170, false);
+    if (idx === 2) bTower = landmark(t, cfg, TL.batMid, 0.6 * w, 44, 170, false);
   });
   // Batman on a different tower, shown by flashes of lightning
   if (bk > 0) {
-    const T = mod(t, CYC) - 16000;
+    const T = mod(t, TL.cyc) - TL.batStart * 1000;
     if (T >= 0 && T < 1800 && [0, 1, 2].some((i) => T > i * 500 && T < i * 500 + 120)) {
       c.globalAlpha = 0.4;
       r(0, TOP - 4, W, 240 - TOP, "#cfe0ff");
