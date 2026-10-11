@@ -344,7 +344,10 @@ ${this.donateStatsHtml()}
       this.toast("All Access unlocked");
     } catch (err) {
       this.licenseBusy = false;
-      this.licenseError = typeof err === "string" ? err : "Could not check the license key. Try again.";
+      const msg = typeof err === "string" ? err : "Could not check the license key. Try again.";
+      this.licenseError = msg.includes("activate_license")
+        ? "This Hoops build is too old. Install or run the latest build and try again."
+        : msg;
       this.render();
     }
   }
