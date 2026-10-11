@@ -400,7 +400,7 @@ function mkLayer(seed: number, wmin: number, wmax: number, hmin: number, hmax: n
 
 const LAY = [mkLayer(11, 14, 26, 30, 80), mkLayer(21, 16, 30, 40, 100), mkLayer(31, 16, 34, 50, 120), mkLayer(41, 18, 40, 60, 130)];
 
-function drawLayer(t: number, L: (typeof LAY)[number], cfg: Layer): void {
+function drawLayer(t: number, L: (typeof LAY)[number], cfg: Layer, antennas = false): void {
   const off = (t * cfg.v) / 1000;
   for (const b of L.a) {
     for (const rep of [-1, 0, 1, 2]) {
@@ -408,6 +408,15 @@ function drawLayer(t: number, L: (typeof LAY)[number], cfg: Layer): void {
       if (x > W || x + b.w < 0) continue;
       const h = b.h * cfg.hm;
       r(x, cfg.base - h, b.w, h, cfg.col);
+      if (antennas && hs(b.x + 3, b.w) > 0.62) {
+        // a mast standing on the roof, with a red light on top
+        const ah = 8 + Math.floor(hs(b.x, 91) * 14);
+        const ax = x + Math.floor(b.w / 2);
+        const top = cfg.base - h;
+        r(ax, top - ah, 2, ah, "#1b2447");
+        r(ax - 2, top - ah + 3, 6, 1, "#1b2447");
+        if (Math.floor(t / (700 + hs(b.x, 92) * 400) + hs(b.x, 93) * 7) % 3 !== 0) r(ax, top - ah - 2, 2, 2, "#ff3b3b");
+      }
       for (let wy = cfg.base - h + 4; wy < cfg.base - 4; wy += 5) {
         for (let wx = x + 2; wx < x + b.w - 2; wx += 4) if (hs(wx - x + b.w, wy) > cfg.dens && Math.floor(t / 1700 + hs(wx, wy) * 9) % 11 !== 0) r(wx, wy, 2, 2, cfg.win);
       }
@@ -592,8 +601,22 @@ function nightCity(t: number, w: number, TOP: number): void {
   const bk = batK(t);
   let sTop = { x: 0, top: 0, w: 0 };
   let bTower = { x: 0, top: 0, w: 0 };
+  const signal = (): void => {
+    // the Bat-signal: a searchlight on one tower, the beam sweeping across a low cloud
+    const cx = sTop.x - 30 + Math.sin(t / 1400) * 54;
+    const cy = 34;
+    const flick = k > 0 && Math.floor(t / 130) % 17 === 0 ? 0.55 : 1;
+    if (k > 0) {
+      const [lx, ly] = lamp(sTop.x + 8, sTop.top - 4, k, cx, cy);
+      signalCloud(cx, cy, 52, 22, k, flick);
+      beam(lx, ly, cx, cy, 52, k * flick, t);
+      c.globalAlpha = k * flick;
+      emblem(Math.round(cx - 1), Math.round(cy - 1), 3, "#14141c");
+      c.globalAlpha = 1;
+    } else lamp(sTop.x + 8, sTop.top - 4, 0, sTop.x - 30, 34);
+  };
   LAYERS.forEach((cfg, idx) => {
-    drawLayer(t, LAY[idx], cfg);
+    drawLayer(t, LAY[idx], cfg, idx >= 2);
     if (idx === 1) {
       // a lit clock tower in the mid-far layer
       const cx2 = mod(300 - (mod(t, CYC) * cfg.v) / 1000, 700) - 60;
@@ -605,34 +628,12 @@ function nightCity(t: number, w: number, TOP: number): void {
       r(cx2 + 14, Math.round(ct - 12), 1, 5, DK);
       r(cx2 + 14, Math.round(ct - 8), 4, 1, DK);
     }
-    if (idx === 1) sTop = landmark(t, cfg, 8.5, 350, 46, 170, true);
-    if (idx === 2) bTower = landmark(t, cfg, 22, 300, 44, 170, false);
-    if (idx === 3) {
-      // a crane with red lights on the near layer
-      const cx3 = mod(430 - (t * cfg.v) / 1000, 900) - 100;
-      r(cx3, cfg.base - 190, 3, 190, "#0a0f20");
-      r(cx3 - 50, cfg.base - 190, 110, 3, "#0a0f20");
-      r(cx3 + 36, cfg.base - 190, 2, 40, "#0a0f20");
-      r(cx3 + 34, cfg.base - 150, 6, 5, "#0a0f20");
-      line(cx3 - 50, cfg.base - 188, cx3, cfg.base - 212, "#0a0f20");
-      if (Math.floor(t / 600) % 2) {
-        r(cx3 - 52, cfg.base - 192, 3, 3, "#ff3b3b");
-        r(cx3 + 1, cfg.base - 214, 3, 3, "#ff3b3b");
-      }
+    if (idx === 1) {
+      sTop = landmark(t, cfg, 8.5, 350, 46, 170, true);
+      signal();
     }
+    if (idx === 2) bTower = landmark(t, cfg, 22, 300, 44, 170, false);
   });
-  // the Bat-signal: a searchlight on one tower, the beam sweeping across a low cloud
-  const cx = sTop.x - 30 + Math.sin(t / 1400) * 54;
-  const cy = 34;
-  const flick = k > 0 && Math.floor(t / 130) % 17 === 0 ? 0.55 : 1;
-  if (k > 0) {
-    const [lx, ly] = lamp(sTop.x + 8, sTop.top - 4, k, cx, cy);
-    signalCloud(cx, cy, 52, 22, k, flick);
-    beam(lx, ly, cx, cy, 52, k * flick, t);
-    c.globalAlpha = k * flick;
-    emblem(Math.round(cx - 1), Math.round(cy - 1), 3, "#14141c");
-    c.globalAlpha = 1;
-  } else lamp(sTop.x + 8, sTop.top - 4, 0, sTop.x - 30, 34);
   // Batman on a different tower, shown by flashes of lightning
   if (bk > 0) {
     const T = mod(t, CYC) - 16000;
