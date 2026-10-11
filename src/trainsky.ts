@@ -707,11 +707,12 @@ const TUN_PERIOD = 38000;
 const TUN_START = 25000;
 const TUN_LEN = 2400;
 const TUN_SPEED = 520;
-const T_TOP = 8; // top edge of the block's side face
+const T_TOP = -55; // top edge of the block's side face
 const T_SK = 30; // how far the top surface recedes
 const T_D = 60; // width of the mouth face
-const T_SLT = 50; // top of the cutaway (the tunnel ceiling)
+const T_SLT = -12; // top of the cutaway (the tunnel ceiling)
 const T_GY = 236;
+const T_EXT = 80; // how far above y = 0 the tunnel is drawn: the ceiling is high up, so the picture reaches above the usual top
 const T_EXL = 90;
 const TIM = "#7a5430";
 const TIM_DK = "#4a321c";
@@ -754,29 +755,30 @@ function lampFlicker(i: number, s: number): number {
 function tunnelInterior(t: number, s: number): void {
   c.save();
   c.beginPath();
-  c.rect(0, 0, W, 236);
+  c.rect(0, -T_EXT, W, 236 + T_EXT);
   c.clip();
-  r(0, 0, W, 236, "#0a0710");
+  r(0, -T_EXT, W, 236 + T_EXT, "#0a0710");
   const f = (t * 260) / 1000;
   for (let x = 0; x < W; x += 10) {
-    for (let y = 0; y < 236; y += 8) {
+    for (let y = -T_EXT; y < 236; y += 8) {
       const n = hs(Math.floor((x + f) / 10), y);
       r(x, y, 10, 8, ["#2a2630", "#322d38", "#25212c"][Math.floor(n * 3)]);
     }
   }
-  for (let y = 20; y < 236; y += 36) r(0, y, W, 1, "#14101a");
+  for (let y = -52; y < 236; y += 36) r(0, y, W, 1, "#14101a");
   for (let x = 0; x < W; x += 2) {
     r(x, 60 + Math.sin((x + f * 0.4) / 80) * 2, 2, 3, "#3a3342");
     r(x, 66 + Math.sin((x + f * 0.4) / 80) * 2, 2, 1, "#5a4f66");
   }
   tunDark = tunDark ?? document.createElement("canvas");
   if (tunDark.width !== W) tunDark.width = W;
-  tunDark.height = 236;
+  tunDark.height = 236 + T_EXT;
   const dk = tunDark.getContext("2d")!;
+  dk.setTransform(1, 0, 0, 1, 0, T_EXT);
   dk.globalCompositeOperation = "source-over";
-  dk.clearRect(0, 0, W, 236);
+  dk.clearRect(0, -T_EXT, W, 236 + T_EXT);
   dk.fillStyle = "rgba(3,2,8,.9)";
-  dk.fillRect(0, 0, W, 236);
+  dk.fillRect(0, -T_EXT, W, 236 + T_EXT);
   dk.globalCompositeOperation = "destination-out";
   const lamps = Math.ceil((W + 200) / 200);
   for (let i = 0; i < lamps; i++) {
@@ -786,7 +788,7 @@ function tunnelInterior(t: number, s: number): void {
     g.addColorStop(0, "rgba(0,0,0,1)");
     g.addColorStop(1, "rgba(0,0,0,0)");
     dk.fillStyle = g;
-    dk.fillRect(x - 130, 0, 260, 236);
+    dk.fillRect(x - 130, -T_EXT, 260, 236 + T_EXT);
   }
   const hg = dk.createLinearGradient(W, 150, W - 260, 150);
   hg.addColorStop(0, "rgba(0,0,0,.95)");
@@ -799,7 +801,7 @@ function tunnelInterior(t: number, s: number): void {
   dk.lineTo(W - 300, 60);
   dk.closePath();
   dk.fill();
-  c.drawImage(tunDark, 0, 0);
+  c.drawImage(tunDark, 0, -T_EXT);
   for (let i = 0; i < lamps; i++) {
     const x = Math.round(mod(i * 200 - (t * 520) / 1000, W + 200) - 60);
     const on = lampFlicker(i, s);
@@ -839,7 +841,7 @@ function drawTunnelBlock(X: number, L: number, t: number, s: number, inner: HTML
   const GY = T_GY;
   c.save();
   c.beginPath();
-  c.rect(0, 0, W, 236);
+  c.rect(0, -140, W, 376);
   c.clip();
   c.translate(X, 0);
   const xa = Math.max(D, -X - 60);
@@ -887,7 +889,7 @@ function drawTunnelBlock(X: number, L: number, t: number, s: number, inner: HTML
   c.fill();
   c.clip();
   c.translate(-X, 0);
-  c.drawImage(inner, 0, 0);
+  c.drawImage(inner, 0, -T_EXT);
   c.restore();
   // timber lintel, braces and lanterns along the cutaway
   const le = Math.min(L - T_EXL, xb);
@@ -966,10 +968,11 @@ function tunnel(t: number): void {
   if (s < 0 || s * TUN_SPEED > W + 10 + TUN_LEN + 20) return;
   tunInt = tunInt ?? document.createElement("canvas");
   if (tunInt.width !== W) tunInt.width = W;
-  tunInt.height = 236;
+  tunInt.height = 236 + T_EXT;
   const save = c;
   c = tunInt.getContext("2d")!;
-  c.clearRect(0, 0, W, 236);
+  c.setTransform(1, 0, 0, 1, 0, T_EXT);
+  c.clearRect(0, -T_EXT, W, 236 + T_EXT);
   tunnelInterior(t, s);
   c = save;
   const X = Math.round(W + 10 - s * TUN_SPEED);
