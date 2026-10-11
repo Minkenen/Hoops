@@ -16,6 +16,7 @@ import {
 import { preloadSounds } from "./audio";
 import { enforceOwned } from "./purchases";
 import { recheckLicenses } from "./licensing";
+import { checkForUpdate } from "./update";
 import { onSettingChange, settings } from "./settings";
 import { UI } from "./ui";
 
@@ -29,6 +30,9 @@ async function main(): Promise<void> {
   const host = document.getElementById("ui") as HTMLElement;
   const ui = new UI(host);
   enforceOwned();
+  const lookForUpdate = (): void => void checkForUpdate().then((u) => u && ui.setUpdate(u));
+  lookForUpdate();
+  window.setInterval(lookForUpdate, 6 * 3600 * 1000);
   if (me.index === 0) void recheckLicenses().then((changed) => changed && ui.refresh());
   const game = new Game(cv, me, monitors);
   ui.attach(game);

@@ -9,6 +9,7 @@ import { Preview, setPreviewOverride } from "./preview";
 import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
 import { ALL_ACCESS_PRICE, ALL_ACCESS_VALUE, PRICE_VALUE, THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, getStats } from "./stats";
+import type { UpdateInfo } from "./update";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
 type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "onboarding";
@@ -106,6 +107,7 @@ export class UI {
   /** The windows we came from, so Back goes one step back. */
   private stack: View[] = [];
   private backKeyOn = false;
+  private update: UpdateInfo | null = null;
 
   constructor(private host: HTMLElement) {
     host.addEventListener("click", (e) => this.onClick(e));
@@ -118,6 +120,12 @@ export class UI {
         this.back();
       }
     });
+  }
+
+  /** A newer version exists: the menu shows an update button. */
+  setUpdate(u: UpdateInfo): void {
+    this.update = u;
+    if (this.view === "menu") this.render();
   }
 
   attach(game: Game): void {
@@ -325,6 +333,7 @@ ${this.row("Footer panel", `<span class="val">${f.clicks}/${f.views}</span>`, ra
     const bottom = vp.h - this.game.floorCss() + 6;
     return `<div class="px menu" data-hit style="left:${Math.max(8, left)}px;bottom:${bottom}px;width:${W}px">
 <div class="row" style="padding:2px 0"><span class="lb">Score</span><b class="score">${getScore()}</b></div><div class="hr"></div>
+${this.update ? `<button class="pb buy full" data-a="update">Update available: v${this.update.version}</button>` : ""}
 ${this.row("Aim line", this.seg("arrow", [["arrow", "Arrow"], ["dots", "Dotted"]]))}
 ${this.row("Sound", this.tog("sound"))}
 <div class="hr"></div>
@@ -786,6 +795,15 @@ ${rows}
       }
       case "back":
         this.back();
+        break;
+      case "update":
+        if (this.update) {
+          const url = this.update.url;
+          void openExternal(url).catch(() => {
+            window.open(url, "_blank", "noopener,noreferrer");
+          });
+          this.close();
+        }
         break;
       case "close":
         this.close();
