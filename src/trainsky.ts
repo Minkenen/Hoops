@@ -479,10 +479,16 @@ function sigK(t: number): number {
 function batK(t: number): number {
   const T = mod(t, TL.cyc);
   const B = TL.batStart * 1000;
-  if (T < B || T > B + 12000) return 0;
-  const a = T - B;
-  if (a < 1500) return a / 1500;
-  return a > 10500 ? Math.max(0, (12000 - a) / 1500) : 1;
+  // Batman pops in with the first flash of lightning and pops out with the first flash of the last pair, so no fading
+  return T >= B && T < B + 10000 ? 1 : 0;
+}
+
+/** Flashes of lightning: three as Batman appears, two as he disappears. Returns the time into the Batman window, or null. */
+function lightningAt(t: number): number | null {
+  const T = mod(t, TL.cyc) - TL.batStart * 1000;
+  if (T < 0 || T > 11000) return null;
+  const on = [0, 500, 1000, 10000, 10500].some((s0) => T >= s0 && T < s0 + 120);
+  return on ? T : null;
 }
 
 function emblem(cx: number, cy: number, sc: number, col: string): void {
@@ -660,20 +666,17 @@ function nightCity(t: number, w: number, TOP: number): void {
   });
   // Batman on a different tower, shown by flashes of lightning
   if (bk > 0) {
-    const T = mod(t, TL.cyc) - TL.batStart * 1000;
-    if (T >= 0 && T < 1800 && [0, 1, 2].some((i) => T > i * 500 && T < i * 500 + 120)) {
-      c.globalAlpha = 0.4;
-      r(0, TOP - 4, W, 240 - TOP, "#cfe0ff");
-      c.globalAlpha = 1;
-    }
-    c.globalAlpha = bk;
     batman(bTower.x + bTower.w - 12, bTower.top - 3, t);
-    c.globalAlpha = 1;
     if (Math.floor(t / 90) % 23 === 0) {
       c.globalAlpha = 0.2;
       r(0, TOP - 4, W, 240 - TOP, "#cfe0ff");
       c.globalAlpha = 1;
     }
+  }
+  if (lightningAt(t) !== null) {
+    c.globalAlpha = 0.4;
+    r(0, TOP - 4, W, 240 - TOP, "#cfe0ff");
+    c.globalAlpha = 1;
   }
   meetTrain(t, "lit", 6000, 1600);
   // rain leaning with the wind, and streaks blowing past
