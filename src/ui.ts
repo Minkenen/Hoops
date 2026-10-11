@@ -1,3 +1,4 @@
+import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
@@ -102,12 +103,20 @@ export class UI {
   private game!: Game;
   private awayTimer = 0;
   private donateVariant: DonateVariant = "button";
+  /** The windows we came from, so Back goes one step back. */
+  private stack: View[] = [];
+  private backKeyOn = false;
 
   constructor(private host: HTMLElement) {
     host.addEventListener("click", (e) => this.onClick(e));
     host.addEventListener("input", (e) => this.onInput(e));
     host.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.target as HTMLElement).id === "lic") void this.activate();
+      const el = e.target as HTMLElement;
+      if (e.key === "Enter" && el.id === "lic") void this.activate();
+      else if (e.key === "Backspace" && el.tagName !== "INPUT" && el.tagName !== "TEXTAREA" && this.view !== "none" && this.view !== "menu") {
+        e.preventDefault();
+        this.back();
+      }
     });
   }
 
@@ -122,23 +131,62 @@ export class UI {
 
   openMenu(): void {
     this.pickDonateVariant();
+    this.stack = [];
     this.view = "menu";
     this.render();
   }
 
-  openSettings(): void {
-    this.view = "settings";
+  /** Switches window and remembers where we came from. */
+  private go(v: View): void {
+    if (this.view !== "none" && this.view !== v && this.view !== "onboarding") this.stack.push(this.view);
+    this.view = v;
     this.render();
+  }
+
+  /** One step back: first out of a dialog, then to the window before this one. */
+  back(): void {
+    if (this.resetDialog || this.premiumDialog) {
+      if (this.licenseStep && !this.licenseBusy) {
+        this.licenseStep = false;
+        this.licenseError = "";
+      } else {
+        this.resetDialog = false;
+        this.closePremium();
+      }
+      this.render();
+      return;
+    }
+    const prev = this.stack.pop();
+    if (prev) {
+      this.view = prev;
+      this.render();
+    } else if (this.view !== "menu" && this.view !== "none") this.close();
+  }
+
+  /** Backspace goes back, from anywhere while a window is open (but not while you are typing a license key). */
+  private syncBackKey(): void {
+    const want = (this.view === "settings" || this.view === "sound" || this.view === "cosmetics" || this.view === "achievements") && !this.licenseStep;
+    if (want === this.backKeyOn) return;
+    this.backKeyOn = want;
+    if (want) {
+      void isRegistered("Backspace")
+        .then((on) => (on ? undefined : register("Backspace", (e) => e.state === "Pressed" && this.back())))
+        .catch(() => undefined);
+    } else {
+      void unregister("Backspace").catch(() => undefined);
+    }
+  }
+
+  openSettings(): void {
+    this.go("settings");
   }
 
   openSound(): void {
-    this.view = "sound";
-    this.render();
+    this.go("sound");
   }
 
   openCosmetics(): void {
-    this.view = "cosmetics";
-    this.render();
+    this.go("cosmetics");
   }
 
   openOnboarding(): void {
@@ -148,6 +196,7 @@ export class UI {
   }
 
   close(): void {
+    this.stack = [];
     this.view = "none";
     this.resetDialog = false;
     this.closePremium();
@@ -207,8 +256,7 @@ export class UI {
   }
 
   openAchievements(): void {
-    this.view = "achievements";
-    this.render();
+    this.go("achievements");
   }
 
   private seg(k: keyof Settings, opts: [string | number, string][]): string {
@@ -289,7 +337,7 @@ ${this.donateHtml()}
 
   private settingsHtml(): string {
     return `<div class="px win" data-hit style="width:min(470px,92vw)">
-<div class="wt"><span>Settings</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
+<div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Settings</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
 <div class="wb">
 <div class="h4">Game</div>
 ${this.row("Keep the court open", this.tog("stayOpen"), "Click outside the ball or press Esc to close")}
@@ -476,7 +524,7 @@ ${body}
     const bases = BASE_SKINS.map((s) => this.skinTile("baseSkin", s.id, s.name, "")).join("");
     const lockedAny = THEMES.some((t) => !isOwned(t.id));
     return `<div class="px win" data-hit style="width:min(600px,94vw)">
-<div class="wt"><span>Appearance</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
+<div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Appearance</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
 <div class="wb">
 <div class="two"><div class="tlist">${THEMES.map(row).join("")}</div>
 <div class="tbig"><canvas class="prev" id="prev" width="${Preview.W}" height="${Preview.H}" aria-label="Preview"></canvas>
@@ -509,7 +557,7 @@ ${lockedAny ? `<div class="note">${this.lockIcon()}<span>More choices appear whe
       )
       .join("");
     return `<div class="px win" data-hit style="width:min(470px,92vw)">
-<div class="wt"><span>Sound</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
+<div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Sound</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
 <div class="wb">
 ${this.row("All sound", this.tog("sound"))}
 ${this.row("Volume", this.sld("volume", 0, 1, 0.05))}
@@ -530,7 +578,7 @@ ${list}
       return `<div class="row ach${got ? " done" : ""}"><div><div class="lb">${got ? "[x] " : "[ ] "}${a.name}</div><div class="hn">${a.desc}</div></div><span class="val">${got ? "Done" : `${cur} / ${max}`}</span></div>`;
     }).join("");
     return `<div class="px win" data-hit style="width:min(470px,92vw)">
-<div class="wt"><span>Achievements ${done}/${ACHIEVEMENTS.length}</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
+<div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Achievements ${done}/${ACHIEVEMENTS.length}</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
 <div class="wb">
 <div class="stats">${stat("Shots", String(s.throws))}${stat("Goals", String(s.goals))}${stat("Accuracy", acc + " %")}${stat("Best streak", String(s.bestStreak))}</div>
 ${rows}
@@ -559,6 +607,7 @@ ${rows}
   }
 
   render(): void {
+    this.syncBackKey();
     if (this.view !== "cosmetics") setPreviewOverride(null);
     let html = "";
     if (this.view === "menu") html = this.menuHtml();
@@ -723,6 +772,9 @@ ${rows}
         this.close();
         break;
       }
+      case "back":
+        this.back();
+        break;
       case "close":
         this.close();
         break;
