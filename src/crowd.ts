@@ -1,5 +1,5 @@
 import { drawParkSky, heroHit, skyBusy } from "./parksky";
-import { drawTrain } from "./trainsky";
+import { batmanHit, drawTrain } from "./trainsky";
 import { drawGraffitiFront, drawGraffitiWall } from "./graffiti";
 import { LedScreen, SCREEN_NEEDS } from "./ledscreen";
 import type { CrowdStyle } from "./skins";
@@ -998,6 +998,7 @@ export class Crowd {
   }
 
   private train(c: CanvasRenderingContext2D, t: number, w: number, baseY: number, style: CrowdStyle): void {
+    this.parkDy = baseY - 92;
     c.save();
     c.translate(0, baseY - 92);
     drawTrain(c, style === "trainday" ? "day" : style === "trainnight" ? "night" : "canyon", t, w, this.fill ? -(baseY - 92) : 21);
@@ -1235,6 +1236,11 @@ export class Crowd {
   /** Does the ball (in screen art pixels) hit the flying hero in the Park theme's sky? */
   shootAtHero(style: CrowdStyle, x: number, y: number, rad: number): boolean {
     return style === "park" && heroHit(x, y - this.parkDy, rad);
+  }
+
+  /** Does the ball (in screen art pixels) hit Batman in the night city? Returns the way he knocks it, or null. */
+  batmanSwat(style: CrowdStyle, x: number, y: number, rad: number): number | null {
+    return style === "trainnight" ? batmanHit(x, y - this.parkDy, rad, performance.now()) : null;
   }
 
   /** Something in the sky is still going on (smoke, a falling hero), so keep drawing. */

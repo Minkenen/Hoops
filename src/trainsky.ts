@@ -604,6 +604,25 @@ function batBody(x: number, y: number, t: number, dark: string, hi: string): voi
   }
 }
 
+/** Where Batman stands right now (in the picture's coordinates), or null when he is not there. */
+let batAt: { x: number; y: number } | null = null;
+let swat = { at: -1e9, dir: 1 };
+
+/**
+ * Tests a ball (picture x, and y in the game's local coordinates) against Batman. On a hit he swats it away:
+ * returns -1 or 1 for the way the ball is knocked, otherwise null.
+ */
+export function batmanHit(x: number, localY: number, rad: number, now: number): number | null {
+  if (!batAt || now - swat.at < 600) return null;
+  const cx = batAt.x;
+  const cy = batAt.y - 12;
+  const dx = (x - cx) / (7 + rad);
+  const dy = (localY + OFFSET - cy) / (14 + rad);
+  if (dx * dx + dy * dy > 1) return null;
+  swat = { at: now, dir: x < cx ? -1 : 1 };
+  return swat.dir;
+}
+
 function batman(x: number, y: number, t: number): void {
   c.globalAlpha *= 0.18;
   c.fillStyle = "#7fa0ff";
@@ -613,6 +632,21 @@ function batman(x: number, y: number, t: number): void {
   c.globalAlpha /= 0.18;
   for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) batBody(x + dx, y + dy, t, "#6a7ab0", "#6a7ab0");
   batBody(x, y, t, "#14141c", "#2a2a38");
+  // the swat: an arm shoots out toward the ball with a little burst at the fist
+  const age = performance.now() - swat.at;
+  if (age >= 0 && age < 350) {
+    const d = swat.dir;
+    const ext = age < 120 ? 10 : 6;
+    r(d > 0 ? x + 3 : x - 3 - ext, y - 14, ext, 3, "#3a3a56");
+    r(d > 0 ? x + 3 + ext : x - 7 - ext, y - 15, 4, 5, "#8a9ad0");
+    if (age < 200) {
+      const fx = d > 0 ? x + 8 + ext : x - 11 - ext;
+      r(fx - 2, y - 13, 5, 1, "#ffffff");
+      r(fx, y - 15, 1, 5, "#ffffff");
+      r(fx - 3, y - 16, 1, 1, "#ffd84a");
+      r(fx + 3, y - 10, 1, 1, "#ffd84a");
+    }
+  }
 }
 
 function nightCity(t: number, w: number, TOP: number): void {
@@ -665,8 +699,10 @@ function nightCity(t: number, w: number, TOP: number): void {
     if (idx === 2) bTower = landmark(t, cfg, TL.batMid, 0.6 * w, 44, 170, false);
   });
   // Batman on a different tower, shown by flashes of lightning
+  batAt = null;
   if (bk > 0) {
-    batman(bTower.x + bTower.w - 12, bTower.top - 3, t);
+    batAt = { x: bTower.x + bTower.w - 12, y: bTower.top - 3 };
+    batman(batAt.x, batAt.y, t);
     if (Math.floor(t / 90) % 23 === 0) {
       c.globalAlpha = 0.2;
       r(0, TOP - 4, W, 240 - TOP, "#cfe0ff");
