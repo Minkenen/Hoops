@@ -459,7 +459,7 @@ ${login}
     this.go("achievements");
   }
 
-  /** Crowd: off, only the front row, half (the usual height) or filling the screen. */
+  /** Crowd: off, only the front row, half the screen or filling the screen. */
   private crowdSeg(): string {
     const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
     return (
@@ -584,7 +584,7 @@ ${this.row("Volume", this.sld("volume", 0, 1, 0.05), "Master level")}
 <button class="pb full" data-a="achtest">Play an achievement</button>`;
     } else if (t === "look") {
       const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
-      const crowds = ([["off", "Off", "No crowd"], ["row", "Row", "Front row only"], ["half", "Half", "Usual height"], ["full", "Full", "Whole screen"]] as const)
+      const crowds = ([["off", "Off", "No crowd"], ["row", "Row", "Front row only"], ["half", "Half", "Half the screen"], ["full", "Full", "Whole screen"]] as const)
         .map(([id, name, hint]) => this.pic("crowd", id, `crowd-${id}`, name, hint, cur === id, "crowdmode").replace(`data-k="crowd" `, ""))
         .join("");
       pane = `<div class="h4">Crowd</div><div class="st-tiles four">${crowds}</div>
@@ -859,8 +859,8 @@ ${rows}
       body = `<h3>Over other apps?</h3><p>Should the ball show over fullscreen apps, like games and video?</p><div class="tiles">${this.tile("fullscreen", 1, "On top of everything", "Even fullscreen")}${this.tile("fullscreen", 0, "Regular windows only", "Hidden behind fullscreen")}</div>`;
     } else if (id === "crowd") {
       const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
-      const tiles = ([["off", "Off", "No crowd"], ["row", "Row", "Front row only"], ["half", "Half", "Usual height"], ["full", "Full", "Whole screen"]] as const)
-        .map(([m, name, hint]) => `<button class="st-tile${cur === m ? " on" : ""}" data-a="crowdmode" data-v="${m}" aria-pressed="${cur === m}"><canvas data-prev="${m}" width="300" height="138"></canvas><b>${name}</b><small>${hint}</small></button>`)
+      const tiles = ([["off", "Off", "No crowd"], ["row", "Row", "Front row only"], ["half", "Half", "Half the screen"], ["full", "Full", "Whole screen"]] as const)
+        .map(([m, name, hint]) => `<button class="st-tile${cur === m ? " on" : ""}" data-a="crowdmode" data-v="${m}" aria-pressed="${cur === m}"><canvas data-prev="${m}" width="300" height="230"></canvas><b>${name}</b><small>${hint}</small></button>`)
         .join("");
       body = `<h3>How much crowd?</h3><p>The stands show up behind the court when you shoot. Watch how each one comes in and goes out.</p><div class="ob-grid">${tiles}</div>`;
     } else if (id === "board") {

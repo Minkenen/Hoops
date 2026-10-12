@@ -8,8 +8,9 @@ import { BASE_CENTER, type HoopSprite, makeBallFrame, makeHoopSprite, makePoleSp
 const W = 300;
 const H = 138;
 const FLOOR = 112;
-const RIM_Y = 50;
 const BALL_X = 205;
+const FLOOR_REF = 112;
+const RIM_REF = 50;
 
 let hoopSp: HoopSprite | null = null;
 
@@ -48,7 +49,15 @@ export class Preview {
   private pole: HTMLCanvasElement | null = null;
   private poleKey = "";
 
+  private hh = H;
+  private fl = FLOOR;
+
   constructor(private cv: HTMLCanvasElement, private opts?: PreviewOptions) {
+    // a preview of one crowd choice is taller, like a real screen, so "Half" and "Full" are what they say
+    if (opts) {
+      this.hh = 230;
+      this.fl = this.hh - 26;
+    }
     this.ctx = cv.getContext("2d")!;
     this.ctx.imageSmoothingEnabled = false;
     if (!opts) cv.addEventListener("click", () => this.crowd.cheer(performance.now()));
@@ -64,14 +73,19 @@ export class Preview {
 
   private draw(now: number): void {
     const c = this.ctx;
+    const H = this.hh;
+    const FLOOR = this.fl;
+    const RIM_Y = this.fl - (FLOOR_REF - RIM_REF);
     const ballSkin = (override?.ballSkin ?? settings.ballSkin) as typeof settings.ballSkin;
     const courtSkin = (override?.courtSkin ?? settings.courtSkin) as typeof settings.courtSkin;
     const mode = this.opts?.mode;
     // a preview of one choice shows it whatever the settings say; the crowd style is the one in use, or the one that was switched off
     const base = (override?.crowd ?? (settings.crowd === "none" ? settings.crowdBack : settings.crowd)) as typeof settings.crowd;
     const crowdStyle = (mode ? (mode === "off" ? "none" : base) : (override?.crowd ?? settings.crowd)) as typeof settings.crowd;
-    const fill = mode ? mode === "full" : settings.arenaFill;
-    const row = mode ? mode === "row" : settings.crowdRow && !settings.arenaFill;
+    const full = mode ? mode === "full" : settings.arenaFill;
+    const row = mode ? mode === "row" : settings.crowdRow && !full;
+    const half = mode ? mode === "half" : !full && !row;
+    const fill = full || half;
     // 1 while the court is in; during the slide it rises from below (the same easing as the game)
     let p = 1;
     if (this.opts?.slide) {
@@ -104,14 +118,16 @@ export class Preview {
     if (p > 0 && (settings.court || this.opts) && this.court) {
       const top = FLOOR - Math.round(this.court.cy) + Math.round(e * (H - (FLOOR - this.court.cy)));
       this.crowd.setBall(BALL_X, FLOOR + e * H, FLOOR - 10.5);
-      if (row && crowdStyle !== "none") {
+      const clipTop = row ? top + 1 - CROWD_ROW_H : half ? Math.min(top + 1, Math.round(H / 2)) : 0;
+      const clipped = (row || half) && crowdStyle !== "none";
+      if (clipped) {
         c.save();
         c.beginPath();
-        c.rect(0, top + 1 - CROWD_ROW_H, W, CROWD_ROW_H);
+        c.rect(0, clipTop, W, top + 1 - clipTop);
         c.clip();
       }
       this.crowd.draw(c, crowdStyle, now, W, top + 1, fill);
-      if (row && crowdStyle !== "none") c.restore();
+      if (clipped) c.restore();
       c.drawImage(this.court.canvas, 0, top);
       if (crowdStyle === "arena") this.crowd.arenaFloor(c, now, W, top, this.court.h);
     }
