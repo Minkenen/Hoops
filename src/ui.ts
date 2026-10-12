@@ -3,16 +3,17 @@ import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
-import { addLicense, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
+import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
 import { Preview, setPreviewOverride } from "./preview";
 import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
 import { ALL_ACCESS_PRICE, ALL_ACCESS_VALUE, PRICE_VALUE, THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, getStats } from "./stats";
 import type { UpdateInfo } from "./update";
+import { backend, LEADERBOARD_ON, type LbBoard, type LbEntry, type LbProviderId, type LbTab } from "./leaderboard";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
-type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "onboarding";
+type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "leaderboard" | "onboarding";
 type DonateVariant = "button" | "footer";
 
 const DONATE_URL = "https://ko-fi.com/hoopsgame";
@@ -108,6 +109,18 @@ export class UI {
   private stack: View[] = [];
   private backKeyOn = false;
   private update: UpdateInfo | null = null;
+  private lbTab: LbTab = "global";
+  private lbBoards: Partial<Record<LbTab, LbBoard>> = {};
+  private lbBusy = false;
+  private lbSigning = false;
+  private lbError = "";
+  private lbSkip = (() => {
+    try {
+      return localStorage.getItem("hoops.lb.skip") === "1";
+    } catch {
+      return false;
+    }
+  })();
 
   constructor(private host: HTMLElement) {
     host.addEventListener("click", (e) => this.onClick(e));
@@ -173,7 +186,7 @@ export class UI {
 
   /** Backspace goes back, from anywhere while a window is open (but not while you are typing a license key). */
   private syncBackKey(): void {
-    const want = (this.view === "settings" || this.view === "sound" || this.view === "cosmetics" || this.view === "achievements") && !this.licenseStep;
+    const want = (this.view === "settings" || this.view === "sound" || this.view === "cosmetics" || this.view === "achievements" || this.view === "leaderboard") && !this.licenseStep;
     if (want === this.backKeyOn) return;
     this.backKeyOn = want;
     if (want) {
@@ -187,6 +200,91 @@ export class UI {
 
   openSettings(): void {
     this.go("settings");
+  }
+
+  openLeaderboard(): void {
+    this.go("leaderboard");
+    void this.loadBoard();
+  }
+
+  private async loadBoard(): Promise<void> {
+    const tab = this.lbTab;
+    if (!backend.available) return;
+    this.lbBusy = true;
+    this.lbError = "";
+    this.render();
+    try {
+      this.lbBoards[tab] = await backend.load(tab);
+    } catch (e) {
+      this.lbError = e instanceof Error ? e.message : "Could not load the board.";
+    }
+    this.lbBusy = false;
+    if (this.view === "leaderboard") this.render();
+  }
+
+  private async signInWith(p: LbProviderId): Promise<void> {
+    this.lbSigning = true;
+    this.lbError = "";
+    this.render();
+    try {
+      await backend.signIn(p);
+      this.lbBoards = {};
+      this.lbSigning = false;
+      await this.loadBoard();
+      return;
+    } catch (e) {
+      this.lbError = e instanceof Error ? e.message : "Could not sign in.";
+    }
+    this.lbSigning = false;
+    this.render();
+  }
+
+  private lbBall(i: number): string {
+    const pal = [["#e8731f", "#ff9a45"], ["#ffc83a", "#fff0a0"], ["#3a8bd9", "#7ab8f0"], ["#3ab36a", "#7ad89a"], ["#a24ad9", "#cf8af0"], ["#e8392b", "#ff8a7a"], ["#8a8e96", "#c4c8d0"]][i % 7];
+    return this.pixIcon(["..1111..", ".122221.", "12233221", "12222221", "12222221", "12222221", ".122221.", "..1111.."], ["#0d0e12", pal[0], pal[1]], 2);
+  }
+
+  private lbRow(e: LbEntry, me = false): string {
+    return `<div class="lt${me ? " me" : ""}"><span class="rk">${e.rank}</span>${this.lbBall(e.icon)}<b>${e.name}</b><span class="sc">${e.score}</span></div>`;
+  }
+
+  private leaderboardHtml(): string {
+    const board = this.lbBoards[this.lbTab];
+    const user = backend.user();
+    const s = getStats();
+    const acc = s.throws > 0 ? Math.round((s.goals / s.throws) * 100) : 0;
+    const tabs = (["global", "weekly", "friends"] as LbTab[])
+      .map((t) => `<button class="pb${t === this.lbTab ? " on" : ""}" data-a="lbtab" data-v="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`)
+      .join("");
+    let body: string;
+    if (!backend.available) {
+      body = `<div class="hn" style="padding:14px 4px">The leaderboard opens soon. Your scores are kept, and will count once it is open.</div>`;
+    } else if (!board) {
+      body = this.lbError ? `<div class="err" style="padding:12px 4px">${this.lbError}</div>` : `<div class="hn" style="padding:14px 4px">Loading…</div>`;
+    } else {
+      const rows = board.top.map((e) => this.lbRow(e)).join("");
+      const you = board.you ? (board.you.rank > board.top.length ? `<div class="lt gap">· · ·</div>` : "") + this.lbRow(board.you, true) : "";
+      const ago = Math.max(1, Math.round((Date.now() - board.updatedAt) / 60000));
+      body = `<div class="h4">Top players</div>${rows}${you}
+<div class="note">Updated ${ago === 1 ? "a minute" : ago + " minutes"} ago · ${board.players.toLocaleString("en-US")} players${this.lbBusy ? " · refreshing…" : ""}</div>`;
+    }
+    const login =
+      backend.available && !user && !this.lbSkip
+        ? `<div class="px login"><b>Join the board?</b><div class="hn" style="margin:2px 0 8px">Sign in to get a rank. Your game keeps working without it, and stays on your computer.</div>
+<button class="pb full gold lbsign" data-a="signin" data-v="apple"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".....11.", "....11..", "..11.11.", ".111111.", "1111111.", "1111111.", "1111111.", ".111.11.", "..1..1.."], ["#1c1c22"], 2)}Sign in with Apple</button>
+<button class="pb full lbsign" data-a="signin" data-v="google"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".11111.", "1111111", "11.....", "11.1111", "11...11", "1111111", ".11111."], ["#ffffff"], 2)}Sign in with Google</button>
+<button class="pb full" style="text-align:center" data-a="lbskip">Not now</button>${this.lbError && board ? `<div class="err">${this.lbError}</div>` : ""}</div>`
+        : user
+          ? `<div class="note" style="margin-top:6px">Signed in as <b>${user.nickname}</b> · <button class="lnk" data-a="signout">Sign out</button></div>`
+          : "";
+    return `<div class="px win" data-hit style="width:min(310px,94vw)">
+<div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Leaderboard</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
+<div class="wb">
+<div class="seg">${tabs}</div>
+${body}
+<div class="lbstat"><div><small>Best score</small><b>${getBestScore()}</b></div><div><small>Best streak</small><b>${s.bestStreak}</b></div><div><small>Accuracy</small><b>${acc}%</b></div></div>
+${login}
+</div></div>`;
   }
 
   openSound(): void {
@@ -339,6 +437,7 @@ ${this.row("Sound", this.tog("sound"))}
 <div class="hr"></div>
 <button class="pb full" data-a="cos">Appearance…</button>
 <button class="pb full" data-a="ach">Achievements…</button>
+${LEADERBOARD_ON ? `<button class="pb full lbl" data-a="lb"><span>Leaderboard…</span>${this.lbBoards.global?.you ? `<small>#${this.lbBoards.global.you.rank}</small>` : ""}</button>` : ""}
 <button class="pb full" data-a="inst">Settings…</button>
 ${this.donateHtml()}
 <button class="pb full danger" data-a="quit">Quit Hoops</button></div>`;
@@ -636,8 +735,9 @@ ${rows}
     else if (this.view === "cosmetics") html = this.cosmeticsHtml();
     else if (this.view === "sound") html = this.soundHtml();
     else if (this.view === "achievements") html = this.achievementsHtml();
+    else if (this.view === "leaderboard") html = this.leaderboardHtml();
     else if (this.view === "onboarding") html = this.onboardingHtml();
-    if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements") {
+    if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements" || this.view === "leaderboard") {
       html = `<div class="catch" data-hit data-a="dismiss"></div>${html}`;
     }
     if (this.resetDialog) html += this.resetDialogHtml();
@@ -795,6 +895,33 @@ ${rows}
       }
       case "back":
         this.back();
+        break;
+      case "lb":
+        this.openLeaderboard();
+        break;
+      case "lbtab":
+        this.lbTab = v as LbTab;
+        this.render();
+        void this.loadBoard();
+        break;
+      case "signin":
+        void this.signInWith(v as LbProviderId);
+        break;
+      case "signout":
+        void backend.signOut().then(() => {
+          this.lbBoards = {};
+          this.render();
+          void this.loadBoard();
+        });
+        break;
+      case "lbskip":
+        this.lbSkip = true;
+        try {
+          localStorage.setItem("hoops.lb.skip", "1");
+        } catch {
+          /* ignore */
+        }
+        this.render();
         break;
       case "update":
         if (this.update) {

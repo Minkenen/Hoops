@@ -97,8 +97,16 @@ export function getScore(): number {
   return Number(localStorage.getItem(SCORE_KEY) ?? "0") || 0;
 }
 
+const BEST_KEY = "hoops.best";
+
+/** The best score you have ever had: the score can be reset, this cannot. */
+export function getBestScore(): number {
+  return Math.max(Number(localStorage.getItem(BEST_KEY) ?? "0") || 0, getScore());
+}
+
 export function setScore(v: number): void {
   try {
+    if (v > (Number(localStorage.getItem(BEST_KEY) ?? "0") || 0)) localStorage.setItem(BEST_KEY, String(v));
     localStorage.setItem(SCORE_KEY, String(v));
   } catch {
     /* ignore */
