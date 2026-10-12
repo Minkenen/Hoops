@@ -526,9 +526,17 @@ fn leaderboard_post<B: Serialize, T: for<'de> Deserialize<'de>>(base: &str, path
     }
     match req.send_json(serde_json::to_value(body).map_err(|e| e.to_string())?) {
         Ok(r) => r.into_json().map_err(|e| e.to_string()),
-        Err(ureq::Error::Status(_, r)) => Err(r.into_string().unwrap_or_else(|_| "Leaderboard request failed.".into())),
+        Err(ureq::Error::Status(_, r)) => Err(leaderboard_error_message(r)),
         Err(_) => Err("Could not reach the leaderboard server.".into()),
     }
+}
+
+fn leaderboard_error_message(r: ureq::Response) -> String {
+    let text = r.into_string().unwrap_or_else(|_| "Leaderboard request failed.".into());
+    serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_string))
+        .unwrap_or(text)
 }
 
 fn read_loopback_callback(listener: TcpListener) -> Result<String, String> {

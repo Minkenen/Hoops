@@ -1,4 +1,4 @@
-import { cleanNickname, defaultNickname, scoreDecision, weekKey } from "./logic.js";
+import { NICKNAME_TAKEN_ERROR, defaultNickname, nicknameDecision, nicknameLower, scoreDecision, weekKey } from "./logic.js";
 
 interface D1Database {
   prepare(query: string): D1PreparedStatement;
@@ -182,9 +182,17 @@ async function score(request: Request, env: Env): Promise<Response> {
 async function nickname(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
   const body = await request.json() as { nickname?: string };
-  const nickname = cleanNickname(body.nickname);
-  if (!nickname) return bad("Choose another nickname.");
-  await env.DB.prepare("UPDATE players SET nickname = ? WHERE id = ?").bind(nickname, player.id).run();
+  const decided = nicknameDecision(body.nickname);
+  if (!decided.ok) return bad(decided.error, decided.status);
+  const { nickname, lower } = decided;
+  const taken = await env.DB.prepare("SELECT id FROM players WHERE nickname_lower = ? AND id != ?").bind(lower, player.id).first<{ id: string }>();
+  if (taken) return bad(NICKNAME_TAKEN_ERROR, 409);
+  try {
+    await env.DB.prepare("UPDATE players SET nickname = ?, nickname_lower = ? WHERE id = ?").bind(nickname, lower, player.id).run();
+  } catch (error) {
+    if (isUniqueConstraint(error)) return bad(NICKNAME_TAKEN_ERROR, 409);
+    throw error;
+  }
   return json({ id: player.id, nickname });
 }
 
@@ -198,12 +206,23 @@ async function upsertPlayer(env: Env, provider: Provider, providerUserId: string
   const providerHash = await sha256(`${provider}:${providerUserId}:${env.HASH_PEPPER}`);
   const existing = await env.DB.prepare("SELECT id, nickname FROM players WHERE provider_user_id_hash = ?").bind(providerHash).first<{ id: string; nickname: string }>();
   if (existing) return existing;
-  const id = crypto.randomUUID();
-  const nickname = defaultNickname(providerHash);
-  await env.DB.prepare("INSERT INTO players (id, provider, provider_user_id_hash, nickname, created_at) VALUES (?, ?, ?, ?, ?)")
-    .bind(id, provider, providerHash, nickname, Date.now())
-    .run();
-  return { id, nickname };
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const id = crypto.randomUUID();
+    const nickname = defaultNickname(providerHash, attempt);
+    const lower = nicknameLower(nickname);
+    if (!lower) throw new Error("Could not create nickname.");
+    try {
+      await env.DB.prepare("INSERT INTO players (id, provider, provider_user_id_hash, nickname, nickname_lower, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(id, provider, providerHash, nickname, lower, Date.now())
+        .run();
+      return { id, nickname };
+    } catch (error) {
+      if (!isUniqueConstraint(error)) throw error;
+    }
+    const racedExisting = await env.DB.prepare("SELECT id, nickname FROM players WHERE provider_user_id_hash = ?").bind(providerHash).first<{ id: string; nickname: string }>();
+    if (racedExisting) return racedExisting;
+  }
+  throw new Error("Could not create nickname.");
 }
 
 async function optionalPlayer(request: Request, env: Env): Promise<{ id: string; nickname: string } | null> {
@@ -274,4 +293,8 @@ function iconFor(id: string): number {
   let n = 0;
   for (let i = 0; i < id.length; i++) n = (n + id.charCodeAt(i)) % 7;
   return n;
+}
+
+function isUniqueConstraint(error: unknown): boolean {
+  return String(error instanceof Error ? error.message : error).toLowerCase().includes("unique");
 }

@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS players (
   provider TEXT NOT NULL,
   provider_user_id_hash TEXT NOT NULL UNIQUE,
   nickname TEXT NOT NULL,
+  nickname_lower TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL
 );
 

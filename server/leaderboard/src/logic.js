@@ -1,6 +1,8 @@
 export const SCORE_SYNC_MS = 30_000;
 export const MAX_SCORE = 100_000;
 export const MAX_POINTS_PER_MINUTE = 180;
+export const NICKNAME_INVALID_ERROR = "Use 3 to 18 letters, numbers, spaces, - or _.";
+export const NICKNAME_TAKEN_ERROR = "That name is taken. Try another.";
 
 export function weekKey(now = Date.now()) {
   const d = new Date(now);
@@ -17,11 +19,23 @@ export function cleanNickname(value) {
     .trim()
     .slice(0, 18);
   const banned = /\b(fuck|shit|cunt|bitch|nazi|rape)\b/i;
-  return cleaned && !banned.test(cleaned) ? cleaned : null;
+  return cleaned.length >= 3 && !banned.test(cleaned) ? cleaned : null;
 }
 
-export function defaultNickname(seed) {
-  const digits = String(Math.abs(hashCode(seed)) % 9000 + 1000);
+export function nicknameLower(nickname) {
+  return cleanNickname(nickname)?.toLowerCase() || null;
+}
+
+export function nicknameDecision(value, existingLowerNames = new Set()) {
+  const nickname = cleanNickname(value);
+  const lower = nickname && nicknameLower(nickname);
+  if (!nickname || !lower) return { ok: false, status: 400, error: NICKNAME_INVALID_ERROR };
+  if (existingLowerNames.has(lower)) return { ok: false, status: 409, error: NICKNAME_TAKEN_ERROR };
+  return { ok: true, nickname, lower };
+}
+
+export function defaultNickname(seed, attempt = 0) {
+  const digits = String(Math.abs(hashCode(`${seed}:${attempt}`)) % 9000 + 1000);
   return `HoopsFan${digits}`;
 }
 
