@@ -32,12 +32,12 @@ export interface OnlineMatchHost {
 }
 
 /**
- * Where the other player's ball is. In HORSE and 21 ("arc") it is relative to the hoop on their screen, which is shown on our screen too.
- * In Speedball ("free") both play at once with their own hoops, so it is just a place on the screen: across, and height above the floor.
+ * Where the other player's ball is. "free" uses normalized court coordinates so phones and desktop screens with
+ * different aspect ratios still show the ball in the same relative place.
  */
 export type OpponentBall =
   | { kind: "arc"; dx: number; dy: number; side: "left" | "right"; rimH: number; ang: number }
-  | { kind: "free"; nx: number; h: number; ang: number };
+  | { kind: "free"; nx: number; ny?: number; h?: number; ang: number };
 
 export interface OnlineResult {
   won: boolean;
@@ -203,8 +203,14 @@ export class OnlineMatch {
     } else if (m.type === "ball" && !this.over && m.payload) {
       const p = m.payload as Record<string, unknown>;
       const ang = typeof p.ang === "number" ? p.ang : 0;
-      if (p.kind === "free" && typeof p.nx === "number" && typeof p.h === "number") {
-        this.host.ball({ kind: "free", nx: p.nx, h: p.h, ang });
+      if (p.kind === "free" && typeof p.nx === "number" && (typeof p.ny === "number" || typeof p.h === "number")) {
+        this.host.ball({
+          kind: "free",
+          nx: p.nx,
+          ny: typeof p.ny === "number" ? p.ny : undefined,
+          h: typeof p.h === "number" ? p.h : undefined,
+          ang,
+        });
       } else if (typeof p.dx === "number" && typeof p.dy === "number" && (p.side === "left" || p.side === "right") && typeof p.rimH === "number") {
         this.host.ball({ kind: "arc", dx: p.dx, dy: p.dy, side: p.side, rimH: p.rimH, ang });
       }

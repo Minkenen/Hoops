@@ -287,6 +287,20 @@ export class Game {
     this.ghost = { x, y, ang };
   }
 
+  private ballNy(): number {
+    return clamp((this.ball.y - BALL_R) / Math.max(1, this.floorY - BALL_R * 2), 0, 1);
+  }
+
+  private yFromPeer(p: { ny?: number; h?: number }): number {
+    if (typeof p.ny === "number") return BALL_R + clamp(p.ny, 0, 1) * Math.max(1, this.floorY - BALL_R * 2);
+    return this.floorY - (p.h ?? 0);
+  }
+
+  private sendFreeBall(): void {
+    const b = this.ball;
+    this.onlineMatch?.sendBall({ kind: "free", nx: b.x / this.artW, ny: this.ballNy(), ang: b.ang });
+  }
+
   /** The other player's ball. Speedball draws a second ghost ball; HORSE and 21 move the shared ball itself. */
   opponentBall(p: OpponentBall): void {
     const m = this.onlineMatch;
@@ -295,14 +309,14 @@ export class Game {
       if (m.game !== "speed") {
         this.sharedBallTarget = {
           x: clamp(p.nx * this.artW, BALL_R, this.artW - BALL_R),
-          y: clamp(this.floorY - p.h, BALL_R, this.floorY - BALL_R),
+          y: clamp(this.yFromPeer(p), BALL_R, this.floorY - BALL_R),
           ang: p.ang,
           until: performance.now() + 900,
         };
         this.start();
         return;
       }
-      this.pushGhost(p.nx * this.artW, this.floorY - p.h, p.ang);
+      this.pushGhost(p.nx * this.artW, this.yFromPeer(p), p.ang);
       // Speedball: always there. HORSE and 21: there while it is their ball, kept up by their resting reports
       this.ghostUntil = m.game === "speed" ? Infinity : performance.now() + 1200;
       this.start();
@@ -935,16 +949,16 @@ export class Game {
         // both play at once: the other player sees your ball as a ghost, about 20 times a second while it moves, and now and then when it rests
         if (nowMs - this.ballSentAt >= (b.moving ? 33 : 250)) {
           this.ballSentAt = nowMs;
-          this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
+          this.sendFreeBall();
         }
       } else if (!b.moving && !this.shot && this.onlineMatch.turn === "me" && nowMs - this.ballSentAt >= 120) {
         // HORSE and 21, your turn, ball resting: the other player sees it where it is (it is the one ball)
         this.ballSentAt = nowMs;
-        this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
+        this.sendFreeBall();
       } else if (b.moving && this.shot && nowMs - this.ballSentAt >= 16) {
         // HORSE and 21: send the actual shared ball position, not a separate simulated arc.
         this.ballSentAt = nowMs;
-        this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
+        this.sendFreeBall();
       }
     }
     if (b.moving) {
