@@ -309,14 +309,20 @@ export class Game {
     this.onlineMatch?.sendBall({ kind: "free", nx: this.ballNx(), ny: this.ballNy(), ang: b.ang });
   }
 
+  /** Turn games render only the shared ball; discard every leftover second-ball representation. */
+  private clearRemoteBallVisuals(): void {
+    this.ghost = null;
+    this.ghostBuf.length = 0;
+    this.ghostUntil = 0;
+  }
+
   /** The other player's ball. Speedball draws a second ghost ball; HORSE and 21 move the shared ball itself. */
   opponentBall(p: OpponentBall): void {
     const m = this.onlineMatch;
     if (!m || !this.active) return;
     if (p.kind === "free") {
       if (m.game !== "speed") {
-        this.ghost = null;
-        this.ghostBuf.length = 0;
+        this.clearRemoteBallVisuals();
         this.sharedBallTarget = {
           x: this.xFromPeer(p.nx),
           y: clamp(this.yFromPeer(p), BALL_R, this.floorY - BALL_R),
@@ -333,8 +339,7 @@ export class Game {
       return;
     }
     if (m.game === "speed") return;
-    this.ghost = null;
-    this.ghostBuf.length = 0;
+    this.clearRemoteBallVisuals();
     // your hoop stays where it is; their ball is mirrored if their hoop was on the other side
     if (!this.hoop || this.hoop.phase === "out") this.showHoop(p.side, p.rimH);
     const h = this.hoop;
@@ -380,6 +385,10 @@ export class Game {
 
   /** The other player has started a shot. */
   opponentShotStart(): void {
+    if (this.onlineMatch?.game !== "speed") {
+      this.clearRemoteBallVisuals();
+      this.sharedBallTarget = null;
+    }
     play("shoot", 0.55);
     this.start();
   }
@@ -405,7 +414,7 @@ export class Game {
   endOnlineMatch(): void {
     this.onlineMatch?.leave();
     this.onlineMatch = null;
-    this.ghost = null;
+    this.clearRemoteBallVisuals();
     this.sharedBallTarget = null;
     this.restoreLook();
     this.ui.close(true);
@@ -454,6 +463,7 @@ export class Game {
     this.hideAt = null;
     this.bubble = null;
     this.introDone = true;
+    this.clearRemoteBallVisuals();
     this.ghost = match.game === "speed" ? { x: this.artW * 0.7, y: this.floorY - BALL_R, ang: 0 } : null;
     this.sharedBallTarget = null;
     this.ghostUntil = Infinity;
@@ -709,6 +719,10 @@ export class Game {
       this.hideAt = null;
       this.announce(recordThrow());
       addShot();
+      if (this.onlineMatch?.game !== "speed") {
+        this.clearRemoteBallVisuals();
+        this.sharedBallTarget = null;
+      }
       this.onlineMatch?.localShot();
       this.crowd.shotStart(performance.now());
       play("shoot", clamp(d.power, 0.3, 1));
@@ -863,8 +877,7 @@ export class Game {
     b.vx = 0;
     b.vy = 0;
     b.moving = false;
-    this.ghost = null;
-    this.ghostBuf.length = 0;
+    this.clearRemoteBallVisuals();
     this.sharedBallTarget = null;
     // their ball has stopped: now the hoop can move
     this.hoopSwapAt = performance.now() + 300;
@@ -873,9 +886,13 @@ export class Game {
   }
 
   private ballTargetAlpha(): number {
+    const m = this.onlineMatch;
+    if (m && m.game !== "speed" && !m.over) {
+      // The shared ball is solid for the active player and see-through for the spectator.
+      // Keep it see-through until the opponent's stopped-ball handoff has arrived.
+      return m.turn === "me" && !m.waitingForPeer ? 1 : 0.25;
+    }
     if (this.ball.moving || this.drag) return 1;
-    // HORSE and 21 use one shared ball: on the other player's turn your local ball waits as a ghost.
-    if (this.sharedBallAway()) return 0.25;
     return 1 - settings.ballFade;
   }
 
@@ -906,6 +923,7 @@ export class Game {
   private update(ms: number, now: number): void {
     const b = this.ball;
     const dr = this.drag;
+    if (this.onlineMatch?.game !== "speed" && this.ghost) this.clearRemoteBallVisuals();
     if (dr && dr.move) {
       b.vx = (b.vx + (dr.tx - b.x) * HOLD_K) * HOLD_DAMP;
       b.vy = (b.vy + (dr.ty - b.y) * HOLD_K) * HOLD_DAMP;
