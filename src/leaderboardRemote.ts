@@ -3,6 +3,7 @@ import { getBestScore } from "./settings";
 import {
   leaderboardLoad,
   leaderboardSignIn,
+  leaderboardSetNickname,
   leaderboardSignOut,
   leaderboardSubmitScore,
   leaderboardUser,
@@ -42,6 +43,11 @@ class RemoteLeaderboard implements LbBackend {
   async signOut(): Promise<void> {
     await leaderboardSignOut();
     this.me = null;
+  }
+
+  async setNickname(name: string): Promise<LbUser> {
+    this.me = await leaderboardSetNickname(this.serverUrl, name);
+    return this.me;
   }
 
   async load(tab: LbTab): Promise<LbBoard> {

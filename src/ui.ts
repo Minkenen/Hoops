@@ -10,7 +10,7 @@ import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases
 import { ALL_ACCESS_PRICE, ALL_ACCESS_VALUE, PRICE_VALUE, THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, getStats } from "./stats";
 import type { UpdateInfo } from "./update";
-import { backend, LEADERBOARD_ON, type LbBoard, type LbEntry, type LbProviderId, type LbTab } from "./leaderboard";
+import { backend, cleanNickname, LEADERBOARD_ON, type LbBoard, type LbEntry, type LbProviderId, type LbTab } from "./leaderboard";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
 type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "leaderboard" | "onboarding";
@@ -109,6 +109,9 @@ export class UI {
   private stack: View[] = [];
   private backKeyOn = false;
   private update: UpdateInfo | null = null;
+  private nickDraft = "";
+  private nickError = "";
+  private nickBusy = false;
   private lbTab: LbTab = "global";
   private lbBoards: Partial<Record<LbTab, LbBoard>> = {};
   private lbBusy = false;
@@ -128,6 +131,7 @@ export class UI {
     host.addEventListener("keydown", (e) => {
       const el = e.target as HTMLElement;
       if (e.key === "Enter" && el.id === "lic") void this.activate();
+      else if (e.key === "Enter" && el.id === "nick") void this.saveNick();
       else if (e.key === "Backspace" && el.tagName !== "INPUT" && el.tagName !== "TEXTAREA" && this.view !== "none" && this.view !== "menu") {
         e.preventDefault();
         this.back();
@@ -161,6 +165,64 @@ export class UI {
   private go(v: View): void {
     if (this.view !== "none" && this.view !== v && this.view !== "onboarding") this.stack.push(this.view);
     this.view = v;
+    this.render();
+  }
+
+  private nextStep(): void {
+    this.step = Math.min(this.onbSteps().length - 1, this.step + 1);
+    this.lbError = "";
+    this.nickError = "";
+    this.render();
+    if (this.onbSteps()[this.step] === "name") {
+      void focusWindow().catch(() => {});
+      this.host.querySelector<HTMLInputElement>("#nick")?.focus();
+    }
+  }
+
+  /** Signs in from the first-run guide and goes on to naming yourself. */
+  private async onbSignIn(): Promise<void> {
+    this.lbSigning = true;
+    this.lbError = "";
+    this.render();
+    try {
+      await backend.signIn("google");
+      this.lbSigning = false;
+      this.nextStep();
+      return;
+    } catch (e) {
+      this.lbError = e instanceof Error ? e.message : "Could not sign in.";
+    }
+    this.lbSigning = false;
+    this.render();
+  }
+
+  /** Saves the typed name (names are unique, the server says if it is taken) and goes on. */
+  private async saveNick(): Promise<void> {
+    const cur = backend.user()?.nickname ?? "";
+    const typed = this.nickDraft || cur;
+    if (typed === cur) {
+      this.nextStep();
+      return;
+    }
+    const n = cleanNickname(typed);
+    if (!n) {
+      this.nickError = "Use 3 to 18 letters, numbers, spaces, - or _.";
+      this.render();
+      return;
+    }
+    this.nickBusy = true;
+    this.nickError = "";
+    this.render();
+    try {
+      await backend.setNickname(n);
+      this.nickBusy = false;
+      this.nickDraft = "";
+      this.nextStep();
+      return;
+    } catch (e) {
+      this.nickError = e instanceof Error ? e.message : "Could not save the name. Try again.";
+    }
+    this.nickBusy = false;
     this.render();
   }
 
@@ -297,6 +359,7 @@ ${login}
   openOnboarding(): void {
     this.view = "onboarding";
     this.step = 0;
+    this.nickDraft = "";
     this.render();
   }
 
@@ -704,23 +767,42 @@ ${rows}
 </div></div>`;
   }
 
+  /** The steps of the first-run guide. The leaderboard steps are only there when there is a leaderboard; naming yourself only once you are signed in. */
+  private onbSteps(): string[] {
+    const lb = LEADERBOARD_ON && backend.available;
+    return ["welcome", "autostart", "fullscreen", ...(lb ? ["board", ...(backend.user() ? ["name"] : [])] : []), "done"];
+  }
+
   private onboardingHtml(): string {
-    const s = this.step;
-    const dots = `<div class="dots">${[0, 1, 2, 3].map((i) => `<i class="${i <= s ? "on" : ""}"></i>`).join("")}</div>`;
+    const steps = this.onbSteps();
+    const s = Math.min(this.step, steps.length - 1);
+    const id = steps[s];
+    const dots = `<div class="dots">${steps.map((_, i) => `<i class="${i <= s ? "on" : ""}"></i>`).join("")}</div>`;
+    const user = backend.user();
     let body = "";
-    if (s === 0) {
+    if (id === "welcome") {
       body = `<h3>Welcome to Hoops</h3><p>A tiny basketball that lives at the bottom of your screen.</p><ul class="how"><li>Drag the ball and let go to shoot</li><li>Sink it for points and confetti</li><li>Hold Shift and drag to move the ball</li><li>Right-click the ball for the menu</li></ul>`;
-    } else if (s === 1) {
+    } else if (id === "autostart") {
       body = `<h3>Start automatically?</h3><p>Hoops starts quietly in the background when you log in.</p><div class="tiles">${this.tile("autostart", 1, "Yes, start it for me", "Ready right after login")}${this.tile("autostart", 0, "No, I will start it", "Open Hoops whenever you want")}</div>`;
-    } else if (s === 2) {
+    } else if (id === "fullscreen") {
       body = `<h3>Over other apps?</h3><p>Should the ball show over fullscreen apps, like games and video?</p><div class="tiles">${this.tile("fullscreen", 1, "On top of everything", "Even fullscreen")}${this.tile("fullscreen", 0, "Regular windows only", "Hidden behind fullscreen")}</div>`;
+    } else if (id === "board") {
+      body = user
+        ? `<h3>You are on the board</h3><p>Signed in as <b>${user.nickname}</b>. Next you can pick your own name.</p>`
+        : `<h3>Join the leaderboard?</h3><p>Sign in with Google to get a rank and see how you do against other players. It is optional: Hoops works fully without it, and you can do this later from the menu.</p>
+<button class="pb full gold lbsign" data-a="obsign"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".11111.", "1111111", "11.....", "11.1111", "11...11", "1111111", ".11111."], ["#1c1c22"], 2)}${this.lbSigning ? "Signing in…" : "Sign in with Google"}</button>${this.lbError ? `<div class="err">${this.lbError}</div>` : ""}`;
+    } else if (id === "name") {
+      const cur = this.nickDraft || user?.nickname || "";
+      body = `<h3>Pick your name</h3><p>This is how you show up on the leaderboard. A name is yours alone: no one else can have the same one.</p>
+<input class="lic" id="nick" type="text" maxlength="18" value="${cur.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}" placeholder="Your name" autocomplete="off" spellcheck="false"${this.nickBusy ? " disabled" : ""}>
+<div class="hn" style="margin-top:4px">3 to 18 letters, numbers, spaces, - or _.</div>${this.nickError ? `<div class="err">${this.nickError}</div>` : ""}`;
     } else {
       body = `<h3>All set</h3><p>You can change everything later in settings. Lost the ball? Press the shortcut to open the menu.</p>${SHORTCUT}`;
     }
-    const nav = `<div class="nav"><div>${s > 0 ? '<button class="pb" data-a="back">Back</button>' : ""}</div><div>${
-      s < 3
-        ? '<button class="pb pri" data-a="next">Next</button>'
-        : '<button class="pb pri" data-a="finish">Start playing</button>'
+    const last = s === steps.length - 1;
+    const nextLabel = id === "name" ? (this.nickBusy ? "Saving…" : "Save name") : id === "board" && !user ? "Skip for now" : "Next";
+    const nav = `<div class="nav"><div>${s > 0 ? '<button class="pb" data-a="obback">Back</button>' : ""}</div><div>${
+      last ? '<button class="pb pri" data-a="finish">Start playing</button>' : `<button class="pb pri" data-a="next"${this.nickBusy ? " disabled" : ""}>${nextLabel}</button>`
     }</div></div>`;
     return `<div class="px ob" data-hit style="width:min(430px,92vw)">${dots}${body}${nav}</div>`;
   }
@@ -752,6 +834,10 @@ ${rows}
     const t = e.target as HTMLInputElement;
     if (t.id === "lic") {
       this.licenseDraft = t.value;
+      return;
+    }
+    if (t.id === "nick") {
+      this.nickDraft = t.value;
       return;
     }
     const k = t.dataset.k;
@@ -935,12 +1021,17 @@ ${rows}
         this.close();
         break;
       case "next":
-        this.step = Math.min(3, this.step + 1);
+        if (this.onbSteps()[this.step] === "name") void this.saveNick();
+        else this.nextStep();
+        break;
+      case "obback":
+        this.step = Math.max(0, this.step - 1);
+        this.lbError = "";
+        this.nickError = "";
         this.render();
         break;
-      case "back":
-        this.step = Math.max(0, this.step - 1);
-        this.render();
+      case "obsign":
+        void this.onbSignIn();
         break;
       case "finish":
         setOnboarded();

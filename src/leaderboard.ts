@@ -35,7 +35,15 @@ export interface LbBackend {
   user(): LbUser | null;
   signIn(provider: LbProviderId): Promise<LbUser>;
   signOut(): Promise<void>;
+  /** Changes your name on the board. Names are unique (no two players can have the same, whatever the capital letters). Rejects with a message to show, such as "That name is taken." */
+  setNickname(name: string): Promise<LbUser>;
   load(tab: LbTab): Promise<LbBoard>;
+}
+
+/** Letters, numbers, spaces, - and _, up to 18 characters. Returns null when the name is not good enough (fewer than 3 characters). */
+export function cleanNickname(v: string): string | null {
+  const c = v.replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, " ").trim().slice(0, 18);
+  return c.length >= 3 ? c : null;
 }
 
 /** The leaderboard is shown while trying the app out, and in a release only when it is switched on at build time (VITE_LEADERBOARD=1). */
@@ -63,6 +71,17 @@ const mock: LbBackend = {
     }
     return { id: "mock", nickname: "HoopsFan" };
   },
+  async setNickname(name) {
+    const n = cleanNickname(name);
+    if (!n) throw new Error("Use 3 to 18 letters, numbers, spaces, - or _.");
+    if ([...NAMES, ...FRIENDS].some((x) => x.toLowerCase() === n.toLowerCase())) throw new Error("That name is taken. Try another.");
+    try {
+      localStorage.setItem(ME, n);
+    } catch {
+      /* ignore */
+    }
+    return { id: "mock", nickname: n };
+  },
   async signOut() {
     try {
       localStorage.removeItem(ME);
@@ -86,6 +105,7 @@ const unavailable: LbBackend = {
   user: () => null,
   signIn: () => Promise.reject(new Error("The leaderboard is not open yet.")),
   signOut: () => Promise.resolve(),
+  setNickname: () => Promise.reject(new Error("The leaderboard is not open yet.")),
   load: () => Promise.reject(new Error("The leaderboard is not open yet.")),
 };
 
