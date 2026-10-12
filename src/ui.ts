@@ -183,6 +183,8 @@ export class UI {
         this.render();
       },
       toast: (m) => this.toast(m, 1800),
+      ball: (p) => this.game.opponentBall(p),
+      peerShotEnded: () => this.game.opponentShotEnd(),
     });
     this.close();
     this.game.startOnlineMatch(match);
@@ -199,6 +201,7 @@ export class UI {
     return `<div class="px mp-hud"><div class="t">Online ${name} · ${m.goalText}</div>
 <div class="r"><span>You</span>${mine(m.scoreMe, m.lettersMe)}</div>
 <div class="r"><span>${esc(m.opponent)}</span>${mine(m.scoreOpp, m.lettersOpp)}</div>
+${m.game !== "speed" && !m.over ? `<div class="mp-turnbanner ${m.turn === "me" ? "me" : "opp"}">${m.turn === "me" ? "YOUR TURN" : `${esc(m.opponent).toUpperCase()}'S TURN`}</div>` : ""}
 ${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>` : turn ? `<div class="n${m.turn === "me" ? " me" : ""}">${esc(turn)}</div>` : ""}</div>`;
   }
 

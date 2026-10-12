@@ -21,6 +21,19 @@ export interface OnlineMatchHost {
   changed(): void;
   /** A short message for the player. */
   toast(m: string): void;
+  /** The other player's ball, in flight. */
+  ball(p: OpponentBall): void;
+  /** The other player's shot is over. */
+  peerShotEnded(): void;
+}
+
+/** Where the other player's ball is, relative to the hoop on their screen. */
+export interface OpponentBall {
+  dx: number;
+  dy: number;
+  side: "left" | "right";
+  rimH: number;
+  ang: number;
 }
 
 export interface OnlineResult {
@@ -102,6 +115,11 @@ export class OnlineMatch {
     this.host.changed();
   }
 
+  /** While the player's own shot is in flight (HORSE and 21): tells the other player where the ball is. */
+  sendBall(p: OpponentBall): void {
+    this.conn?.sendPeer("ball", p as unknown as Record<string, unknown>);
+  }
+
   private apply(who: "me" | "opp", goal: boolean, far: boolean): void {
     const me = who === "me";
     if (this.game === "speed") {
@@ -133,12 +151,18 @@ export class OnlineMatch {
 
   private onPeer(d: unknown): void {
     if (typeof d !== "object" || d === null) return;
-    const m = d as { type?: string; payload?: { goal?: unknown; far?: unknown } };
+    const m = d as { type?: string; payload?: { goal?: unknown; far?: unknown } & Record<string, unknown> };
     if (m.type === "result" && !this.over) {
       const goal = m.payload?.goal === true;
       this.apply("opp", goal, m.payload?.far === true);
       this.host.toast(goal ? `${this.opponent} scored` : `${this.opponent} missed`);
+      this.host.peerShotEnded();
       this.host.changed();
+    } else if (m.type === "ball" && !this.over && m.payload) {
+      const p = m.payload as Partial<OpponentBall>;
+      if (typeof p.dx === "number" && typeof p.dy === "number" && (p.side === "left" || p.side === "right") && typeof p.rimH === "number") {
+        this.host.ball({ dx: p.dx, dy: p.dy, side: p.side, rimH: p.rimH, ang: typeof p.ang === "number" ? p.ang : 0 });
+      }
     } else if (m.type === "leave" && !this.over) {
       this.finish(true, `${this.opponent} left the match`);
       this.host.changed();

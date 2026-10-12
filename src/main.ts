@@ -60,6 +60,7 @@ async function main(): Promise<void> {
   }
   const game = new Game(cv, me, monitors);
   ui.attach(game);
+  if (import.meta.env.DEV) Object.assign(window, { __game: game, __ui: ui });
   game.ui = ui;
 
   await onHandoff((p) => game.receive(p));

@@ -234,3 +234,10 @@
 #ui .mp-code span,#ui .mp-in{font-family:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-weight:700;letter-spacing:0}
 #ui .mp-code span{font-size:26px}
 #ui .mp-in{font-size:22px;letter-spacing:3px}
+
+/* whose turn it is: a banner at the top of the screen */
+#ui .mp-turnbanner{position:fixed;left:50%;top:14px;transform:translateX(-50%);padding:8px 22px;font-size:20px;font-weight:500;letter-spacing:.06em;
+  background:var(--panel);pointer-events:none;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o),-4px 0 0 var(--h),4px 0 0 var(--h),0 -4px 0 var(--h),0 4px 0 var(--h)}
+#ui .mp-turnbanner.me{color:#7ad89a;animation:mppulse 1s ease-in-out infinite}
+#ui .mp-turnbanner.opp{color:#ee7a24}
+@keyframes mppulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.06)}}
