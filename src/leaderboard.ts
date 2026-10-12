@@ -1,8 +1,8 @@
 // The leaderboard: what the menu window needs from a backend, and a make-believe backend for trying the design.
-// The real backend (sign in with Apple or Google, scores kept on a server) plugs in through setBackend().
+// The real backend (sign in with Google, scores kept on a server) plugs in through setBackend().
 
 export type LbTab = "global" | "weekly" | "friends";
-export type LbProviderId = "apple" | "google";
+export type LbProviderId = "google";
 
 export interface LbEntry {
   rank: number;

@@ -271,8 +271,7 @@ export class UI {
     const login =
       backend.available && !user && !this.lbSkip
         ? `<div class="px login"><b>Join the board?</b><div class="hn" style="margin:2px 0 8px">Sign in to get a rank. Your game keeps working without it, and stays on your computer.</div>
-<button class="pb full gold lbsign" data-a="signin" data-v="apple"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".....11.", "....11..", "..11.11.", ".111111.", "1111111.", "1111111.", "1111111.", ".111.11.", "..1..1.."], ["#1c1c22"], 2)}Sign in with Apple</button>
-<button class="pb full lbsign" data-a="signin" data-v="google"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".11111.", "1111111", "11.....", "11.1111", "11...11", "1111111", ".11111."], ["#ffffff"], 2)}Sign in with Google</button>
+<button class="pb full gold lbsign" data-a="signin" data-v="google"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".11111.", "1111111", "11.....", "11.1111", "11...11", "1111111", ".11111."], ["#1c1c22"], 2)}Sign in with Google</button>
 <button class="pb full" style="text-align:center" data-a="lbskip">Not now</button>${this.lbError && board ? `<div class="err">${this.lbError}</div>` : ""}</div>`
         : user
           ? `<div class="note" style="margin-top:6px">Signed in as <b>${user.nickname}</b> · <button class="lnk" data-a="signout">Sign out</button></div>`
