@@ -23,6 +23,7 @@ import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch,
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
 import type { UI } from "./ui";
+import type { OnlineGameEvent, OnlineMatchStart } from "./multiplayerMock";
 
 interface Ball {
   x: number;
@@ -126,6 +127,8 @@ export class Game {
   private acc = 0;
   private lastHit = "";
   private introDone = false;
+  private onlineMatch: OnlineMatchStart | null = null;
+  private onlineMyTurn = true;
 
   constructor(
     cv: HTMLCanvasElement,
@@ -229,6 +232,7 @@ export class Game {
   }
 
   intro(): void {
+    this.onlineMatch = null;
     this.activate();
     const b = this.ball;
     b.gs = 1;
@@ -245,6 +249,45 @@ export class Game {
     b.moving = true;
     this.introDone = false;
     this.start();
+  }
+
+  startOnlineMatch(match: OnlineMatchStart): void {
+    this.onlineMatch = match;
+    this.onlineMyTurn = !this.onlineTurnBased() || match.youStart;
+    this.activate();
+    this.ui.close();
+    const b = this.ball;
+    b.gs = 1;
+    b.t = 999;
+    b.scored = false;
+    b.postGoal = false;
+    b.kicked = false;
+    b.entering = false;
+    b.moving = false;
+    b.vx = 0;
+    b.vy = 0;
+    b.x = Math.round(this.artW * 0.32);
+    b.y = this.floorY - BALL_R;
+    this.shot = false;
+    this.shotResolved = false;
+    this.drag = null;
+    this.hoop = null;
+    this.hideAt = null;
+    this.bubble = null;
+    this.introDone = true;
+    this.showHoop();
+    this.start();
+    this.syncHit();
+  }
+
+  receiveOnlineGameEvent(event: OnlineGameEvent): void {
+    if (!this.onlineMatch) return;
+    if (event.type === "turn") {
+      this.onlineMyTurn = event.payload.yours;
+      if (this.onlineMyTurn && !this.ball.moving && !this.drag && !this.hoop) this.showHoop();
+      this.start();
+      this.syncHit();
+    }
   }
 
   receive(h: Handoff): void {
@@ -395,6 +438,7 @@ export class Game {
       this.start();
       return;
     }
+    if (!this.canTakeOnlineTurn()) return;
     if ((this.ball.moving && !this.canGrabSliding()) || this.ui.view !== "none") return;
     if (!onBall) return;
     if (this.ball.moving) {
@@ -489,6 +533,9 @@ export class Game {
       this.hideAt = null;
       this.announce(recordThrow());
       addShot();
+      if (this.onlineMatch) {
+        this.ui.onlineGameEvent({ type: "shot", payload: { x: b.x, y: b.y, vx: b.vx, vy: b.vy, t: performance.now() } });
+      }
       this.crowd.shotStart(performance.now());
       play("shoot", clamp(d.power, 0.3, 1));
     } else if (this.hoop) {
@@ -560,6 +607,7 @@ export class Game {
   }
 
   private showHoop(): void {
+    if (!this.canTakeOnlineTurn()) return;
     if (this.hoop && this.hoop.phase !== "out") return;
     const b = this.ball;
     const gap = BALL_R + 36;
@@ -625,6 +673,7 @@ export class Game {
   }
 
   private ballTargetAlpha(): number {
+    if (this.onlineTurnBased() && !this.onlineMyTurn) return 0.25;
     return !this.ball.moving && !this.drag ? 1 - settings.ballFade : 1;
   }
 
@@ -706,6 +755,7 @@ export class Game {
         if (h.p <= 0) {
           this.hoop = null;
           this.syncHit();
+          if (this.onlineTurnBased() && this.onlineMyTurn && !this.ball.moving && !this.drag) this.showHoop();
         }
       }
       if (!settings.stayOpen && this.hideAt !== null && now >= this.hideAt && now >= this.crowd.holdUntil(settings.crowd, now) && h.phase === "shown") {
@@ -745,6 +795,7 @@ export class Game {
 
   private rest(now: number): void {
     const b = this.ball;
+    const wasOnlineTurnShot = this.onlineTurnBased() && this.onlineMyTurn && this.shot;
     if (TOUCH_WEB) {
       const lo = EDGE_ROOM;
       const hi = this.artW - EDGE_ROOM;
@@ -759,6 +810,7 @@ export class Game {
     if (this.shot) {
       if (!b.scored) this.markMiss();
       this.shot = false;
+      if (wasOnlineTurnShot) this.endOnlineTurn();
       const soon = now + 600;
       this.hideAt = this.hideAt === null ? now + 700 : Math.min(this.hideAt, soon);
     }
@@ -1103,6 +1155,7 @@ export class Game {
       this.fireOn = false;
       this.putOutFire(b.x, b.y, true);
     }
+    if (this.onlineMatch) this.ui.onlineGameEvent({ type: "miss", payload: { t: performance.now() } });
   }
 
   private goal(h: Hoop): void {
@@ -1135,6 +1188,7 @@ export class Game {
     this.hideAt = performance.now() + 1500;
     const s = getScore() + 1;
     setScore(s);
+    if (this.onlineMatch) this.ui.onlineGameEvent({ type: "goal", payload: { score: s } });
     queueLeaderboardScoreSync();
     play("swish");
     play("swoosh2", 0.8);
@@ -1290,8 +1344,19 @@ export class Game {
         this.drawBubble(e, dur);
       }
     }
+    if (this.onlineMatch) this.drawOnlineBadge();
     this.milestone.draw(ctx);
     ctx.restore();
+  }
+
+  private drawOnlineBadge(): void {
+    const ctx = this.ctx;
+    const label = this.onlineTurnBased() ? `ONLINE ${this.onlineMyTurn ? "YOUR TURN" : "THEIR TURN"}` : `ONLINE ${this.onlineMatch!.game.toUpperCase()}`;
+    const w = textWidth(label, 1) + 10;
+    layer(ctx, (put) => {
+      for (let y = 0; y < 16; y++) for (let x = 0; x < w; x++) put(6 + x, 6 + y, y < 2 || y > 13 || x < 2 || x > w - 3 ? "#0d0e12" : "#343943");
+      text(put, label, 11, 10, 1, "#ffb257", "#ee7a24");
+    });
   }
 
   private drawBubble(e: number, dur: number): void {
@@ -1326,7 +1391,7 @@ export class Game {
     const rects: Rect[] = [];
     const b = this.ball;
     if (this.canDismiss()) rects.push({ x: 0, y: 0, w: this.artW * this.S, h: this.artH * this.S });
-    if ((!b.moving || this.canGrabSliding()) && !this.drag) {
+    if (this.canTakeOnlineTurn() && (!b.moving || this.canGrabSliding()) && !this.drag) {
       const pad = 8;
       rects.push({
         x: (b.x - BALL_R) * this.S - pad,
@@ -1345,5 +1410,20 @@ export class Game {
   resetScore(): void {
     setScore(0);
     resetMatch();
+  }
+
+  private onlineTurnBased(): boolean {
+    return !!this.onlineMatch && this.onlineMatch.game !== "speed";
+  }
+
+  private canTakeOnlineTurn(): boolean {
+    return !this.onlineTurnBased() || this.onlineMyTurn;
+  }
+
+  private endOnlineTurn(): void {
+    this.onlineMyTurn = false;
+    this.ui.onlineGameEvent({ type: "turn", payload: { yours: true } });
+    this.syncHit();
+    this.start();
   }
 }

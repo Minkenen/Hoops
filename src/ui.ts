@@ -5,7 +5,7 @@ const WEB = import.meta.env.VITE_TARGET === "web";
 const TOUCH = WEB && window.matchMedia("(pointer: coarse)").matches;
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
-import { MULTIPLAYER_MOCK, MultiplayerMock } from "./multiplayerMock";
+import { MULTIPLAYER_MOCK, MultiplayerMock, type OnlineGameEvent, type OnlineMatchStart } from "./multiplayerMock";
 import { drawSettingsArt } from "./settingsArt";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
@@ -127,6 +127,8 @@ export class UI {
     openMenu: () => this.openMenu(),
     toast: (m, ms) => this.toast(m, ms),
     nickname: () => backend.user()?.nickname ?? "You",
+    startOnlineMatch: (match) => this.startOnlineMatch(match),
+    receiveOnlineGameEvent: (event) => this.game.receiveOnlineGameEvent(event),
   });
   private cosTab: "ball" | "court" | "crowd" | "base" = "ball";
   private thumbs = new Map<string, string>();
@@ -165,6 +167,17 @@ export class UI {
 
   attach(game: Game): void {
     this.game = game;
+  }
+
+  private startOnlineMatch(match: OnlineMatchStart): void {
+    this.close();
+    this.game.startOnlineMatch(match);
+    const turn = match.game === "speed" ? "" : match.youStart ? " Your turn." : " Opponent starts.";
+    this.toast((match.direct ? `Online match vs ${match.opponent}` : `Online match vs ${match.opponent}. Direct link still connecting.`) + turn, 2600);
+  }
+
+  onlineGameEvent(event: OnlineGameEvent): void {
+    this.mp.sendGameEvent(event);
   }
 
   toggleMenu(): void {
