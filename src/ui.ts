@@ -16,7 +16,7 @@ import { type CrowdMode, Preview, setPreviewOverride } from "./preview";
 import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
 import { ALL_ACCESS_PRICE, ALL_ACCESS_VALUE, PRICE_VALUE, THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, getStats } from "./stats";
-import type { UpdateInfo } from "./update";
+import { type UpdateInfo, checkForUpdateDetailed } from "./update";
 import { backend, cleanNickname, LEADERBOARD_ON, type LbBoard, type LbEntry, type LbProviderId, type LbTab } from "./leaderboard";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
@@ -134,6 +134,9 @@ export class UI {
   });
   private cosTab: "ball" | "court" | "crowd" | "base" = "ball";
   private thumbs = new Map<string, string>();
+  /** What the "Check for updates" button last found, in words. */
+  private updateNote = "";
+  private updateBusy = false;
   private setTab: "game" | "sound" | "look" | "system" = "game";
   private lbSigning = false;
   private lbDelete = false;
@@ -159,6 +162,25 @@ export class UI {
         this.back();
       }
     });
+  }
+
+  /** The "Check for updates" button in Settings. */
+  private async checkUpdates(): Promise<void> {
+    if (this.updateBusy) return;
+    this.updateBusy = true;
+    this.updateNote = "";
+    this.render();
+    const r = await checkForUpdateDetailed();
+    this.updateBusy = false;
+    if (r.kind === "new") {
+      this.update = r.info;
+      this.updateNote = `A new version is ready: v${r.info.version}`;
+    } else if (r.kind === "latest") {
+      this.updateNote = `You have the latest version (v${r.current})`;
+    } else {
+      this.updateNote = "Could not check. Are you online?";
+    }
+    this.render();
   }
 
   /** A newer version exists: the menu shows an update button. */
@@ -647,7 +669,8 @@ ${this.row("Basketball court", this.tog("court"), "Shown while aiming")}
 <div class="row"><div><div class="lb">Ball see-through at rest</div><div class="hn">So you can see what is behind it</div></div><div class="st-fade"><canvas data-art="fade" width="40" height="22"></canvas>${this.sld("ballFade", 0, 0.8, 0.05)}</div></div>
 <button class="pb full" data-a="cos" style="margin-top:6px">Edit appearance…</button>`;
     } else {
-      pane = `${WEB ? "" : this.row("Start automatically", this.tog("autostart"), "When your computer starts")}
+      pane = `${WEB ? "" : this.row("Updates", `<button class="pb${this.update ? " buy" : ""}" data-a="${this.update ? "update" : "chkupdate"}"${this.updateBusy ? " disabled" : ""}>${this.updateBusy ? "Checking…" : this.update ? `Get v${this.update.version}` : "Check for updates"}</button>`, this.updateNote || `Hoops v${__APP_VERSION__}`)}
+${WEB ? "" : this.row("Start automatically", this.tog("autostart"), "When your computer starts")}
 ${WEB ? "" : this.row("Over fullscreen apps", this.tog("fullscreen"), "Games and video")}
 ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
 ${this.donateStatsHtml()}
@@ -1040,6 +1063,9 @@ ${rows}
         if (k) setSetting(k, (Number.isNaN(Number(v)) ? v : Number(v)) as never);
         if (k === "ballSkin" || k === "courtSkin" || k === "crowd") this.viewTheme = null;
         this.render();
+        break;
+      case "chkupdate":
+        void this.checkUpdates();
         break;
       case "costab":
         this.cosTab = v as typeof this.cosTab;

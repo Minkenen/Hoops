@@ -24,17 +24,26 @@ function newer(a: string, b: string): boolean {
 /** Only ever open our own pages from that file. */
 const trusted = (u: unknown): u is string => typeof u === "string" && /^https:\/\/(github\.com\/Minkenen\/|minkenen\.github\.io\/)/.test(u);
 
-/** Returns the newer version, or null when this is the latest or the check could not be made (offline, for instance). */
-export async function checkForUpdate(): Promise<UpdateInfo | null> {
+export type UpdateCheck = { kind: "new"; info: UpdateInfo } | { kind: "latest"; current: string } | { kind: "error" };
+
+/** Looks for a newer version and says what happened: there is one, this is the latest, or the check could not be made. */
+export async function checkForUpdateDetailed(): Promise<UpdateCheck> {
   try {
     const [current, res] = await Promise.all([getVersion(), fetch(`${VERSION_URL}?t=${Date.now()}`, { cache: "no-store" })]);
-    if (!res.ok) return null;
+    if (!res.ok) return { kind: "error" };
     const j = (await res.json()) as { version?: unknown; url?: unknown; mac?: unknown; windows?: unknown };
-    if (typeof j.version !== "string" || !newer(j.version, current)) return null;
+    if (typeof j.version !== "string") return { kind: "error" };
+    if (!newer(j.version, current)) return { kind: "latest", current };
     const mac = /Mac/i.test(navigator.platform);
     const url = [mac ? j.mac : j.windows, j.url].find(trusted);
-    return url ? { version: j.version, url } : null;
+    return url ? { kind: "new", info: { version: j.version, url } } : { kind: "error" };
   } catch {
-    return null;
+    return { kind: "error" };
   }
+}
+
+/** Returns the newer version, or null when this is the latest or the check could not be made (offline, for instance). */
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  const r = await checkForUpdateDetailed();
+  return r.kind === "new" ? r.info : null;
 }
