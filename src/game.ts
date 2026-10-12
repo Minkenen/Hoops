@@ -19,7 +19,8 @@ import {
   setCapture,
   setHitRegions,
 } from "./ipc";
-import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch, setScore, settings } from "./settings";
+import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch, setScore, setSetting, settings } from "./settings";
+import { themeById } from "./themes";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
 import type { UI } from "./ui";
@@ -133,6 +134,8 @@ export class Game {
   private ghostUntil = 0;
   private ghostFrames: HTMLCanvasElement[] | null = null;
   private ballSentAt = 0;
+  /** Your own look, put back after an online match that used the court you both picked. */
+  private savedLook: { ball: typeof settings.ballSkin; court: typeof settings.courtSkin; crowd: typeof settings.crowd } | null = null;
 
   /** The online match being played, or null. */
   get online(): OnlineMatch | null {
@@ -242,6 +245,7 @@ export class Game {
 
   intro(): void {
     this.onlineMatch = null;
+    this.restoreLook();
     this.activate();
     const b = this.ball;
     b.gs = 1;
@@ -300,12 +304,32 @@ export class Game {
     this.onlineMatch?.leave();
     this.onlineMatch = null;
     this.ghost = null;
+    this.restoreLook();
     this.ui.close(true);
     this.start();
   }
 
+  /** The court the players picked for the match (Street, Gym or Arena): both see the same look, and yours is put back afterwards. */
+  private applyMatchCourt(court: string): void {
+    const t = themeById(court.toLowerCase());
+    if (!this.savedLook) this.savedLook = { ball: settings.ballSkin, court: settings.courtSkin, crowd: settings.crowd };
+    setSetting("ballSkin", t.ball);
+    setSetting("courtSkin", t.court);
+    setSetting("crowd", t.crowd);
+  }
+
+  private restoreLook(): void {
+    const l = this.savedLook;
+    this.savedLook = null;
+    if (!l) return;
+    setSetting("ballSkin", l.ball);
+    setSetting("courtSkin", l.court);
+    setSetting("crowd", l.crowd);
+  }
+
   startOnlineMatch(match: OnlineMatch): void {
     this.onlineMatch = match;
+    this.applyMatchCourt(match.court);
     this.activate();
     this.ui.close(true);
     const b = this.ball;
