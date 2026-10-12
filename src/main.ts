@@ -17,7 +17,7 @@ import { preloadSounds } from "./audio";
 import { enforceOwned } from "./purchases";
 import { recheckLicenses } from "./licensing";
 import { checkForUpdate } from "./update";
-import { onSettingChange, settings } from "./settings";
+import { onSettingChange, setSetting, settings } from "./settings";
 import { setBackend } from "./leaderboard";
 import { createRemoteLeaderboard } from "./leaderboardRemote";
 import { connectLeaderboardScoreSync } from "./leaderboardSync";
@@ -50,8 +50,12 @@ async function main(): Promise<void> {
   const web = import.meta.env.VITE_TARGET === "web";
   if (web) {
     document.body.classList.add("web");
+    // Small screens get a smaller pixel size so the court and hoop fit.
+    if (window.innerWidth < 700 && !localStorage.getItem("hoops.settings")) setSetting("ballScale", 2);
+    let resizing = 0;
     window.addEventListener("resize", () => {
-      if (game.active) game.rescale();
+      window.clearTimeout(resizing);
+      resizing = window.setTimeout(() => game.active && game.rescale(), 150);
     });
   }
   const game = new Game(cv, me, monitors);
@@ -101,7 +105,7 @@ async function main(): Promise<void> {
       if (document.fullscreenElement) void document.exitFullscreen();
       else goFull();
     });
-    document.body.appendChild(fs);
+    if (typeof document.documentElement.requestFullscreen === "function") document.body.appendChild(fs);
   }
   if (web) {
     const b = document.createElement("button");

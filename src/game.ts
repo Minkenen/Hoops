@@ -283,7 +283,15 @@ export class Game {
     this.beat = 0;
   }
 
+  private holdTimer = 0;
+
+  private clearHold(): void {
+    if (this.holdTimer) window.clearTimeout(this.holdTimer);
+    this.holdTimer = 0;
+  }
+
   private cancelDrag(): void {
+    this.clearHold();
     const d = this.drag;
     if (!d) return;
     this.drag = null;
@@ -390,6 +398,17 @@ export class Game {
     }
     this.drag = { gx: e.clientX, gy: e.clientY, lx: 0, ly: 0, power: 0, move: e.shiftKey, tx: this.ball.x, ty: this.ball.y };
     this.cv.setPointerCapture(e.pointerId);
+    this.clearHold();
+    if (e.pointerType === "touch") {
+      // No right-click on a phone: pressing and holding the ball opens the menu.
+      this.holdTimer = window.setTimeout(() => {
+        this.holdTimer = 0;
+        if (this.drag && Math.hypot(this.drag.lx, this.drag.ly) < 6) {
+          this.cancelDrag();
+          this.ui.toggleMenu();
+        }
+      }, 550);
+    }
     void setCapture(true);
     this.stopBeat();
     this.beat = window.setInterval(() => void setCapture(true), 1000);
@@ -423,6 +442,7 @@ export class Game {
   }
 
   private onUp(e: PointerEvent): void {
+    this.clearHold();
     const d = this.drag;
     if (!d) return;
     this.drag = null;

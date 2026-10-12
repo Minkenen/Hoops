@@ -2,6 +2,7 @@ import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-sh
 import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
 const WEB = import.meta.env.VITE_TARGET === "web";
+const TOUCH = WEB && window.matchMedia("(pointer: coarse)").matches;
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
@@ -513,7 +514,7 @@ ${this.row("Sound", this.tog("sound"))}
 ${LEADERBOARD_ON ? `<button class="pb full lbl" data-a="lb"><span>Leaderboard…</span>${this.lbBoards.global?.you ? `<small>#${this.lbBoards.global.you.rank}</small>` : ""}</button>` : ""}
 <button class="pb full" data-a="inst">Settings…</button>
 ${this.donateHtml()}
-<button class="pb full danger" data-a="quit">Quit Hoops</button></div>`;
+${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}</div>`;
   }
 
   private settingsHtml(): string {
@@ -542,7 +543,7 @@ ${this.row("Start automatically", this.tog("autostart"), "When your computer sta
 ${this.row("Over fullscreen apps", this.tog("fullscreen"), "Games and video")}
 ${this.row("Menu shortcut", SHORTCUT)}
 ${this.donateStatsHtml()}
-<div class="acts"><button class="pb" data-a="reset">Reset score</button><button class="pb danger" data-a="quit">Quit Hoops</button></div>
+<div class="acts"><button class="pb" data-a="reset">Reset score</button>${WEB ? "" : '<button class="pb danger" data-a="quit">Quit Hoops</button>'}</div>
 </div></div>`;
   }
 
@@ -793,7 +794,7 @@ ${rows}
     const user = backend.user();
     let body = "";
     if (id === "welcome") {
-      body = `<h3>Welcome to Hoops</h3><p>${WEB ? "A tiny pixel-art basketball game." : "A tiny basketball that lives at the bottom of your screen."}</p><ul class="how"><li>Drag the ball and let go to shoot</li><li>Sink it for points and confetti</li><li>Hold Shift and drag to move the ball</li><li>Right-click the ball for the menu</li></ul>`;
+      body = `<h3>Welcome to Hoops</h3><p>${WEB ? "A tiny pixel-art basketball game." : "A tiny basketball that lives at the bottom of your screen."}</p><ul class="how"><li>Drag the ball and let go to shoot</li><li>Sink it for points and confetti</li>${TOUCH ? "<li>Press and hold the ball for the menu</li>" : "<li>Hold Shift and drag to move the ball</li><li>Right-click the ball for the menu</li>"}</ul>`;
     } else if (id === "overlay") {
       body = `<h3>Desktop app</h3><p>The overlay effect, where the ball and courts live on top of your other programs and your whole screen, only works in the downloaded version of Hoops.</p><p><a class="lk" href="../#download" target="_blank" rel="noopener">Download Hoops for Mac or Windows</a></p>`;
     } else if (id === "autostart") {

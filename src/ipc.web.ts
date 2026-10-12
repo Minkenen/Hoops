@@ -5,8 +5,18 @@ import type { Handoff, LicenseActivation, MonitorInfo, Rect } from "./ipc";
 export type { Handoff, LicenseActivation, MonitorInfo, Rect };
 
 
+/** The phone's bottom safe area (home bar), in pixels. */
+function safeBottom(): number {
+  const el = document.createElement("div");
+  el.style.cssText = "position:fixed;left:0;bottom:0;width:0;padding-bottom:env(safe-area-inset-bottom,0px);visibility:hidden";
+  document.body.appendChild(el);
+  const px = parseFloat(getComputedStyle(el).paddingBottom) || 0;
+  el.remove();
+  return px;
+}
+
 export const getMonitors = async (): Promise<MonitorInfo[]> => [
-  { index: 0, label: "overlay-0", x: 0, y: 0, w: window.innerWidth, h: window.innerHeight, scale: 1, bottom_inset: 0 },
+  { index: 0, label: "overlay-0", x: 0, y: 0, w: window.innerWidth, h: window.innerHeight, scale: 1, bottom_inset: safeBottom() },
 ];
 export const setHitRegions = async (_rects: Rect[]): Promise<void> => {};
 export const setCapture = async (_on: boolean): Promise<void> => {};
