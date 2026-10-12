@@ -314,7 +314,8 @@ ${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>`
 
   /** Backspace goes back, from anywhere while a window is open (but not while you are typing a license key). */
   private syncBackKey(): void {
-    const want = (this.view === "settings" || this.view === "sound" || this.view === "cosmetics" || this.view === "achievements" || this.view === "leaderboard" || (this.view === "online" && this.mp.screen !== "join" && this.mp.screen !== "notfound")) && !this.licenseStep;
+    // (not in the online window: it stays open while you use other apps, and a global Backspace would steal the key from them)
+    const want = (this.view === "settings" || this.view === "sound" || this.view === "cosmetics" || this.view === "achievements" || this.view === "leaderboard") && !this.licenseStep;
     if (want === this.backKeyOn) return;
     this.backKeyOn = want;
     if (want) {
@@ -963,7 +964,8 @@ ${rows}
     else if (this.view === "online") html = this.mp.html();
     else if (this.view === "onlineend") html = this.onlineEndHtml();
     else if (this.view === "onboarding") html = this.onboardingHtml();
-    if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements" || this.view === "leaderboard" || this.view === "online") {
+    if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements" || this.view === "leaderboard") {
+      // (the online window has no catcher: it stays open until you close it, so you can switch to another app to send the code)
       html = `<div class="catch" data-hit data-a="dismiss"></div>${html}`;
     }
     if (this.game?.online && this.view !== "onlineend") html += this.onlineHudHtml();

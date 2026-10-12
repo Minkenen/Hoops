@@ -229,3 +229,8 @@
 #ui .mp-hud .n{margin-top:4px;font-size:12px;color:var(--mut)}#ui .mp-hud .n.me{color:#7ad89a}#ui .mp-hud .n.warn{color:#ffc83a}
 #ui .mp-end{text-align:center;font-size:28px;font-weight:500;margin:10px 0 4px}
 #ui .mp-end.win{color:#7ad89a}#ui .mp-end.lose{color:#ff7a6a}
+
+/* the room code and the code field in a plain font, so every letter can be read and told apart */
+#ui .mp-code span,#ui .mp-in{font-family:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-weight:700;letter-spacing:0}
+#ui .mp-code span{font-size:26px}
+#ui .mp-in{font-size:22px;letter-spacing:3px}
