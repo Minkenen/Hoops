@@ -56,7 +56,10 @@ const MP_GAMES = new Set(["speed", "horse", "t21"]);
 const MP_COURTS = new Set(["Street", "Gym", "Arena"]);
 
 const allowedOrigin = (origin: string): boolean =>
-  origin === "https://minkenen.github.io" || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+  origin === "https://minkenen.github.io" ||
+  // the desktop app's own window (macOS and Windows)
+  origin === "tauri://localhost" || origin === "http://tauri.localhost" || origin === "https://tauri.localhost" ||
+  /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
