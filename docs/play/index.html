@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="sv">
   <head>
-    <script>(function(){try{var u=location.href.split("#")[0].replace(/[?&]v=\d+/,"");fetch(u).then(function(a){return a.text()}).then(function(a){return fetch(u,{cache:"no-store"}).then(function(r){return r.text()}).then(function(b){if(a!==b)location.replace(u+(u.indexOf("?")<0?"?":"&")+"v="+Date.now()+location.hash)})}).catch(function(){})}catch(e){}})()</script>
+    <script>(function(){try{if(/[?&]v=\d+/.test(location.search))return;var u=location.href.split("#")[0];fetch(u).then(function(a){return a.text()}).then(function(a){return fetch(u,{cache:"reload"}).then(function(r){return r.text()}).then(function(b){if(a!==b)location.replace(u+(u.indexOf("?")<0?"?":"&")+"v="+Date.now()+location.hash)})}).catch(function(){})}catch(e){}})()</script>
 
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
