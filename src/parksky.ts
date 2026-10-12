@@ -1,5 +1,5 @@
 // The Park theme's sky: big clouds and bird pairs all the time, and now and then something crosses it: a V of birds, an airliner,
-// a biplane with a banner and a flying hero. One thing at a time. Written in the mock-up's coordinates (y = local y + 174).
+// a biplane with a banner and a flying hero in a white suit and a green cape. One thing at a time. Written in the mock-up's coordinates (y = local y + 174).
 
 const GLYPHS: Record<string, string> = {
   H: "10001 10001 11111 10001 10001",
@@ -94,28 +94,56 @@ function biplane(x: number, y: number, t: number): void {
   text("PLAY HOOPS", x + 52, y - 4, "#1c1c22");
 }
 
+/** Verde: a white suit with green trim and a green cape, a green basketball on the chest. Flies to the right. */
 function hero(x: number, y: number, t: number, wave: boolean): void {
-  const flap = Math.floor(t / 90) % 2;
-  r(x - 16, y - 1 + flap, 10, 3, "#e8392b");
-  r(x - 12, y + 1 - flap, 8, 2, "#c2200f");
-  r(x - 20, y + flap, 6, 2, "#e8392b");
-  r(x - 8, y - 2, 4, 2, "#e8392b");
-  r(x - 6, y - 1, 11, 4, "#2a5fd0");
-  r(x - 6, y - 1, 11, 1, "#4a7ff0");
-  r(x + 4, y, 4, 3, "#2a5fd0");
-  r(x + 6, y - 1, 2, 2, "#f2c9a0");
-  r(x + 8, y - 2, 5, 5, "#f2c9a0");
-  r(x + 8, y - 3, 5, 2, "#1c1c22");
-  r(x + 12, y, 1, 1, "#1c1c22");
-  r(x - 9, y, 4, 2, "#2a5fd0");
-  r(x - 11, y, 2, 2, "#e8392b");
-  r(x - 6, y + 2, 3, 2, "#e8392b");
-  r(x + 1, y - 1, 3, 3, "#e8392b");
-  r(x + 2, y, 1, 1, "#ffe14a");
-  if (wave) {
-    r(x + 10, y - 6, 2, 4, "#f2c9a0");
-    r(x + 9, y - 7, 2, 1, "#2a5fd0");
+  const suit = "#f2f4f7";
+  const trim = "#2fa84f";
+  const cape = "#1f8a3c";
+  // the cape is a chain fixed at the shoulders: each part bends a little more than the one before it, so it hardly moves at the neck and waves most at the free end
+  let px = x + 4;
+  let py = y - 3;
+  let th = -0.3;
+  const N = 21;
+  for (let i = 0; i < N; i++) {
+    th += Math.sin(t / 190 - i * 0.5) * 0.09 * (i / 4) + 0.02;
+    px -= Math.cos(th);
+    py += Math.sin(th) * 0.9;
+    const frayed = i >= N - 6 && i % 2 === 0;
+    const h = Math.max(2, 9 - Math.floor(i * 0.35) - (frayed ? 3 : 0));
+    const top = Math.round(py) - 1 + (frayed ? 1 : 0);
+    r(Math.round(px) - 1, top, 2, h, cape);
+    r(Math.round(px) - 1, top, 2, 1, "#5fd878");
+    if (i % 4 === 3) r(Math.round(px) - 1, top + h - 1, 2, 1, "#8aeea0");
   }
+  r(x + 1, y - 4, 4, 7, cape);
+  r(x + 1, y - 4, 4, 1, "#5fd878");
+  // legs trailing behind, boots
+  r(x - 10, y + 1, 6, 2, suit);
+  r(x - 10, y + 3, 6, 2, "#d8dde6");
+  r(x - 13, y + 1, 3, 2, trim);
+  r(x - 13, y + 3, 3, 2, trim);
+  // torso and belt
+  r(x - 5, y - 1, 10, 5, suit);
+  r(x - 5, y - 1, 10, 1, "#ffffff");
+  r(x - 5, y - 1, 2, 5, trim);
+  // the arm: reaching forward, or up while he waves
+  if (wave) {
+    r(x + 5, y - 6, 2, 6, suit);
+    r(x + 5, y - 8, 3, 2, trim);
+  } else {
+    r(x + 4, y, 6, 2, suit);
+    r(x + 9, y - 1, 3, 3, trim);
+  }
+  // head: brown hair and a green mask
+  r(x + 5, y - 4, 6, 6, "#f2c9a0");
+  r(x + 5, y - 5, 6, 2, "#6a4a2a");
+  r(x + 4, y - 4, 2, 3, "#6a4a2a");
+  r(x + 9, y - 2, 2, 1, "#1c1c22");
+  r(x + 7, y - 4, 5, 1, trim);
+  // a green basketball on the chest
+  r(x - 2, y, 4, 3, trim);
+  r(x - 1, y, 1, 3, "#0e4a1e");
+  r(x - 2, y + 1, 4, 1, "#0e4a1e");
 }
 
 // ---- shooting the hero down
@@ -175,7 +203,7 @@ export function skyBusy(): boolean {
  */
 export function heroHit(ballX: number, ballY: number, rad: number): boolean {
   if (!flying || fall) return false;
-  if (Math.hypot(ballX - flying.x, ballY - (flying.y - OY)) > rad + 12) return false;
+  if (Math.hypot(ballX - flying.x, ballY - (flying.y - OY)) > rad + 14) return false;
   fall = { x: flying.x, y: flying.y, vx: 30, vy: -60, ang: 0 };
   crashed = false;
   disabledCycle = Math.floor(lastT / CYCLE);
@@ -234,7 +262,7 @@ function downedHero(t: number, dt: number): void {
       for (let i = 0; i < 26; i++) {
         const a = rnd(-3.1, 0);
         const sp = rnd(60, 200);
-        bits.push({ x: f.x, y: GRASS - 4, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, age: 0, life: rnd(0.6, 1.3), col: ["#2a5fd0", "#e8392b", "#f2c9a0", "#ffe14a", "#1c1c22"][i % 5], sz: i % 4 === 0 ? 4 : 2, fire: i % 3 === 0 });
+        bits.push({ x: f.x, y: GRASS - 4, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, age: 0, life: rnd(0.6, 1.3), col: ["#f2f4f7", "#2fa84f", "#f2c9a0", "#6a4a2a", "#1c1c22"][i % 5], sz: i % 4 === 0 ? 4 : 2, fire: i % 3 === 0 });
       }
       for (let i = 0; i < 22; i++) smokes.push({ x: f.x + rnd(-14, 14), y: GRASS - 6, vx: rnd(-10, 10), vy: -rnd(18, 50), age: 0, life: rnd(2, 4), s: rnd(8, 16) });
       bits.push({ x: f.x - 6, y: GRASS - 40, vx: rnd(-20, 20), vy: -20, age: 0, life: 4, g: -40, cape: true, drag: 1.2 });
@@ -288,9 +316,9 @@ function downedHero(t: number, dt: number): void {
   for (const p of bits) {
     if (p.cape) {
       const k = Math.sin(p.age * 3) * 4;
-      r(p.x + k, p.y, 10, 3, "#e8392b");
-      r(p.x + k - 2, p.y + 3, 12, 3, "#c2200f");
-      r(p.x + k + 1, p.y + 6, 8, 2, "#e8392b");
+      r(p.x + k, p.y, 10, 3, "#1f8a3c");
+      r(p.x + k - 2, p.y + 3, 12, 3, "#14672b");
+      r(p.x + k + 1, p.y + 6, 8, 2, "#1f8a3c");
     } else r(p.x, p.y, p.sz ?? 2, p.sz ?? 2, p.col ?? "#fff");
   }
 }
