@@ -10,32 +10,17 @@
 
 import { createMultiplayerConnection, type MpLobbyPlayer, type MpServerMessage, type MultiplayerConnection } from "./multiplayerClient";
 
-export const MULTIPLAYER_MOCK: boolean = import.meta.env.VITE_MULTIPLAYER_MOCK === "1";
+export const MULTIPLAYER_MOCK: boolean = import.meta.env.VITE_MULTIPLAYER === "1" || import.meta.env.VITE_MULTIPLAYER_MOCK === "1";
 const SERVER_URL = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) || "").trim();
 
-export type GameId = "speed" | "horse" | "t21";
+import type { GameId, MpCourt, OnlineMatchInit } from "./onlineMatch";
+export type { GameId, MpCourt };
 export type MpScreen = "start" | "quick" | "found" | "friend" | "created" | "join" | "notfound" | "lobby" | "countdown" | "reconnect" | "gone" | "timeout";
-export type MpCourt = "Street" | "Gym" | "Arena";
-
-export interface OnlineMatchStart {
-  game: GameId;
-  court: MpCourt;
-  opponent: string;
-  direct: boolean;
-  seed: string;
-  youStart: boolean;
-}
-
-export type OnlineGameEvent =
-  | { type: "shot"; payload: { x: number; y: number; vx: number; vy: number; t: number } }
-  | { type: "goal"; payload: { score: number } }
-  | { type: "miss"; payload: { t: number } }
-  | { type: "turn"; payload: { yours: boolean } };
 
 const GAMES: Record<GameId, { name: string; rule: string; tag: string; small: string }> = {
   speed: { name: "Speedball", rule: "You each get a ball. First to 10 baskets wins.", tag: "First to 10", small: "First to 10" },
-  horse: { name: "HORSE", rule: "Take turns shooting. Miss and you get a letter. Spell HORSE and you are out.", tag: "Miss = a letter", small: "Miss = a letter" },
-  t21: { name: "21", rule: "Take turns, one shot each. First to 21 points wins.", tag: "First to 21", small: "Take turns" },
+  horse: { name: "HORSE", rule: "Take turns with the same ball. Miss and you get a letter. Spell HORSE and you are out.", tag: "Miss = a letter", small: "Miss = a letter" },
+  t21: { name: "21", rule: "Take turns with the same ball, one shot each. 1 point, 2 from far away. First to 21 wins.", tag: "First to 21", small: "Take turns" },
 };
 
 /** What the mock needs from the window around it. */
@@ -46,8 +31,8 @@ export interface MpHost {
   openMenu(): void;
   toast(m: string, ms?: number): void;
   nickname(): string;
-  startOnlineMatch(match: OnlineMatchStart): void;
-  receiveOnlineGameEvent(event: OnlineGameEvent): void;
+  /** The countdown reached GO: the match takes over the connection. */
+  startOnlineMatch(init: OnlineMatchInit, conn: MultiplayerConnection | null): void;
 }
 
 export class MultiplayerMock {
@@ -65,9 +50,16 @@ export class MultiplayerMock {
   connected = false;
   direct = false;
   error = "";
+  /** The quick-match screen is showing a room being joined with a code. */
+  joining = false;
   peerName = "Mia";
   private seed = "";
-  private role: "offerer" | "answerer" = "offerer";
+  /** The match has started (once only: a second start would make a match without a connection). */
+  private started = false;
+  private myId = "";
+  /** You are the host: only the host picks the game and the court. */
+  isHost = true;
+  private peerId = "";
   private players: MpLobbyPlayer[] = [];
   private timers: number[] = [];
   private conn: MultiplayerConnection | null = createMultiplayerConnection(
@@ -84,6 +76,8 @@ export class MultiplayerMock {
   /** Opens at the first screen. */
   open(): void {
     this.stop();
+    this.started = false;
+    this.conn ??= this.connect();
     this.screen = "start";
     this.joinCode = "";
     this.me = this.opp = false;
@@ -117,6 +111,7 @@ export class MultiplayerMock {
 
   private go(s: MpScreen): void {
     this.error = "";
+    if (s !== "quick") this.joining = false;
     this.screen = s;
     this.host.render();
   }
@@ -144,19 +139,17 @@ export class MultiplayerMock {
     this.joinCode = v.replace(/[^a-zA-Z0-9-]/g, "").toUpperCase();
   }
 
-  sendGameEvent(event: OnlineGameEvent): void {
-    this.conn?.sendPeer(event.type, event.payload);
-  }
-
   /** Handles a click on an element with data-a="mp:<action>" and an optional data-v. */
   click(action: string, v?: string): void {
     switch (action) {
       case "game":
+        if (this.screen !== "start" && !this.isHost) return;
         this.game = v as GameId;
         this.conn?.send("set_game", { game: this.game });
         this.host.render();
         break;
       case "court":
+        if (!this.isHost) return;
         this.court = v as MpCourt;
         this.conn?.send("set_court", { court: this.court });
         this.host.render();
@@ -238,16 +231,8 @@ export class MultiplayerMock {
     this.stop();
     this.direct = false;
     this.conn = this.connect();
-    void (async () => {
-      try {
-        const room = await this.mustConn().createRoom();
-        this.code = room.code;
-        this.go("created");
-        await this.mustConn().connectRoom(room.code);
-      } catch (e) {
-        this.fail(e instanceof Error ? e.message : "Could not create room.");
-      }
-    })();
+    // the server makes the room when we connect, and answers with room_created (see onServer)
+    void this.mustConn().connectCreate(this.game).catch((e) => this.fail(e instanceof Error ? e.message : "Could not create room."));
   }
 
   private join(): void {
@@ -258,8 +243,16 @@ export class MultiplayerMock {
     }
     this.stop();
     this.screen = "quick";
+    this.joining = true;
     this.direct = false;
     this.host.render();
+    // if nothing answers, say so instead of leaving the screen as it is
+    this.later(12000, () => {
+      if (this.screen === "quick" && this.joining) {
+        this.go("notfound");
+        this.host.toast("Could not join the room. Ask your friend to keep their room window open, and check the code.", 4500);
+      }
+    });
     this.conn = this.connect();
     void this.conn?.connectRoom(this.joinCode).catch((e) => this.fail(e instanceof Error ? e.message : "Could not join room."));
   }
@@ -321,7 +314,9 @@ export class MultiplayerMock {
       case "peer_found":
         this.game = m.payload.game;
         this.peerName = m.payload.peer.nickname;
-        this.role = m.payload.role;
+        this.myId = m.payload.you.id;
+        this.isHost = m.payload.role === "offerer";
+        this.peerId = m.payload.peer.id;
         this.connected = true;
         this.go("found");
         break;
@@ -334,6 +329,10 @@ export class MultiplayerMock {
         if (this.screen !== "created" && this.screen !== "found" && this.screen !== "quick") this.host.render();
         break;
       case "start_countdown":
+        // the server decides the game and the court: both players must play the same rules
+        if (this.started) break;
+        if (m.payload.game) this.game = m.payload.game;
+        if (m.payload.court) this.court = m.payload.court;
         this.countdown = m.payload.countdownSeconds;
         this.seed = m.payload.seed;
         this.go("countdown");
@@ -365,19 +364,6 @@ export class MultiplayerMock {
   private onDirectMessage(data: unknown): void {
     if (typeof data !== "object" || data === null) return;
     this.direct = true;
-    const msg = data as { type?: OnlineGameEvent["type"] | "match_start"; payload?: Partial<OnlineMatchStart> & Record<string, unknown> };
-    if (msg.type === "match_start" && this.screen !== "countdown") {
-      this.host.startOnlineMatch({
-        game: (msg.payload?.game as GameId) || this.game,
-        court: (msg.payload?.court as MpCourt) || this.court,
-        opponent: this.peerName,
-        direct: true,
-        seed: String(msg.payload?.seed || this.seed || "online"),
-        youStart: msg.payload?.youStart === false,
-      });
-    } else if (msg.type === "shot" || msg.type === "goal" || msg.type === "miss" || msg.type === "turn") {
-      this.host.receiveOnlineGameEvent(msg as OnlineGameEvent);
-    }
   }
 
   private tickCountdownTo(startsAt: number): void {
@@ -388,9 +374,16 @@ export class MultiplayerMock {
       this.host.render();
       if (left > 0) this.later(250, tick);
       else {
-        const match = { game: this.game, court: this.court, opponent: this.peerName, direct: this.direct, seed: this.seed || "online", youStart: this.role === "offerer" };
-        this.conn?.sendPeer("match_start", { ...match, youStart: !match.youStart });
-        this.host.startOnlineMatch(match);
+        // the match takes over the connection; this window gets a fresh one next time
+        if (this.started) return;
+        this.started = true;
+        const conn = this.conn;
+        this.conn = null;
+        this.stopTimersOnly();
+        this.host.startOnlineMatch(
+          { game: this.game, court: this.court, opponent: this.peerName, seed: this.seed || "online", myId: this.myId, peerId: this.peerId },
+          conn,
+        );
       }
     };
     tick();
@@ -411,14 +404,14 @@ export class MultiplayerMock {
     return `<canvas data-art="ball-${kind}" width="${size}" height="${size}"></canvas>`;
   }
 
-  private modes(): string {
+  private modes(enabled = true): string {
     const icon: Record<GameId, string> = {
       speed: `<div class="ic">${this.ball("you", 16)}${this.ball("opp", 16)}</div>`,
       horse: `<div class="ic">H·O</div>`,
       t21: `<div class="ic">21</div>`,
     };
     return `<div class="mp-modes">${(Object.keys(GAMES) as GameId[])
-      .map((g) => `<button class="mp-mode${this.game === g ? " on" : ""}" data-a="mp:game" data-v="${g}">${icon[g]}<b>${GAMES[g].name}</b><small>${GAMES[g].small}</small></button>`)
+      .map((g) => `<button class="mp-mode${this.game === g ? " on" : ""}"${enabled ? ` data-a="mp:game" data-v="${g}"` : " disabled"}>${icon[g]}<b>${GAMES[g].name}</b><small>${GAMES[g].small}</small></button>`)
       .join("")}</div>`;
   }
 
@@ -452,7 +445,7 @@ export class MultiplayerMock {
 <div class="mp-note">Peer-to-peer match. A small server only helps players find each other.</div>`;
       case "quick":
         return `<div class="mp-search">${this.ball("you", 32)}${this.ball("opp", 32)}${this.ball("gold", 32)}</div>
-<div class="mp-c"><b>Looking for a ${GAMES[this.game].name} player…</b><div class="hn">0:${String(this.elapsed + 7).padStart(2, "0")} · about 20 s</div></div>
+<div class="mp-c"><b>${this.joining ? "Joining the room…" : `Looking for a ${GAMES[this.game].name} player…`}</b>${this.joining ? "" : `<div class="hn">0:${String(this.elapsed + 7).padStart(2, "0")} · about 20 s</div>`}</div>
 <button class="pb full" data-a="mp:cancel" style="text-align:center;margin-top:12px">Cancel</button>`;
       case "found":
         return `<div class="mp-c" style="margin:14px 0"><span class="mp-pill"><i></i>Player found</span>
@@ -474,7 +467,7 @@ export class MultiplayerMock {
       case "notfound":
         return `<div class="h4" style="margin-top:0">Room code</div>
 <input class="mp-in" id="mpcode" maxlength="7" placeholder="ABC-123" value="${this.joinCode}" autocomplete="off" spellcheck="false">
-${this.screen === "notfound" ? '<div class="err">Room not found. Check the code and try again.</div>' : ""}
+${this.screen === "notfound" && !this.error ? '<div class="err">Room not found. Check the code and try again.</div>' : ""}
 ${this.error ? `<div class="err">${this.error}</div>` : ""}
 <button class="pb pri mp-big" data-a="mp:join" style="justify-content:center"><span><b>Join</b></span></button>
 <button class="pb full" data-a="mp:friend" style="text-align:center">Back</button>`;
@@ -513,9 +506,9 @@ ${this.error ? `<div class="err">${this.error}</div>` : ""}
     if (s === "countdown") {
       return `${cards}<div class="mp-c hn">${GAMES[this.game].name} · ${GAMES[this.game].tag}</div><div class="mp-cd">${this.countdown > 0 ? this.countdown : "GO!"}</div>`;
     }
-    const settings = `<div class="h4">Game <span class="hn">(the host picks)</span></div>${this.modes()}${this.rule()}
+    const settings = `<div class="h4">Game <span class="hn">${this.isHost ? "(you pick)" : "(the host picks)"}</span></div>${this.modes(this.isHost)}${this.rule()}
 <div class="h4">Court</div><div class="mp-seg">${(["Street", "Gym", "Arena"] as const)
-      .map((c) => `<button class="pb${this.court === c ? " on" : ""}" data-a="mp:court" data-v="${c}">${c}</button>`)
+      .map((c) => `<button class="pb${this.court === c ? " on" : ""}"${this.isHost ? ` data-a="mp:court" data-v="${c}"` : " disabled"}>${c}</button>`)
       .join("")}</div><div class="hn" style="margin-top:6px">Both players see the same court and hoop.</div>`;
     let actions: string;
     if (s === "lobby") actions = `<button class="pb full" data-a="mp:leave" style="text-align:center;margin-top:10px">Leave</button>`;

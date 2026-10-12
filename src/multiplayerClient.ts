@@ -7,7 +7,7 @@ export type MpServerMessage =
   | { type: "searching"; payload: { game: GameId; estimatedSeconds: number } }
   | { type: "peer_found"; payload: { roomId: string; game: GameId; role: "offerer" | "answerer"; you: MpPlayerInfo; peer: MpPlayerInfo } }
   | { type: "lobby_state"; payload: { roomId: string; game: GameId; court: "Street" | "Gym" | "Arena"; players: MpLobbyPlayer[] } }
-  | { type: "start_countdown"; payload: { startsAt: number; seed: string; countdownSeconds: number } }
+  | { type: "start_countdown"; payload: { startsAt: number; seed: string; countdownSeconds: number; game?: GameId; court?: "Street" | "Gym" | "Arena" } }
   | { type: "signal"; payload: { from: string; kind: MpSignalKind; data: unknown } }
   | { type: "peer_disconnected"; payload: { playerId: string; reconnectUntil: number } }
   | { type: "peer_reconnected"; payload: { playerId: string } }
@@ -33,6 +33,18 @@ export class MultiplayerConnection {
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
   private role: "offerer" | "answerer" | null = null;
+
+  /** Hands the connection to someone else (the lobby gives it to the match). */
+  setHandlers(h: { onMessage?: (m: MpServerMessage) => void; onClose?: () => void; onError?: (message: string) => void; onDirectMessage?: (data: unknown) => void }): void {
+    if (h.onMessage) this.onMessage = h.onMessage;
+    if (h.onClose) this.onClose = h.onClose;
+    if (h.onError) this.onError = h.onError;
+    if (h.onDirectMessage) this.onDirectMessage = h.onDirectMessage;
+  }
+
+  get directOpen(): boolean {
+    return this.dc?.readyState === "open";
+  }
 
   constructor(
     private serverUrl: string,
@@ -77,6 +89,11 @@ export class MultiplayerConnection {
 
   async connectQuick(game: GameId): Promise<void> {
     await this.connect(`/mp/ws?mode=quick&game=${encodeURIComponent(game)}`);
+  }
+
+  /** Makes a room and joins it in one step; the server answers with room_created and the code. */
+  async connectCreate(game: GameId): Promise<void> {
+    await this.connect(`/mp/ws?mode=room&create=1&game=${encodeURIComponent(game)}`);
   }
 
   async connectRoom(code: string): Promise<void> {

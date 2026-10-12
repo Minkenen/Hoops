@@ -19,11 +19,12 @@ import {
   setCapture,
   setHitRegions,
 } from "./ipc";
-import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch, setScore, settings } from "./settings";
+import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch, setScore, setSetting, settings } from "./settings";
+import { themeById } from "./themes";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
 import type { UI } from "./ui";
-import type { OnlineGameEvent, OnlineMatchStart } from "./multiplayerMock";
+import type { OnlineMatch, OpponentBall } from "./onlineMatch";
 
 interface Ball {
   x: number;
@@ -72,6 +73,8 @@ interface Drag {
 const SUB = 4;
 const isMilestone = (n: number): boolean => n === 25 || n === 50 || (n >= 100 && n % 100 === 0);
 const TIME_SCALE = 1.25;
+/** The other player's ball is drawn this many ms behind, so there are always two reports to glide between. */
+const GHOST_DELAY = 90;
 const SLIDE_GRAB = 1.2;
 const TOUCH_WEB = import.meta.env.VITE_TARGET === "web" && window.matchMedia("(pointer: coarse)").matches;
 /** On a touch screen the ball never rests closer to an edge than this (in art pixels), so there is room to pull it back. */
@@ -127,8 +130,25 @@ export class Game {
   private acc = 0;
   private lastHit = "";
   private introDone = false;
-  private onlineMatch: OnlineMatchStart | null = null;
-  private onlineMyTurn = true;
+  private onlineMatch: OnlineMatch | null = null;
+  /** The other player's ball in flight (HORSE and 21: you watch their shot), drawn in blue. */
+  private ghost: { x: number; y: number; ang: number } | null = null;
+  private ghostUntil = 0;
+  private ghostFrames: HTMLCanvasElement[] | null = null;
+  /** The positions the other player's ball has been reported at, with the time they arrived: the ghost is drawn a moment in the past, between two of them, so it moves smoothly. */
+  private ghostBuf: { t: number; x: number; y: number; ang: number }[] = [];
+  private ballSentAt = 0;
+  /** When the hoop moves to a new place after a goal or a miss in an online match (0 = not planned). */
+  private hoopSwapAt = 0;
+  /** The court stays fully up while a new hoop slides in. */
+  private keepCourt = false;
+  /** Your own look, put back after an online match that used the court you both picked. */
+  private savedLook: { ball: typeof settings.ballSkin; court: typeof settings.courtSkin; crowd: typeof settings.crowd } | null = null;
+
+  /** The online match being played, or null. */
+  get online(): OnlineMatch | null {
+    return this.onlineMatch;
+  }
 
   constructor(
     cv: HTMLCanvasElement,
@@ -233,6 +253,7 @@ export class Game {
 
   intro(): void {
     this.onlineMatch = null;
+    this.restoreLook();
     this.activate();
     const b = this.ball;
     b.gs = 1;
@@ -251,11 +272,117 @@ export class Game {
     this.start();
   }
 
-  startOnlineMatch(match: OnlineMatchStart): void {
+  /** Notes where the other player's ball is now. */
+  private pushGhost(x: number, y: number, ang: number): void {
+    const now = performance.now();
+    const buf = this.ghostBuf;
+    // always inside the screen and above the floor
+    x = clamp(x, BALL_R, this.artW - BALL_R);
+    y = Math.min(y, this.floorY - BALL_R);
+    // a long pause (a new shot): do not glide across it
+    if (buf.length && now - buf[buf.length - 1].t > 400) buf.length = 0;
+    buf.push({ t: now, x, y, ang });
+    if (buf.length > 24) buf.shift();
+    this.ghost = { x, y, ang };
+  }
+
+  /** The other player's ball (a blue "ghost"): in HORSE and 21 you watch their shot at the hoop, in Speedball you see where their ball is. */
+  opponentBall(p: OpponentBall): void {
+    const m = this.onlineMatch;
+    if (!m || !this.active) return;
+    if (p.kind === "free") {
+      this.pushGhost(p.nx * this.artW, this.floorY - p.h, p.ang);
+      // Speedball: always there. HORSE and 21: there while it is their ball, kept up by their resting reports
+      this.ghostUntil = m.game === "speed" ? Infinity : performance.now() + 1200;
+      this.start();
+      return;
+    }
+    if (m.game === "speed") return;
+    // your hoop stays where it is; their ball is mirrored if their hoop was on the other side
+    if (!this.hoop || this.hoop.phase === "out") this.showHoop(p.side, p.rimH);
+    const h = this.hoop;
+    if (!h) return;
+    const mir = h.side === p.side ? 1 : -1;
+    // their rim can be higher or lower than yours: stretch the height so their ball rests on your floor and passes through your rim
+    const myRimH = this.floorY - h.rimY;
+    const k = clamp((myRimH - BALL_R) / Math.max(20, p.rimH - BALL_R), 0.4, 2.5);
+    this.pushGhost(h.x0 + h.sprite.rimCx + mir * p.dx, h.rimY + p.dy * k, p.ang);
+    this.ghostUntil = performance.now() + 700;
+    this.hideAt = null;
+    this.start();
+  }
+
+  /** Where the ghost is drawn at this moment: a short while in the past, between the two reports around that time. */
+  private ghostNow(now: number): { x: number; y: number; ang: number } | null {
+    const buf = this.ghostBuf;
+    if (!buf.length) return this.ghost;
+    const rt = now - GHOST_DELAY;
+    if (buf.length === 1 || rt <= buf[0].t) return buf[0];
+    const last = buf[buf.length - 1];
+    if (rt >= last.t) {
+      // past the newest report: carry on in the direction it was going, for a moment
+      const prev = buf[buf.length - 2];
+      const span = Math.max(1, last.t - prev.t);
+      const dt = Math.min(rt - last.t, 120);
+      return { x: last.x + ((last.x - prev.x) / span) * dt, y: last.y + ((last.y - prev.y) / span) * dt, ang: last.ang + ((last.ang - prev.ang) / span) * dt };
+    }
+    for (let i = buf.length - 1; i > 0; i--) {
+      const a = buf[i - 1];
+      const c = buf[i];
+      if (a.t <= rt && rt <= c.t) {
+        const k = (rt - a.t) / Math.max(1, c.t - a.t);
+        return { x: a.x + (c.x - a.x) * k, y: a.y + (c.y - a.y) * k, ang: a.ang + (c.ang - a.ang) * k };
+      }
+    }
+    return last;
+  }
+
+  /** The other player's shot is over: the ball stays a moment, then the hoop goes. */
+  opponentShotEnd(): void {
+    if (this.onlineMatch?.game === "speed") return;
+    this.ghostUntil = performance.now() + 600;
+    this.hideAt = performance.now() + 1500;
+    this.start();
+  }
+
+  /** Redraws now (the online scoreboard changed). */
+  refresh(): void {
+    this.start();
+  }
+
+  /** Leaves the online match and goes back to the normal game. */
+  endOnlineMatch(): void {
+    this.onlineMatch?.leave();
+    this.onlineMatch = null;
+    this.ghost = null;
+    this.restoreLook();
+    this.ui.close(true);
+    this.start();
+  }
+
+  /** The court the players picked for the match (Street, Gym or Arena): both see the same look, and yours is put back afterwards. */
+  private applyMatchCourt(court: string): void {
+    const t = themeById(court.toLowerCase());
+    if (!this.savedLook) this.savedLook = { ball: settings.ballSkin, court: settings.courtSkin, crowd: settings.crowd };
+    setSetting("ballSkin", t.ball);
+    setSetting("courtSkin", t.court);
+    setSetting("crowd", t.crowd);
+  }
+
+  private restoreLook(): void {
+    const l = this.savedLook;
+    this.savedLook = null;
+    if (!l) return;
+    setSetting("ballSkin", l.ball);
+    setSetting("courtSkin", l.court);
+    setSetting("crowd", l.crowd);
+  }
+
+  startOnlineMatch(match: OnlineMatch): void {
     this.onlineMatch = match;
-    this.onlineMyTurn = !this.onlineTurnBased() || match.youStart;
+    this.applyMatchCourt(match.court);
     this.activate();
-    this.ui.close();
+    this.ui.close(true);
     const b = this.ball;
     b.gs = 1;
     b.t = 999;
@@ -275,19 +402,11 @@ export class Game {
     this.hideAt = null;
     this.bubble = null;
     this.introDone = true;
+    this.ghost = match.game === "speed" ? { x: this.artW * 0.7, y: this.floorY - BALL_R, ang: 0 } : null;
+    this.ghostUntil = Infinity;
     this.showHoop();
     this.start();
     this.syncHit();
-  }
-
-  receiveOnlineGameEvent(event: OnlineGameEvent): void {
-    if (!this.onlineMatch) return;
-    if (event.type === "turn") {
-      this.onlineMyTurn = event.payload.yours;
-      if (this.onlineMyTurn && !this.ball.moving && !this.drag && !this.hoop) this.showHoop();
-      this.start();
-      this.syncHit();
-    }
   }
 
   receive(h: Handoff): void {
@@ -355,7 +474,7 @@ export class Game {
       b.t = 999;
       b.moving = true;
       this.shot = false;
-    } else if (this.hoop) {
+    } else if (this.hoop && !this.onlineMatch) {
       this.hoop.phase = "out";
     }
     this.start();
@@ -394,7 +513,7 @@ export class Game {
   /** After a miss, a click anywhere on the screen puts the court, crowd and hoop away. */
   private canDismiss(): boolean {
     const h = this.hoop;
-    return !!h && h.phase === "shown" && !this.drag && this.ui.view === "none" && (!this.ball.moving || this.floorHit);
+    return !this.onlineMatch && !!h && h.phase === "shown" && !this.drag && this.ui.view === "none" && (!this.ball.moving || this.floorHit);
   }
 
   /** Esc closes the court when it is set to stay open. It is only a global shortcut while the court is up. */
@@ -438,9 +557,13 @@ export class Game {
       this.start();
       return;
     }
-    if (!this.canTakeOnlineTurn()) return;
     if ((this.ball.moving && !this.canGrabSliding()) || this.ui.view !== "none") return;
     if (!onBall) return;
+    // online: it can be the other player's turn
+    if (this.onlineMatch && !this.onlineMatch.canShoot()) {
+      this.ui.render();
+      return;
+    }
     if (this.ball.moving) {
       this.ball.moving = false;
       this.ball.vx = 0;
@@ -533,12 +656,10 @@ export class Game {
       this.hideAt = null;
       this.announce(recordThrow());
       addShot();
-      if (this.onlineMatch) {
-        this.ui.onlineGameEvent({ type: "shot", payload: { x: b.x, y: b.y, vx: b.vx, vy: b.vy, t: performance.now() } });
-      }
+      this.onlineMatch?.localShot();
       this.crowd.shotStart(performance.now());
       play("shoot", clamp(d.power, 0.3, 1));
-    } else if (this.hoop) {
+    } else if (this.hoop && !this.onlineMatch) {
       this.hoop.phase = "out";
     }
     this.start();
@@ -606,21 +727,21 @@ export class Game {
     return settings.court ? this.floorY + BASE_CENTER[settings.baseSkin] - 2 : this.artH;
   }
 
-  private showHoop(): void {
-    if (!this.canTakeOnlineTurn()) return;
+  private showHoop(forceSide?: "left" | "right", forceH?: number): void {
     if (this.hoop && this.hoop.phase !== "out") return;
     const b = this.ball;
     const gap = BALL_R + 36;
     const okRight = b.x < this.artW - this.refR.w - gap;
     const okLeft = b.x > this.refL.w + gap;
     let side: "left" | "right";
-    if (okRight && okLeft) side = Math.random() < 0.5 ? "left" : "right";
+    if (forceSide) side = forceSide;
+    else if (okRight && okLeft) side = Math.random() < 0.5 ? "left" : "right";
     else if (okRight) side = "right";
     else if (okLeft) side = "left";
     else side = b.x < this.artW / 2 ? "right" : "left";
     const sp = side === "right" ? this.spR : this.spL;
     const maxH = Math.min(260, this.artH * 0.6);
-    let rimY = this.floorY - rnd(70, Math.max(80, maxH));
+    let rimY = forceH !== undefined ? this.floorY - forceH : this.floorY - rnd(70, Math.max(80, maxH));
     rimY = Math.max(rimY, 8 + sp.rimY);
     const ref = side === "right" ? this.refR : this.refL;
     const hx0 = side === "right" ? this.artW - ref.w + ref.rimCx - sp.rimCx : ref.rimCx - sp.rimCx;
@@ -659,6 +780,7 @@ export class Game {
 
   private needsLoop(now: number): boolean {
     return (
+      this.ghost !== null ||
       this.nudgeX !== null ||
       this.ball.moving ||
       !!this.drag ||
@@ -672,9 +794,34 @@ export class Game {
     );
   }
 
+  /** HORSE and 21 online, and it is the other player's turn (or their shot is still rolling): your ball is not there. */
+  private sharedBallAway(): boolean {
+    const m = this.onlineMatch;
+    // (your own ball stays while it is still rolling after your shot)
+    return !!m && m.game !== "speed" && !m.over && (m.turn === "opp" || m.waitingForPeer) && !this.ball.moving && !this.shot && !this.drag;
+  }
+
+  /** The other player's ball has stopped across the screen at nx: it is yours now, from there. */
+  takeBallAt(nx: number): void {
+    const b = this.ball;
+    b.x = clamp(nx * this.artW, BALL_R, this.artW - BALL_R);
+    b.y = this.floorY - BALL_R;
+    b.vx = 0;
+    b.vy = 0;
+    b.moving = false;
+    this.ghost = null;
+    this.ghostBuf.length = 0;
+    // their ball has stopped: now the hoop can move
+    this.hoopSwapAt = performance.now() + 300;
+    this.start();
+    this.syncHit();
+  }
+
   private ballTargetAlpha(): number {
-    if (this.onlineTurnBased() && !this.onlineMyTurn) return 0.25;
-    return !this.ball.moving && !this.drag ? 1 - settings.ballFade : 1;
+    if (this.ball.moving || this.drag) return 1;
+    // HORSE and 21 use one shared ball: on the other player's turn your local ball waits as a ghost.
+    if (this.sharedBallAway()) return 0.25;
+    return 1 - settings.ballFade;
   }
 
   private tick(now: number): void {
@@ -711,6 +858,20 @@ export class Game {
       b.y = clamp(b.y + b.vy, BALL_R, this.floorY - BALL_R);
       b.ang += b.vx / BALL_R;
     }
+    if (this.hoopSwapAt && now >= this.hoopSwapAt && !this.ball.moving) {
+      // after a goal or a miss the hoop moves to a new place (the court stays), but only once the ball has stopped; not while a shot is being pulled
+      this.hoopSwapAt = 0;
+      if ((this.onlineMatch || settings.stayOpen) && this.hoop && !this.drag) {
+        // the court stays while the new hoop slides in
+        this.keepCourt = true;
+        this.hoop = null;
+        this.showHoop();
+      }
+    }
+    if (this.ghost && (performance.now() > this.ghostUntil || !this.onlineMatch || this.onlineMatch.over)) {
+      this.ghost = null;
+      this.ghostBuf.length = 0;
+    }
     if (this.nudgeX !== null) {
       // A finger needs room to pull the ball back: ease a ball that stopped by an edge a little inwards.
       if (dr || b.moving) {
@@ -724,6 +885,25 @@ export class Game {
           this.nudgeX = null;
           this.syncHit();
         }
+      }
+    }
+    if (this.onlineMatch && !this.onlineMatch.over) {
+      const nowMs = performance.now();
+      if (this.onlineMatch.game === "speed") {
+        // both play at once: the other player sees your ball as a ghost, about 20 times a second while it moves, and now and then when it rests
+        if (nowMs - this.ballSentAt >= (b.moving ? 33 : 250)) {
+          this.ballSentAt = nowMs;
+          this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
+        }
+      } else if (!b.moving && !this.shot && this.onlineMatch.turn === "me" && nowMs - this.ballSentAt >= 250) {
+        // HORSE and 21, your turn, ball resting: the other player sees it where it is (it is the one ball)
+        this.ballSentAt = nowMs;
+        this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
+      } else if (b.moving && this.shot && this.hoop && nowMs - this.ballSentAt >= 33) {
+        // HORSE and 21: the other player watches this shot: where the ball is, relative to the rim
+        this.ballSentAt = nowMs;
+        const hh = this.hoop;
+        this.onlineMatch.sendBall({ kind: "arc", dx: b.x - (hh.x0 + hh.sprite.rimCx), dy: b.y - hh.rimY, side: hh.side, rimH: this.floorY - hh.rimY, ang: b.ang });
       }
     }
     if (b.moving) {
@@ -748,17 +928,19 @@ export class Game {
         h.p = Math.min(1, h.p + ms / 400);
         if (h.p >= 1) {
           h.phase = "shown";
+          this.keepCourt = false;
           this.syncHit();
         }
       } else if (h.phase === "out") {
         h.p = Math.max(0, h.p - ms / 250);
         if (h.p <= 0) {
           this.hoop = null;
+          this.keepCourt = false;
           this.syncHit();
-          if (this.onlineTurnBased() && this.onlineMyTurn && !this.ball.moving && !this.drag) this.showHoop();
         }
       }
-      if (!settings.stayOpen && this.hideAt !== null && now >= this.hideAt && now >= this.crowd.holdUntil(settings.crowd, now) && h.phase === "shown") {
+      // in an online match the court stays up all the time
+      if (!settings.stayOpen && !this.onlineMatch && this.hideAt !== null && now >= this.hideAt && now >= this.crowd.holdUntil(settings.crowd, now) && h.phase === "shown") {
         const toward = h.side === "right" ? b.vx > 1.2 : b.vx < -1.2;
         const inAir = b.y < this.floorY - BALL_R - 5;
         if (b.moving && (inAir || toward)) {
@@ -795,7 +977,6 @@ export class Game {
 
   private rest(now: number): void {
     const b = this.ball;
-    const wasOnlineTurnShot = this.onlineTurnBased() && this.onlineMyTurn && this.shot;
     if (TOUCH_WEB) {
       const lo = EDGE_ROOM;
       const hi = this.artW - EDGE_ROOM;
@@ -810,7 +991,8 @@ export class Game {
     if (this.shot) {
       if (!b.scored) this.markMiss();
       this.shot = false;
-      if (wasOnlineTurnShot) this.endOnlineTurn();
+      // HORSE and 21: one ball, so the other player carries on from where it stopped
+      if (this.onlineMatch && this.onlineMatch.game !== "speed") this.onlineMatch.sendRest(b.x / this.artW);
       const soon = now + 600;
       this.hideAt = this.hideAt === null ? now + 700 : Math.min(this.hideAt, soon);
     }
@@ -1155,7 +1337,12 @@ export class Game {
       this.fireOn = false;
       this.putOutFire(b.x, b.y, true);
     }
-    if (this.onlineMatch) this.ui.onlineGameEvent({ type: "miss", payload: { t: performance.now() } });
+    if (this.onlineMatch) {
+      this.onlineMatch.localResult(false);
+      this.hoopSwapAt = performance.now() + 900;
+    } else if (settings.stayOpen) {
+      this.hoopSwapAt = performance.now() + 900;
+    }
   }
 
   private goal(h: Hoop): void {
@@ -1186,10 +1373,18 @@ export class Game {
     }
     h.net.impulse(rnd(-0.25, 0.25), 0.3);
     this.hideAt = performance.now() + 1500;
-    const s = getScore() + 1;
-    setScore(s);
-    if (this.onlineMatch) this.ui.onlineGameEvent({ type: "goal", payload: { score: s } });
-    queueLeaderboardScoreSync();
+    // an online match does not count for the leaderboard score
+    if (this.onlineMatch) {
+      this.onlineMatch.localResult(true, this.shotFar);
+      this.hoopSwapAt = performance.now() + 900;
+    }
+    else {
+      setScore(getScore() + 1);
+      queueLeaderboardScoreSync();
+      // "Keep the court open": the hoop still moves to a new place after a goal
+      if (settings.stayOpen) this.hoopSwapAt = performance.now() + 900;
+    }
+    const s = this.onlineMatch ? -1 : getScore();
     play("swish");
     play("swoosh2", 0.8);
     play("cheer", 0.9);
@@ -1225,7 +1420,8 @@ export class Game {
     const ch = this.hoop;
     if (ch && settings.court) {
       const cs: CourtSprite = ch.side === "right" ? this.courtR : this.courtL;
-      const rise = Math.pow(1 - ch.p, 3) * (this.artH - (this.floorY - cs.cy));
+      // in an online match, and while a new hoop slides in, the court is fully up
+      const rise = Math.pow(1 - (this.onlineMatch || this.keepCourt ? 1 : ch.p), 3) * (this.artH - (this.floorY - cs.cy));
       const courtTop = Math.round(this.floorY - cs.cy + rise);
       this.crowd.setBall(this.ball.x, this.floorY + rise, this.ball.y);
       this.crowd.setHoop(ch.x0 + ch.sprite.rimCx, ch.rimY, ch.side);
@@ -1253,7 +1449,7 @@ export class Game {
     const sOff = lit ? Math.round(BALL_R * tl * 0.8 * (1 - height * 0.5)) + Math.sign(tl) * 3 : 0;
     const sy = lit ? 3 : 2.4;
     // In the arena the key light's shadow is drawn by the crowd, inside the floor pool along the beam.
-    for (let y = -3; y <= 3 && !lit; y++) {
+    for (let y = -3; y <= 3 && !lit && !this.sharedBallAway(); y++) {
       for (let x = -Math.round(rx); x <= Math.round(rx); x++) {
         const q = (x / rx) ** 2 + (y / sy) ** 2;
         if (q > 1) continue;
@@ -1321,6 +1517,23 @@ export class Game {
       ctx.globalAlpha = 1;
     }
 
+    const gn = this.ghost ? this.ghostNow(now) : null;
+    if (gn) {
+      const g = gn;
+      this.ghostFrames ??= makeBallFrames((BALL_SKINS.find((k) => k.id === "blue") ?? BALL_SKINS[0]).pal, (BALL_SKINS.find((k) => k.id === "blue") ?? BALL_SKINS[0]).seam);
+      const frames = this.onlineMatch?.game === "speed" ? this.ghostFrames : this.ballFrames;
+      const gt = ((g.ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      ctx.globalAlpha = this.onlineMatch?.game === "speed" ? 0.6 : 1;
+      ctx.drawImage(
+        frames[Math.round((gt / (2 * Math.PI)) * BALL_FRAMES) % BALL_FRAMES],
+        Math.round(g.x - BALL_SPRITE_SIZE / 2),
+        Math.round(g.y - BALL_SPRITE_SIZE / 2),
+        BALL_SPRITE_SIZE,
+        BALL_SPRITE_SIZE,
+      );
+      ctx.globalAlpha = 1;
+    }
+
     this.fire.drawFront(ctx);
     this.fire.overlay(ctx, this.artW, this.artH);
 
@@ -1344,25 +1557,14 @@ export class Game {
         this.drawBubble(e, dur);
       }
     }
-    if (this.onlineMatch) this.drawOnlineBadge();
     this.milestone.draw(ctx);
     ctx.restore();
-  }
-
-  private drawOnlineBadge(): void {
-    const ctx = this.ctx;
-    const label = this.onlineTurnBased() ? `ONLINE ${this.onlineMyTurn ? "YOUR TURN" : "THEIR TURN"}` : `ONLINE ${this.onlineMatch!.game.toUpperCase()}`;
-    const w = textWidth(label, 1) + 10;
-    layer(ctx, (put) => {
-      for (let y = 0; y < 16; y++) for (let x = 0; x < w; x++) put(6 + x, 6 + y, y < 2 || y > 13 || x < 2 || x > w - 3 ? "#0d0e12" : "#343943");
-      text(put, label, 11, 10, 1, "#ffb257", "#ee7a24");
-    });
   }
 
   private drawBubble(e: number, dur: number): void {
     const ctx = this.ctx;
     const bb = this.bubble!;
-    const str = String(getScore());
+    const str = String(this.onlineMatch ? this.onlineMatch.scoreMe : getScore());
     ctx.globalAlpha = clamp(e > dur - 500 ? (dur - e) / 500 : 1, 0, 1);
     const w = textWidth(str, 2) + 10 + (e < 150 ? 4 : 0);
     const hh = 22 + (e < 150 ? 2 : 0);
@@ -1391,7 +1593,7 @@ export class Game {
     const rects: Rect[] = [];
     const b = this.ball;
     if (this.canDismiss()) rects.push({ x: 0, y: 0, w: this.artW * this.S, h: this.artH * this.S });
-    if (this.canTakeOnlineTurn() && (!b.moving || this.canGrabSliding()) && !this.drag) {
+    if ((!this.onlineMatch || this.onlineMatch.canShoot()) && (!b.moving || this.canGrabSliding()) && !this.drag) {
       const pad = 8;
       rects.push({
         x: (b.x - BALL_R) * this.S - pad,
@@ -1410,20 +1612,5 @@ export class Game {
   resetScore(): void {
     setScore(0);
     resetMatch();
-  }
-
-  private onlineTurnBased(): boolean {
-    return !!this.onlineMatch && this.onlineMatch.game !== "speed";
-  }
-
-  private canTakeOnlineTurn(): boolean {
-    return !this.onlineTurnBased() || this.onlineMyTurn;
-  }
-
-  private endOnlineTurn(): void {
-    this.onlineMyTurn = false;
-    this.ui.onlineGameEvent({ type: "turn", payload: { yours: true } });
-    this.syncHit();
-    this.start();
   }
 }

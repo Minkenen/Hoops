@@ -3,9 +3,12 @@ import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
 const WEB = import.meta.env.VITE_TARGET === "web";
 const TOUCH = WEB && window.matchMedia("(pointer: coarse)").matches;
+const esc = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
-import { MULTIPLAYER_MOCK, MultiplayerMock, type OnlineGameEvent, type OnlineMatchStart } from "./multiplayerMock";
+import type { MultiplayerConnection } from "./multiplayerClient";
+import { MULTIPLAYER_MOCK, MultiplayerMock } from "./multiplayerMock";
+import { HORSE, OnlineMatch, type OnlineMatchInit } from "./onlineMatch";
 import { drawSettingsArt } from "./settingsArt";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
@@ -13,11 +16,11 @@ import { type CrowdMode, Preview, setPreviewOverride } from "./preview";
 import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
 import { ALL_ACCESS_PRICE, ALL_ACCESS_VALUE, PRICE_VALUE, THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, getStats } from "./stats";
-import type { UpdateInfo } from "./update";
+import { type UpdateInfo, checkForUpdateDetailed } from "./update";
 import { backend, cleanNickname, LEADERBOARD_ON, type LbBoard, type LbEntry, type LbProviderId, type LbTab } from "./leaderboard";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
-type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "leaderboard" | "onboarding" | "online";
+type View = "none" | "onlineend" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "leaderboard" | "onboarding" | "online";
 type DonateVariant = "button" | "footer";
 
 const DONATE_URL = "https://ko-fi.com/hoopsgame";
@@ -123,15 +126,17 @@ export class UI {
   private mp = new MultiplayerMock({
     render: () => this.render(),
     isOpen: () => this.view === "online",
-    close: () => this.close(),
+    close: () => this.close(true),
     openMenu: () => this.openMenu(),
     toast: (m, ms) => this.toast(m, ms),
     nickname: () => backend.user()?.nickname ?? "You",
-    startOnlineMatch: (match) => this.startOnlineMatch(match),
-    receiveOnlineGameEvent: (event) => this.game.receiveOnlineGameEvent(event),
+    startOnlineMatch: (init, conn) => this.startOnlineMatch(init, conn),
   });
   private cosTab: "ball" | "court" | "crowd" | "base" = "ball";
   private thumbs = new Map<string, string>();
+  /** What the "Check for updates" button last found, in words. */
+  private updateNote = "";
+  private updateBusy = false;
   private setTab: "game" | "sound" | "look" | "system" = "game";
   private lbSigning = false;
   private lbDelete = false;
@@ -159,6 +164,25 @@ export class UI {
     });
   }
 
+  /** The "Check for updates" button in Settings. */
+  private async checkUpdates(): Promise<void> {
+    if (this.updateBusy) return;
+    this.updateBusy = true;
+    this.updateNote = "";
+    this.render();
+    const r = await checkForUpdateDetailed();
+    this.updateBusy = false;
+    if (r.kind === "new") {
+      this.update = r.info;
+      this.updateNote = `A new version is ready: v${r.info.version}`;
+    } else if (r.kind === "latest") {
+      this.updateNote = `You have the latest version (v${r.current})`;
+    } else {
+      this.updateNote = "Could not check. Are you online?";
+    }
+    this.render();
+  }
+
   /** A newer version exists: the menu shows an update button. */
   setUpdate(u: UpdateInfo): void {
     this.update = u;
@@ -169,15 +193,51 @@ export class UI {
     this.game = game;
   }
 
-  private startOnlineMatch(match: OnlineMatchStart): void {
-    this.close();
+  /** The countdown reached GO: the match takes over the connection and the game goes to the court. */
+  private startOnlineMatch(init: OnlineMatchInit, conn: MultiplayerConnection | null): void {
+    const match = new OnlineMatch(init, conn, {
+      changed: () => {
+        this.game.refresh();
+        if (match.over && this.view !== "onlineend") {
+          this.stack = [];
+          this.view = "onlineend";
+        }
+        this.render();
+      },
+      toast: (m) => this.toast(m, 1800),
+      ball: (p) => this.game.opponentBall(p),
+      peerShotEnded: () => this.game.opponentShotEnd(),
+      peerRest: (nx) => this.game.takeBallAt(nx),
+    });
+    this.close(true);
     this.game.startOnlineMatch(match);
-    const turn = match.game === "speed" ? "" : match.youStart ? " Your turn." : " Opponent starts.";
-    this.toast((match.direct ? `Online match vs ${match.opponent}` : `Online match vs ${match.opponent}. Direct link still connecting.`) + turn, 2600);
+    this.toast(`Online ${match.game === "speed" ? "Speedball" : match.game === "horse" ? "HORSE" : "21"} vs ${match.opponent}`, 2600);
   }
 
-  onlineGameEvent(event: OnlineGameEvent): void {
-    this.mp.sendGameEvent(event);
+  /** The scoreboard shown over the court during an online match. */
+  private onlineHudHtml(): string {
+    const m = this.game?.online;
+    if (!m) return "";
+    const name = m.game === "speed" ? "Speedball" : m.game === "horse" ? "HORSE" : "21";
+    const mine = (n: number, l: number): string => (m.game === "horse" ? [...HORSE].map((c, i) => `<i class="${i < l ? "x" : ""}">${c}</i>`).join("") : `<b>${n}</b>`);
+    const turn = m.yourTurnText();
+    return `<div class="px mp-hud"><div class="t">Online ${name} · ${m.goalText}</div>
+<div class="r"><span>You</span>${mine(m.scoreMe, m.lettersMe)}</div>
+<div class="r"><span>${esc(m.opponent)}</span>${mine(m.scoreOpp, m.lettersOpp)}</div>
+${m.game !== "speed" && !m.over ? `<div class="mp-turnbanner ${m.turn === "me" ? "me" : "opp"}">${m.turn === "me" ? "YOUR TURN" : `${esc(m.opponent).toUpperCase()}'S TURN`}</div>` : ""}
+${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>` : turn ? `<div class="n${m.turn === "me" ? " me" : " opp"}">${esc(turn)}</div>` : ""}</div>`;
+  }
+
+  private onlineEndHtml(): string {
+    const m = this.game?.online;
+    const r = m?.over;
+    if (!m || !r) return "";
+    const score = m.game === "horse" ? `${[...HORSE].slice(0, m.lettersMe).join("") || "–"} · ${[...HORSE].slice(0, m.lettersOpp).join("") || "–"}` : `${m.scoreMe} – ${m.scoreOpp}`;
+    return `<div class="px win" data-hit style="width:min(380px,92vw)">
+<div class="wt"><span class="wl">Online match</span></div>
+<div class="wb mp"><div class="mp-end ${r.won ? "win" : "lose"}">${r.won ? "You win!" : "You lose"}</div>
+<div class="mp-c hn">${esc(r.reason)}</div><div class="mp-c" style="margin:8px 0;font-size:18px">${esc(score)}</div>
+<button class="pb pri mp-big" data-a="leavematch" style="justify-content:center"><span><b>Back to menu</b></span></button></div></div>`;
   }
 
   toggleMenu(): void {
@@ -275,12 +335,13 @@ export class UI {
     if (prev) {
       this.view = prev;
       this.render();
-    } else if (this.view !== "menu" && this.view !== "none") this.close();
+    } else if (this.view !== "menu" && this.view !== "none") this.close(true);
   }
 
   /** Backspace goes back, from anywhere while a window is open (but not while you are typing a license key). */
   private syncBackKey(): void {
-    const want = (this.view === "settings" || this.view === "sound" || this.view === "cosmetics" || this.view === "achievements" || this.view === "leaderboard" || (this.view === "online" && this.mp.screen !== "join" && this.mp.screen !== "notfound")) && !this.licenseStep;
+    // (not in the online window: it stays open while you use other apps, and a global Backspace would steal the key from them)
+    const want = (this.view === "settings" || this.view === "sound" || this.view === "cosmetics" || this.view === "achievements" || this.view === "leaderboard") && !this.licenseStep;
     if (want === this.backKeyOn) return;
     this.backKeyOn = want;
     if (want) {
@@ -409,7 +470,9 @@ ${login}
     this.render();
   }
 
-  close(): void {
+  /** Closes whatever is open. The online window only closes when you ask for it (force): the game must not close it behind your back. */
+  close(force = false): void {
+    if (this.view === "online" && !force) return;
     this.stack = [];
     this.mp.stop();
     this.view = "none";
@@ -559,11 +622,13 @@ ${this.row("Sound", this.tog("sound"))}
 <div class="hr"></div>
 <button class="pb full" data-a="cos">Appearance…</button>
 <button class="pb full" data-a="ach">Achievements…</button>
-${MULTIPLAYER_MOCK ? `<button class="pb pri full" data-a="online">Play online</button>` : ""}
+${MULTIPLAYER_MOCK ? `<button class="pb pri full" data-a="online">Play online (beta)</button>` : ""}
 ${LEADERBOARD_ON ? `<button class="pb full lbl" data-a="lb"><span>Leaderboard…</span>${this.lbBoards.global?.you ? `<small>#${this.lbBoards.global.you.rank}</small>` : ""}</button>` : ""}
 <button class="pb full" data-a="inst">Settings…</button>
 ${this.donateHtml()}
-${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}</div>`;
+${this.game?.online ? `<button class="pb full danger" data-a="leavematch">Leave online match</button>` : ""}
+${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}
+<div class="hn" style="text-align:center;margin-top:6px">Hoops v${__APP_VERSION__}</div></div>`;
   }
 
   /** A picture tile for a choice: a small drawing above its name. */
@@ -607,7 +672,8 @@ ${this.row("Basketball court", this.tog("court"), "Shown while aiming")}
 <div class="row"><div><div class="lb">Ball see-through at rest</div><div class="hn">So you can see what is behind it</div></div><div class="st-fade"><canvas data-art="fade" width="40" height="22"></canvas>${this.sld("ballFade", 0, 0.8, 0.05)}</div></div>
 <button class="pb full" data-a="cos" style="margin-top:6px">Edit appearance…</button>`;
     } else {
-      pane = `${WEB ? "" : this.row("Start automatically", this.tog("autostart"), "When your computer starts")}
+      pane = `${WEB ? "" : this.row("Updates", `<button class="pb${this.update ? " buy" : ""}" data-a="${this.update ? "update" : "chkupdate"}"${this.updateBusy ? " disabled" : ""}>${this.updateBusy ? "Checking…" : this.update ? `Get v${this.update.version}` : "Check for updates"}</button>`, this.updateNote || `Hoops v${__APP_VERSION__}`)}
+${WEB ? "" : this.row("Start automatically", this.tog("autostart"), "When your computer starts")}
 ${WEB ? "" : this.row("Over fullscreen apps", this.tog("fullscreen"), "Games and video")}
 ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
 ${this.donateStatsHtml()}
@@ -926,10 +992,13 @@ ${rows}
     else if (this.view === "achievements") html = this.achievementsHtml();
     else if (this.view === "leaderboard") html = this.leaderboardHtml();
     else if (this.view === "online") html = this.mp.html();
+    else if (this.view === "onlineend") html = this.onlineEndHtml();
     else if (this.view === "onboarding") html = this.onboardingHtml();
-    if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements" || this.view === "leaderboard" || this.view === "online") {
+    if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements" || this.view === "leaderboard") {
+      // (the online window has no catcher: it stays open until you close it, so you can switch to another app to send the code)
       html = `<div class="catch" data-hit data-a="dismiss"></div>${html}`;
     }
+    if (this.game?.online && this.view !== "onlineend") html += this.onlineHudHtml();
     if (this.resetDialog) html += this.resetDialogHtml();
     if (this.premiumDialog) html += this.premiumDialogHtml();
     if (this.toastMsg) html += `<div class="px toast">${this.toastMsg}</div>`;
@@ -976,6 +1045,10 @@ ${rows}
       return;
     }
     switch (a) {
+      case "leavematch":
+        this.game.endOnlineMatch();
+        this.openMenu();
+        break;
       case "online":
         this.mp.open();
         this.go("online");
@@ -993,6 +1066,9 @@ ${rows}
         if (k) setSetting(k, (Number.isNaN(Number(v)) ? v : Number(v)) as never);
         if (k === "ballSkin" || k === "courtSkin" || k === "crowd") this.viewTheme = null;
         this.render();
+        break;
+      case "chkupdate":
+        void this.checkUpdates();
         break;
       case "costab":
         this.cosTab = v as typeof this.cosTab;
@@ -1196,7 +1272,7 @@ ${rows}
         }
         break;
       case "close":
-        this.close();
+        this.close(true);
         break;
       case "next":
         if (this.onbSteps()[this.step] === "name") void this.saveNick();

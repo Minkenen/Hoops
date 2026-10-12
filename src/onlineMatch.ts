@@ -1,0 +1,252 @@
+// An online match in progress: the rules for Speedball, HORSE and 21, whose turn it is, and the messages to and from the other player.
+// The game itself (ball, hoop, court) is played locally on each computer. Each side reports the result of every shot of its own
+// over the direct WebRTC channel, and both sides apply the same rules to both players, so the scores always agree.
+// TODO(multiplayer): show the other player's ball in flight too (send the throw), and a rematch button.
+import type { MultiplayerConnection, MpServerMessage } from "./multiplayerClient";
+
+export type GameId = "speed" | "horse" | "t21";
+export type MpCourt = "Street" | "Gym" | "Arena";
+
+export interface OnlineMatchInit {
+  game: GameId;
+  court: MpCourt;
+  opponent: string;
+  seed: string;
+  myId: string;
+  peerId: string;
+}
+
+export interface OnlineMatchHost {
+  /** Something changed: redraw the scoreboard. */
+  changed(): void;
+  /** A short message for the player. */
+  toast(m: string): void;
+  /** The other player's ball has stopped (HORSE and 21: it is one ball, so it is now yours to shoot from there). nx = across the screen, 0 to 1. */
+  peerRest(nx: number): void;
+  /** The other player's ball, in flight. */
+  ball(p: OpponentBall): void;
+  /** The other player's shot is over. */
+  peerShotEnded(): void;
+}
+
+/**
+ * Where the other player's ball is. In HORSE and 21 ("arc") it is relative to the hoop on their screen, which is shown on our screen too.
+ * In Speedball ("free") both play at once with their own hoops, so it is just a place on the screen: across, and height above the floor.
+ */
+export type OpponentBall =
+  | { kind: "arc"; dx: number; dy: number; side: "left" | "right"; rimH: number; ang: number }
+  | { kind: "free"; nx: number; h: number; ang: number };
+
+export interface OnlineResult {
+  won: boolean;
+  reason: string;
+}
+
+export const HORSE = "HORSE";
+const SPEED_GOAL = 10;
+const T21_GOAL = 21;
+
+const hash = (s: string): number => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+};
+
+export class OnlineMatch {
+  readonly game: GameId;
+  readonly court: MpCourt;
+  readonly opponent: string;
+  scoreMe = 0;
+  scoreOpp = 0;
+  lettersMe = 0;
+  lettersOpp = 0;
+  /** Whose shot it is. In Speedball both shoot at once. */
+  turn: "me" | "opp" | "both";
+  over: OnlineResult | null = null;
+  /** The opponent has lost the connection for a moment. */
+  peerAway = false;
+  private inFlight = false;
+  /** HORSE and 21 use one ball: the other player's shot is still rolling, so it is not yet your turn to shoot. */
+  private peerBusy = false;
+  private busyTimer = 0;
+  private beat = 0;
+
+  constructor(
+    init: OnlineMatchInit,
+    private conn: MultiplayerConnection | null,
+    private host: OnlineMatchHost,
+  ) {
+    this.game = init.game;
+    this.court = init.court;
+    this.opponent = init.opponent;
+    if (init.game === "speed") this.turn = "both";
+    else {
+      // a coin flip both sides agree on: the same seed and the same two ids give the same answer
+      const ids = [init.myId, init.peerId].sort();
+      this.turn = ids[hash(init.seed) % 2] === init.myId ? "me" : "opp";
+    }
+    conn?.setHandlers({
+      onMessage: (m) => this.onServer(m),
+      onDirectMessage: (d) => this.onPeer(d),
+      onClose: () => this.onClosed(),
+      onError: () => undefined,
+    });
+    // keeps the server connection from going quiet
+    this.beat = window.setInterval(() => this.conn?.send("ping"), 25000);
+  }
+
+  /** The other player's shot is still rolling (HORSE and 21). */
+  get waitingForPeer(): boolean {
+    return this.peerBusy;
+  }
+
+  get goalText(): string {
+    return this.game === "speed" ? `First to ${SPEED_GOAL}` : this.game === "t21" ? `First to ${T21_GOAL}` : "Miss = a letter";
+  }
+
+  /** Can the player start a shot now? */
+  canShoot(): boolean {
+    return !this.over && !this.inFlight && !this.peerBusy && (this.turn === "both" || this.turn === "me");
+  }
+
+  /** Called when the player lets go of the ball. */
+  localShot(): void {
+    this.inFlight = true;
+    this.host.changed();
+  }
+
+  /** Called when the shot is over: it went in (far = from a long way off) or it missed. */
+  localResult(goal: boolean, far = false): void {
+    if (!this.inFlight || this.over) return;
+    this.inFlight = false;
+    this.apply("me", goal, far);
+    // with the totals as they stand now: the other player takes our own score from us, so the two screens cannot drift apart
+    this.conn?.sendPeer("result", { goal, far, score: this.scoreMe, letters: this.lettersMe });
+    this.host.changed();
+  }
+
+  /** HORSE and 21: the player's ball has stopped; the other player continues with it from here. */
+  sendRest(nx: number): void {
+    this.conn?.sendPeer("rest", { nx });
+  }
+
+  /** While the player's own shot is in flight (HORSE and 21): tells the other player where the ball is. */
+  sendBall(p: OpponentBall): void {
+    this.conn?.sendPeer("ball", p as unknown as Record<string, unknown>);
+  }
+
+  private apply(who: "me" | "opp", goal: boolean, far: boolean): void {
+    const me = who === "me";
+    if (this.game === "speed") {
+      if (goal) {
+        if (me) this.scoreMe++;
+        else this.scoreOpp++;
+      }
+      if ((me ? this.scoreMe : this.scoreOpp) >= SPEED_GOAL) this.finish(me, me ? "You got to 10 first" : `${this.opponent} got to 10 first`);
+      return;
+    }
+    if (this.game === "horse") {
+      if (!goal) {
+        if (me) this.lettersMe++;
+        else this.lettersOpp++;
+        if ((me ? this.lettersMe : this.lettersOpp) >= HORSE.length) this.finish(!me, me ? "You spelled HORSE" : `${this.opponent} spelled HORSE`);
+      }
+    } else if (goal) {
+      const pts = far ? 2 : 1;
+      if (me) this.scoreMe += pts;
+      else this.scoreOpp += pts;
+      if ((me ? this.scoreMe : this.scoreOpp) >= T21_GOAL) this.finish(me, me ? "You got to 21 first" : `${this.opponent} got to 21 first`);
+    }
+    if (!this.over) this.turn = me ? "opp" : "me";
+  }
+
+  /** Looks again at who has got there, after a total was taken from the other player. */
+  private checkEnd(): void {
+    if (this.over) return;
+    if (this.game === "speed" && this.scoreOpp >= SPEED_GOAL) this.finish(false, `${this.opponent} got to 10 first`);
+    else if (this.game === "t21" && this.scoreOpp >= T21_GOAL) this.finish(false, `${this.opponent} got to 21 first`);
+    else if (this.game === "horse" && this.lettersOpp >= HORSE.length) this.finish(true, `${this.opponent} spelled HORSE`);
+  }
+
+  private finish(won: boolean, reason: string): void {
+    this.over = { won, reason };
+  }
+
+  private onPeer(d: unknown): void {
+    if (typeof d !== "object" || d === null) return;
+    const m = d as { type?: string; payload?: { goal?: unknown; far?: unknown; nx?: unknown; score?: unknown; letters?: unknown } & Record<string, unknown> };
+    if (m.type === "result" && !this.over) {
+      const goal = m.payload?.goal === true;
+      this.apply("opp", goal, m.payload?.far === true);
+      // the other player's own score is what they say it is
+      if (typeof m.payload?.score === "number") this.scoreOpp = m.payload.score;
+      if (typeof m.payload?.letters === "number") this.lettersOpp = m.payload.letters;
+      this.checkEnd();
+      if (this.game !== "speed") {
+        this.peerBusy = true;
+        window.clearTimeout(this.busyTimer);
+        // if the "stopped" message never comes, do not block the game for ever
+        this.busyTimer = window.setTimeout(() => {
+          this.peerBusy = false;
+          this.host.changed();
+        }, 7000);
+      }
+      this.host.toast(goal ? `${this.opponent} scored` : `${this.opponent} missed`);
+      this.host.peerShotEnded();
+      this.host.changed();
+    } else if (m.type === "ball" && !this.over && m.payload) {
+      const p = m.payload as Record<string, unknown>;
+      const ang = typeof p.ang === "number" ? p.ang : 0;
+      if (p.kind === "free" && typeof p.nx === "number" && typeof p.h === "number") {
+        this.host.ball({ kind: "free", nx: p.nx, h: p.h, ang });
+      } else if (typeof p.dx === "number" && typeof p.dy === "number" && (p.side === "left" || p.side === "right") && typeof p.rimH === "number") {
+        this.host.ball({ kind: "arc", dx: p.dx, dy: p.dy, side: p.side, rimH: p.rimH, ang });
+      }
+    } else if (m.type === "rest" && m.payload && typeof m.payload.nx === "number") {
+      window.clearTimeout(this.busyTimer);
+      this.peerBusy = false;
+      this.host.peerRest(m.payload.nx);
+      this.host.changed();
+    } else if (m.type === "leave" && !this.over) {
+      this.finish(true, `${this.opponent} left the match`);
+      this.host.changed();
+    }
+  }
+
+  private onServer(m: MpServerMessage): void {
+    if (m.type === "peer_disconnected") {
+      this.peerAway = true;
+      this.host.changed();
+    } else if (m.type === "peer_reconnected") {
+      this.peerAway = false;
+      this.host.changed();
+    } else if (m.type === "peer_left" && !this.over) {
+      this.finish(true, `${this.opponent} left the match`);
+      this.host.changed();
+    }
+  }
+
+  private onClosed(): void {
+    if (this.over) return;
+    this.finish(false, "The connection was lost");
+    this.host.changed();
+  }
+
+  /** Leaves the match: tells the other player and closes the connections. */
+  leave(): void {
+    window.clearInterval(this.beat);
+    window.clearTimeout(this.busyTimer);
+    this.conn?.sendPeer("leave");
+    this.conn?.send("bye");
+    this.conn?.close();
+    this.conn = null;
+  }
+
+  // ---------- what the scoreboard shows ----------
+
+  yourTurnText(): string {
+    if (this.over) return "";
+    if (this.game === "speed") return "";
+    return this.turn === "me" ? "Your turn" : `${this.opponent}'s turn`;
+  }
+}

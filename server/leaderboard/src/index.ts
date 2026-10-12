@@ -56,7 +56,10 @@ const MP_GAMES = new Set(["speed", "horse", "t21"]);
 const MP_COURTS = new Set(["Street", "Gym", "Arena"]);
 
 const allowedOrigin = (origin: string): boolean =>
-  origin === "https://minkenen.github.io" || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+  origin === "https://minkenen.github.io" ||
+  // the desktop app's own window (macOS and Windows)
+  origin === "tauri://localhost" || origin === "http://tauri.localhost" || origin === "https://tauri.localhost" ||
+  /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -405,22 +408,28 @@ export class MultiplayerHub {
     const { player } = (await request.json().catch(() => ({}))) as { player?: { id?: string; nickname?: string } };
     if (!player?.id || !player.nickname) return bad("Sign in before playing online.", 401);
     this.sweep();
+    const code = this.makeRoom(player.id);
+    return json({ code, expiresIn: Math.round(MP_ROOM_TTL_MS / 1000) });
+  }
+
+  /** Makes an empty room for a host and returns its code. */
+  private makeRoom(hostId: string, game: MpGame = "speed"): string {
     const code = this.newCode();
     const now = Date.now();
     const room: MpRoom = {
       id: crypto.randomUUID(),
       code,
       mode: "friend",
-      game: "speed",
+      game,
       court: "Street",
-      hostId: player.id,
+      hostId,
       players: new Map(),
       createdAt: now,
       expiresAt: now + MP_ROOM_TTL_MS,
     };
     this.rooms.set(room.id, room);
     this.codeToRoom.set(code, room.id);
-    return json({ code, expiresIn: Math.round(MP_ROOM_TTL_MS / 1000) });
+    return code;
   }
 
   private connect(request: Request, url: URL): Response {
@@ -428,15 +437,21 @@ export class MultiplayerHub {
     if (!player.id || !player.nickname) return bad("Sign in before playing online.", 401);
     const mode = url.searchParams.get("mode") || "";
     const game = (url.searchParams.get("game") || "speed") as MpGame;
-    const code = normalizeRoomCode(url.searchParams.get("code") || "");
+    let code = normalizeRoomCode(url.searchParams.get("code") || "");
     if (mode !== "quick" && mode !== "room") return bad("Unsupported multiplayer mode.");
     if (!MP_GAMES.has(game)) return bad("Unknown game.");
     this.sweep();
+    // create=1: make the room right here, so there is no gap between making it and joining it
+    if (mode === "room" && url.searchParams.get("create") === "1") code = this.makeRoom(player.id, game);
 
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
-    this.state.acceptWebSocket(server);
+    // The normal WebSocket API, not the hibernating one: the rooms live in this object's memory, and a hibernating object forgets them while players wait.
+    (server as unknown as { accept(): void }).accept();
+    server.addEventListener("message", (e: MessageEvent) => void this.webSocketMessage(server, e.data as string | ArrayBuffer));
+    server.addEventListener("close", () => void this.webSocketClose(server));
+    server.addEventListener("error", () => void this.webSocketError(server));
 
     if (mode === "quick") this.connectQuick(player, game, server);
     else this.connectRoom(player, code, server);
@@ -459,29 +474,34 @@ export class MultiplayerHub {
     switch (msg.type) {
       case "set_game": {
         if (player.id !== room.hostId) return sendError(ws, msg, "not_host", "Only the room host can change this setting.");
-        if (anyReady(room)) return sendError(ws, msg, "already_ready", "Game cannot change after ready.");
+        if (room.startsAt) return sendError(ws, msg, "already_started", "The match is about to start.");
         const game = String(payload.game || "");
         if (!MP_GAMES.has(game)) return sendError(ws, msg, "bad_game", "Unknown game.");
         room.game = game as MpGame;
+        // a change takes back everyone's "ready", so nobody starts a match with other rules than they agreed to
+        for (const p of room.players.values()) p.ready = false;
         broadcastLobby(room);
         break;
       }
       case "set_court": {
         if (player.id !== room.hostId) return sendError(ws, msg, "not_host", "Only the room host can change this setting.");
-        if (anyReady(room)) return sendError(ws, msg, "already_ready", "Court cannot change after ready.");
+        if (room.startsAt) return sendError(ws, msg, "already_started", "The match is about to start.");
         const court = String(payload.court || "");
         if (!MP_COURTS.has(court)) return sendError(ws, msg, "bad_court", "Unknown court.");
         room.court = court as MpCourt;
+        for (const p of room.players.values()) p.ready = false;
         broadcastLobby(room);
         break;
       }
       case "ready": {
+        // once the countdown has started nobody can change their mind, and the start is sent only once
+        if (room.startsAt) return;
         player.ready = payload.ready === true;
         broadcastLobby(room);
         if (room.players.size === 2 && [...room.players.values()].every((p) => p.ready && p.connected)) {
           room.startsAt = Date.now() + 3000;
           room.seed = room.seed || crypto.randomUUID();
-          broadcast(room, "start_countdown", { startsAt: room.startsAt, seed: room.seed, countdownSeconds: 3 });
+          broadcast(room, "start_countdown", { startsAt: room.startsAt, seed: room.seed, countdownSeconds: 3, game: room.game, court: room.court });
         }
         break;
       }
@@ -622,7 +642,8 @@ export class MultiplayerHub {
   private sweep(): void {
     const now = Date.now();
     for (const room of this.rooms.values()) {
-      const allGone = [...room.players.values()].every((p) => !p.connected && (!p.reconnectUntil || p.reconnectUntil < now));
+      // a room that nobody has joined yet is not "gone": an empty list would count as all gone
+      const allGone = room.players.size > 0 && [...room.players.values()].every((p) => !p.connected && (!p.reconnectUntil || p.reconnectUntil < now));
       if (room.expiresAt < now || allGone) this.deleteRoom(room);
     }
   }
@@ -741,12 +762,14 @@ async function mpWs(request: Request, env: Env, url: URL): Promise<Response> {
   const code = (url.searchParams.get("code") || "").toUpperCase();
   if (mode !== "quick" && mode !== "room") return bad("Unsupported multiplayer mode.");
   if (!MP_GAMES.has(game)) return bad("Unknown game.");
-  if (mode === "room" && !/^[A-Z0-9]{3}-?[A-Z0-9]{3}$/.test(code)) return bad("Room not found. Check the code and try again.", 404);
+  const create = url.searchParams.get("create") === "1";
+  if (mode === "room" && !create && !/^[A-Z0-9]{3}-?[A-Z0-9]{3}$/.test(code)) return bad("Room not found. Check the code and try again.", 404);
   const hub = env.MP.get(env.MP.idFromName("v1"));
   const next = new URL("https://mp.local/ws");
   next.searchParams.set("mode", mode);
   next.searchParams.set("game", game);
   if (code) next.searchParams.set("code", code);
+  if (create) next.searchParams.set("create", "1");
   return hub.fetch(
     new Request(next, {
       headers: {
