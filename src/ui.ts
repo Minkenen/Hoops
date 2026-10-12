@@ -128,6 +128,8 @@ export class UI {
     toast: (m, ms) => this.toast(m, ms),
     nickname: () => backend.user()?.nickname ?? "You",
   });
+  private cosTab: "ball" | "court" | "crowd" | "base" = "ball";
+  private thumbs = new Map<string, string>();
   private setTab: "game" | "sound" | "look" | "system" = "game";
   private lbSigning = false;
   private lbDelete = false;
@@ -723,10 +725,6 @@ ${body}
     return this.pixIcon(rows, ["#a8791a", "#ffd84a", "#fff6c0"], sz);
   }
 
-  private checkIcon(sz = 2): string {
-    return this.pixIcon(["........1", ".......11", "1.....11.", "11...11..", ".11.11...", "..111....", "...1....."], ["#1c1c22"], sz);
-  }
-
   private priceBadge(price: string | null): string {
     return price ? `<span class="badge">${this.coinIcon()}${price}</span>` : `<span class="badge free">FREE</span>`;
   }
@@ -740,19 +738,27 @@ ${body}
     this.viewTheme = null;
   }
 
+  /** A small picture of a look (cached: it is drawn by the real preview, once). */
+  private thumb(look: { ballSkin: string; courtSkin: string; crowd: string }): string {
+    const key = `${look.ballSkin}|${look.courtSkin}|${look.crowd}|${settings.arenaFill}|${settings.crowdRow}`;
+    let url = this.thumbs.get(key);
+    if (!url) {
+      url = Preview.still(look);
+      this.thumbs.set(key, url);
+    }
+    return `<img class="ap-img" src="${url}" alt="" draggable="false">`;
+  }
+
   private cosmeticsHtml(): string {
     const view = themeById(this.viewTheme ?? settings.theme);
     const using = !this.viewTheme || this.viewTheme === settings.theme;
     setPreviewOverride(using ? null : { ballSkin: view.ball, courtSkin: view.court, crowd: view.crowd });
     const cur = themeById(settings.theme);
     const custom = cur.ball !== settings.ballSkin || cur.court !== settings.courtSkin || cur.crowd !== settings.crowd;
-    const row = (t: (typeof THEMES)[number]): string => {
+    const card = (t: (typeof THEMES)[number]): string => {
       const own = isOwned(t.id);
-      const sk = COURT_SKINS.find((s) => s.id === t.court);
-      const sw = sk ? `background:linear-gradient(90deg,${sk.zone[0]} 0 38%,${sk.wood[0]} 38% 69%,${sk.wood[1]} 69%)` : "";
-      const price = settings.theme !== t.id && !own ? `<span class="pr">${this.lockIcon()}${t.price}</span>` : "";
-      const check = settings.theme === t.id ? this.checkIcon() : "";
-      return `<button class="trow${view.id === t.id ? " on" : ""}${own ? "" : " lk"}" data-a="viewtheme" data-v="${t.id}"><i class="tsw" style="${sw}"></i><span class="tn">${t.name}${price}</span>${check}</button>`;
+      const badge = settings.theme === t.id ? `<span class="badge free">In use</span>` : own ? `<span class="badge free">Owned</span>` : this.priceBadge(t.price);
+      return `<button class="ap-card${view.id === t.id ? " on" : ""}${own ? "" : " lk"}" data-a="viewtheme" data-v="${t.id}">${this.thumb({ ballSkin: t.ball, courtSkin: t.court, crowd: t.crowd })}<b>${t.name}</b>${badge}</button>`;
     };
     const action = isOwned(view.id)
       ? settings.theme === view.id
@@ -762,31 +768,43 @@ ${body}
     const ballName = BALL_SKINS.find((s) => s.id === view.ball)?.name ?? "";
     const courtName = COURT_SKINS.find((s) => s.id === view.court)?.name ?? "";
     const crowdName = CROWD_STYLES.find((s) => s.id === view.crowd)?.name ?? "";
-    const balls = BALL_SKINS.filter((s) => isItemOwned("ball", s.id))
-      .map((s) => this.skinTile("ballSkin", s.id, s.name, `<i class="sw ball" style="background:radial-gradient(circle at 35% 30%,${s.pal[2]},${s.pal[1]} 55%,${s.pal[0]})"></i>`))
-      .join("");
-    const courts = COURT_SKINS.filter((s) => isItemOwned("court", s.id))
-      .map((s) => this.skinTile("courtSkin", s.id, s.name, `<i class="sw plan" style="background:linear-gradient(90deg,${s.zone[0]} 0 38%,${s.wood[0]} 38% 69%,${s.wood[1]} 69%)"></i>`))
-      .join("");
-    const crowds = CROWD_STYLES.filter((s) => isItemOwned("crowd", s.id))
-      .map((s) => this.skinTile("crowd", s.id, s.name, "", s.description))
-      .join("");
-    const bases = BASE_SKINS.map((s) => this.skinTile("baseSkin", s.id, s.name, "")).join("");
     const lockedAny = THEMES.some((t) => !isOwned(t.id));
-    return `<div class="px win" data-hit style="width:min(600px,94vw)">
+    const tabs: [typeof this.cosTab, string][] = [["ball", "Ball"], ["court", "Court"], ["crowd", "Crowd"], ["base", "Pole"]];
+    const tabBar = tabs.map(([id, name]) => `<button class="${this.cosTab === id ? "on" : ""}" data-a="costab" data-v="${id}">${name}</button>`).join("");
+    let pane = "";
+    if (this.cosTab === "ball") {
+      pane = `<div class="ap-grid">${BALL_SKINS.filter((s) => isItemOwned("ball", s.id))
+        .map((s) => this.skinTile("ballSkin", s.id, s.name, `<i class="sw ball" style="background:radial-gradient(circle at 35% 30%,${s.pal[2]},${s.pal[1]} 55%,${s.pal[0]})"></i>`))
+        .join("")}</div>`;
+    } else if (this.cosTab === "court") {
+      pane = `${this.row("Show court", this.tog("court"), "While aiming")}<div class="ap-grid">${COURT_SKINS.filter((s) => isItemOwned("court", s.id))
+        .map((s) => this.skinTile("courtSkin", s.id, s.name, `<i class="sw plan" style="background:linear-gradient(90deg,${s.zone[0]} 0 38%,${s.wood[0]} 38% 69%,${s.wood[1]} 69%)"></i>`))
+        .join("")}</div>`;
+    } else if (this.cosTab === "crowd") {
+      const mode = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
+      const seg = ([["off", "Off"], ["row", "Row"], ["half", "Half"], ["full", "Full"]] as const)
+        .map(([m, n]) => `<button class="pb${mode === m ? " on" : ""}" data-a="crowdmode" data-v="${m}">${n}</button>`)
+        .join("");
+      const styles = CROWD_STYLES.filter((s) => isItemOwned("crowd", s.id) && s.id !== "none")
+        .map((s) => {
+          const on = settings.crowd === s.id;
+          return `<button class="tile ap-tile${on ? " on" : ""}" data-a="set" data-k="crowd" data-v="${s.id}">${this.thumb({ ballSkin: settings.ballSkin, courtSkin: settings.courtSkin, crowd: s.id })}<b>${s.name}</b></button>`;
+        })
+        .join("");
+      pane = `${this.row("How much", `<span>${seg}</span>`, "Off, front row, half the screen or all of it")}<div class="ap-grid">${styles}</div>`;
+    } else {
+      pane = `<div class="ap-grid">${BASE_SKINS.map((s) => this.skinTile("baseSkin", s.id, s.name, "")).join("")}</div>`;
+    }
+    return `<div class="px win" data-hit style="width:min(640px,94vw)">
 <div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Appearance</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
 <div class="wb">
-<div class="two"><div class="tlist">${THEMES.map(row).join("")}</div>
-<div class="tbig"><canvas class="prev" id="prev" width="${Preview.W}" height="${Preview.H}" aria-label="Preview"></canvas>
-<div class="thead"><b>${view.name}</b>${this.priceBadge(view.price)}</div>
-<div class="hn">${crowdName}, ${courtName}, ${ballName} ball</div>
-<div class="acts" style="margin-top:6px">${action}</div></div></div>
+<canvas class="prev ap-prev" id="prev" width="${Preview.W}" height="${Preview.H}" aria-label="Preview"></canvas>
+<div class="ap-bar"><div><b>${view.name}</b> ${this.priceBadge(view.price)}<div class="hn">${crowdName}, ${courtName}, ${ballName} ball</div></div><div>${action}</div></div>
+<div class="h4">Themes</div><div class="ap-cards">${THEMES.map(card).join("")}</div>
 ${lockedAny ? this.allAccessButton() : ""}
-<div class="h4">Your look${custom ? " (custom)" : ""}</div>
-<div class="h4" style="margin-top:2px">Ball</div><div class="tiles w">${balls}</div>
-<div class="h4">Court</div>${this.row("Show court", this.tog("court"), "While aiming")}<div class="tiles w">${courts}</div>
-<div class="h4">Crowd</div>${this.row("Fill the screen", this.tog("arenaFill"), "Crowd and arena reach the top")}<div class="tiles w">${crowds}</div>
-<div class="h4">Pole base</div><div class="tiles w">${bases}</div>
+<div class="h4">Make it your own${custom ? " (custom)" : ""}</div>
+<div class="ap-tabs">${tabBar}</div>
+${pane}
 ${lockedAny ? `<div class="note">${this.lockIcon()}<span>More choices appear when you unlock more themes.</span></div>` : ""}
 <div class="acts"><button class="pb" data-a="inst">Settings…</button></div>
 </div></div>`;
@@ -961,6 +979,10 @@ ${rows}
       case "set":
         if (k) setSetting(k, (Number.isNaN(Number(v)) ? v : Number(v)) as never);
         if (k === "ballSkin" || k === "courtSkin" || k === "crowd") this.viewTheme = null;
+        this.render();
+        break;
+      case "costab":
+        this.cosTab = v as typeof this.cosTab;
         this.render();
         break;
       case "settab":
