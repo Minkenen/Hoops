@@ -1,5 +1,8 @@
 import { defineConfig } from "vite";
 // @ts-expect-error type error without @types/node package
+import { readFileSync } from "node:fs";
+const appVersion: string = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
+// @ts-expect-error type error without @types/node package
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 const web = process.env.VITE_TARGET === "web";
@@ -8,6 +11,7 @@ const webIpc = new URL("./src/ipc.web.ts", import.meta.url).pathname;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
+  define: { __APP_VERSION__: JSON.stringify(appVersion) },
   base: web ? "./" : undefined,
   build: web ? { outDir: "docs/play", emptyOutDir: true } : undefined,
   resolve: web

@@ -50,6 +50,8 @@ export class MultiplayerMock {
   connected = false;
   direct = false;
   error = "";
+  /** The quick-match screen is showing a room being joined with a code. */
+  joining = false;
   peerName = "Mia";
   private seed = "";
   private myId = "";
@@ -104,6 +106,7 @@ export class MultiplayerMock {
 
   private go(s: MpScreen): void {
     this.error = "";
+    if (s !== "quick") this.joining = false;
     this.screen = s;
     this.host.render();
   }
@@ -241,8 +244,16 @@ export class MultiplayerMock {
     }
     this.stop();
     this.screen = "quick";
+    this.joining = true;
     this.direct = false;
     this.host.render();
+    // if nothing answers, say so instead of leaving the screen as it is
+    this.later(12000, () => {
+      if (this.screen === "quick" && this.joining) {
+        this.go("notfound");
+        this.host.toast("Could not join the room. Ask your friend to keep their room window open, and check the code.", 4500);
+      }
+    });
     this.conn = this.connect();
     void this.conn?.connectRoom(this.joinCode).catch((e) => this.fail(e instanceof Error ? e.message : "Could not join room."));
   }
@@ -428,7 +439,7 @@ export class MultiplayerMock {
 <div class="mp-note">Peer-to-peer match. A small server only helps players find each other.</div>`;
       case "quick":
         return `<div class="mp-search">${this.ball("you", 32)}${this.ball("opp", 32)}${this.ball("gold", 32)}</div>
-<div class="mp-c"><b>Looking for a ${GAMES[this.game].name} player…</b><div class="hn">0:${String(this.elapsed + 7).padStart(2, "0")} · about 20 s</div></div>
+<div class="mp-c"><b>${this.joining ? "Joining the room…" : `Looking for a ${GAMES[this.game].name} player…`}</b>${this.joining ? "" : `<div class="hn">0:${String(this.elapsed + 7).padStart(2, "0")} · about 20 s</div>`}</div>
 <button class="pb full" data-a="mp:cancel" style="text-align:center;margin-top:12px">Cancel</button>`;
       case "found":
         return `<div class="mp-c" style="margin:14px 0"><span class="mp-pill"><i></i>Player found</span>

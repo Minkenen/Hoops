@@ -599,7 +599,8 @@ ${LEADERBOARD_ON ? `<button class="pb full lbl" data-a="lb"><span>Leaderboard…
 <button class="pb full" data-a="inst">Settings…</button>
 ${this.donateHtml()}
 ${this.game?.online ? `<button class="pb full danger" data-a="leavematch">Leave online match</button>` : ""}
-${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}</div>`;
+${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}
+<div class="hn" style="text-align:center;margin-top:6px">Hoops v${__APP_VERSION__}</div></div>`;
   }
 
   /** A picture tile for a choice: a small drawing above its name. */
