@@ -56,6 +56,9 @@ export const leaderboardSubmitScore = (serverUrl: string, score: number, bestStr
   invoke("leaderboard_submit_score", { serverUrl, score, bestStreak, throws, goals });
 export const leaderboardSetNickname = (serverUrl: string, nickname: string): Promise<LbUser> =>
   invoke<LbUser>("leaderboard_set_nickname", { serverUrl, nickname });
+/** The profile kept on the account (stats, best score, cosmetics, licenses), or null when none is saved yet. */
+export const profileGet = (serverUrl: string): Promise<unknown> => invoke("leaderboard_profile_get", { serverUrl });
+export const profilePut = (serverUrl: string, profile: unknown): Promise<void> => invoke("leaderboard_profile_put", { serverUrl, profile });
 export const focusWindow = (): Promise<void> => getCurrentWindow().setFocus();
 export const quitApp = (): Promise<void> => invoke("quit_app");
 

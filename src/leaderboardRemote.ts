@@ -8,11 +8,12 @@ import {
   leaderboardSubmitScore,
   leaderboardUser,
 } from "./ipc";
+import { syncNow } from "./profileSync";
 import type { LbBackend, LbBoard, LbProviderId, LbTab, LbUser } from "./leaderboard";
 
 const SYNC_MS = 30_000;
 
-class RemoteLeaderboard implements LbBackend {
+export class RemoteLeaderboard implements LbBackend {
   available = true;
   private me: LbUser | null = null;
   private lastSync = 0;
@@ -26,6 +27,10 @@ class RemoteLeaderboard implements LbBackend {
     return this.me;
   }
 
+  get url(): string {
+    return this.serverUrl;
+  }
+
   async refreshUser(): Promise<void> {
     try {
       this.me = await leaderboardUser(this.serverUrl);
@@ -36,7 +41,9 @@ class RemoteLeaderboard implements LbBackend {
 
   async signIn(provider: LbProviderId): Promise<LbUser> {
     this.me = await leaderboardSignIn(this.serverUrl, provider);
+    const me = this.me;
     void this.submitScore(true);
+    void syncNow(this.serverUrl, me).then((changed) => changed && window.dispatchEvent(new Event("storage")));
     return this.me;
   }
 

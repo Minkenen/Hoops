@@ -36,3 +36,9 @@ CREATE TABLE IF NOT EXISTS score_submissions (
 
 CREATE INDEX IF NOT EXISTS scores_best_score_idx ON scores(best_score DESC, updated_at ASC);
 CREATE INDEX IF NOT EXISTS weekly_scores_week_score_idx ON weekly_scores(week, best_score DESC);
+
+CREATE TABLE IF NOT EXISTS profiles (
+  player_id TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+  data TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);

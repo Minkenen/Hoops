@@ -641,6 +641,39 @@ async fn leaderboard_set_nickname(server_url: String, nickname: String) -> Resul
         .map_err(|e| e.to_string())?
 }
 
+/// The profile saved on the account: stats, best score, cosmetics and licenses. null when nothing is saved yet.
+#[tauri::command]
+async fn leaderboard_profile_get(server_url: String) -> Result<serde_json::Value, String> {
+    let Some(token) = get_leaderboard_token() else {
+        return Ok(serde_json::Value::Null);
+    };
+    let r: serde_json::Value = tauri::async_runtime::spawn_blocking(move || leaderboard_get(&server_url, "/profile", Some(&token)))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(r.get("profile").cloned().unwrap_or(serde_json::Value::Null))
+}
+
+#[tauri::command]
+async fn leaderboard_profile_put(server_url: String, profile: serde_json::Value) -> Result<(), String> {
+    let Some(token) = get_leaderboard_token() else {
+        return Ok(());
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let url = leaderboard_url(&server_url, "/profile")?;
+        match ureq::put(&url)
+            .set("Accept", "application/json")
+            .set("Authorization", &format!("Bearer {token}"))
+            .send_json(profile)
+        {
+            Ok(_) => Ok(()),
+            Err(ureq::Error::Status(_, r)) => Err(leaderboard_error_message(r)),
+            Err(_) => Err("Could not reach the leaderboard server.".into()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Opens or closes the Hoops menu on the visible overlays: the same thing the global shortcut does.
 fn toggle_menu(app: &AppHandle) {
     for (label, win) in app.webview_windows() {
@@ -713,6 +746,8 @@ pub fn run() {
             leaderboard_load,
             leaderboard_submit_score,
             leaderboard_set_nickname,
+            leaderboard_profile_get,
+            leaderboard_profile_put,
             quit_app
         ])
         .setup(|app| {

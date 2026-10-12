@@ -361,6 +361,16 @@ ${login}
     this.view = "onboarding";
     this.step = 0;
     this.nickDraft = "";
+    try {
+      // Coming back from signing in on the web page: carry on with picking a name.
+      if (localStorage.getItem("hoops.onb.resume") === "1") {
+        localStorage.removeItem("hoops.onb.resume");
+        const at = this.onbSteps().indexOf(backend.user() ? "name" : "board");
+        if (at > 0) this.step = at;
+      }
+    } catch {
+      /* ignore */
+    }
     this.render();
   }
 

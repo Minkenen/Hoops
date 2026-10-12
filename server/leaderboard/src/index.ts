@@ -15,13 +15,28 @@ interface Env {
   DB: D1Database;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
-  APPLE_CLIENT_ID: string;
-  APPLE_CLIENT_SECRET: string;
   SESSION_SECRET: string;
   HASH_PEPPER: string;
 }
 
-type Provider = "apple" | "google";
+type Provider = "google";
+
+const WEB_REDIRECT = "https://minkenen.github.io/Hoops/play/";
+const LS_STORE_ID = 495291;
+/** Lemon Squeezy product ids (public, the license API needs no key). */
+const LICENSED: Record<number, { unlock: "all" | "theme"; theme: string }> = {
+  1430835: { unlock: "all", theme: "" },
+  1431014: { unlock: "theme", theme: "street" },
+  1431019: { unlock: "theme", theme: "arena" },
+  1431020: { unlock: "theme", theme: "led" },
+  1431022: { unlock: "theme", theme: "train-day" },
+  1431023: { unlock: "theme", theme: "train-night" },
+  1431024: { unlock: "theme", theme: "train-canyon" },
+};
+const PROFILE_MAX = 40_000;
+
+const allowedOrigin = (origin: string): boolean =>
+  origin === "https://minkenen.github.io" || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -33,6 +48,26 @@ const bad = (message: string, status = 400): Response => json({ error: message }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const origin = request.headers.get("origin") || "";
+    const cors: Record<string, string> = allowedOrigin(origin)
+      ? {
+          "access-control-allow-origin": origin,
+          "access-control-allow-headers": "authorization, content-type",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "access-control-max-age": "86400",
+          vary: "origin",
+        }
+      : {};
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    const res = await route(request, env);
+    if (!Object.keys(cors).length) return res;
+    const out = new Response(res.body, res);
+    for (const [k, v] of Object.entries(cors)) out.headers.set(k, v);
+    return out;
+  },
+};
+
+async function route(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     try {
       if (request.method === "GET" && url.pathname === "/leaderboard") return leaderboard(request, env, url);
@@ -42,34 +77,27 @@ export default {
       if (request.method === "POST" && url.pathname === "/score") return score(request, env);
       if (request.method === "POST" && url.pathname === "/nickname") return nickname(request, env);
       if (request.method === "DELETE" && url.pathname === "/account") return deleteAccount(request, env);
+      if (request.method === "GET" && url.pathname === "/profile") return profileGet(request, env);
+      if (request.method === "PUT" && url.pathname === "/profile") return profilePut(request, env);
+      if (request.method === "POST" && url.pathname === "/license/activate") return licenseActivate(request);
+      if (request.method === "POST" && url.pathname === "/license/validate") return licenseValidate(request);
       return bad("Not found.", 404);
     } catch (error) {
       return bad(error instanceof Error ? error.message : "Server error.", 500);
     }
-  },
-};
+}
 
 async function authStart(env: Env, url: URL): Promise<Response> {
-  const provider = url.searchParams.get("provider") as Provider | null;
+  const provider = url.searchParams.get("provider");
   const redirectUri = url.searchParams.get("redirect_uri") || "";
-  if (provider !== "apple" && provider !== "google") return bad("Unsupported provider.");
-  if (!redirectUri.startsWith("http://127.0.0.1:")) return bad("Unsupported redirect.");
+  if (provider !== "google") return bad("Unsupported provider.");
+  if (!redirectUri.startsWith("http://127.0.0.1:") && redirectUri !== WEB_REDIRECT) return bad("Unsupported redirect.");
   const state = await signJwt(env, { provider, redirectUri, exp: Math.floor(Date.now() / 1000) + 600 });
-  if (provider === "google") {
-    const next = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    next.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
-    next.searchParams.set("redirect_uri", `${url.origin}/auth/callback`);
-    next.searchParams.set("response_type", "code");
-    next.searchParams.set("scope", "openid");
-    next.searchParams.set("state", state);
-    return Response.redirect(next.toString(), 302);
-  }
-  const next = new URL("https://appleid.apple.com/auth/authorize");
-  next.searchParams.set("client_id", env.APPLE_CLIENT_ID);
+  const next = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  next.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
   next.searchParams.set("redirect_uri", `${url.origin}/auth/callback`);
   next.searchParams.set("response_type", "code");
   next.searchParams.set("scope", "openid");
-  next.searchParams.set("response_mode", "query");
   next.searchParams.set("state", state);
   return Response.redirect(next.toString(), 302);
 }
@@ -78,11 +106,13 @@ async function authCallback(env: Env, url: URL): Promise<Response> {
   const code = url.searchParams.get("code") || "";
   const state = await verifyJwt<{ provider: Provider; redirectUri: string; exp: number }>(env, url.searchParams.get("state") || "");
   if (!code || !state || state.exp < Math.floor(Date.now() / 1000)) return bad("Sign-in expired.");
-  const sub = state.provider === "google" ? await googleSub(env, url.origin, code) : await appleSub(env, url.origin, code);
+  const sub = await googleSub(env, url.origin, code);
   const player = await upsertPlayer(env, state.provider, sub);
   const token = await signJwt(env, { playerId: player.id, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 90 });
   const redirect = new URL(state.redirectUri);
-  redirect.searchParams.set("token", token);
+  // The desktop app gets the token in the query of its own loopback address; the web page gets it in the fragment, which never reaches a server.
+  if (state.redirectUri === WEB_REDIRECT) redirect.hash = `token=${token}`;
+  else redirect.searchParams.set("token", token);
   return Response.redirect(redirect.toString(), 302);
 }
 
@@ -98,21 +128,6 @@ async function googleSub(env: Env, origin: string, code: string): Promise<string
   const data = await token.json() as { id_token?: string };
   const claims = decodeJwt(data.id_token || "");
   if (!claims.sub) throw new Error("Google sign-in failed.");
-  return String(claims.sub);
-}
-
-async function appleSub(env: Env, origin: string, code: string): Promise<string> {
-  const body = new URLSearchParams({
-    code,
-    client_id: env.APPLE_CLIENT_ID,
-    client_secret: env.APPLE_CLIENT_SECRET,
-    redirect_uri: `${origin}/auth/callback`,
-    grant_type: "authorization_code",
-  });
-  const token = await fetch("https://appleid.apple.com/auth/token", { method: "POST", body });
-  const data = await token.json() as { id_token?: string };
-  const claims = decodeJwt(data.id_token || "");
-  if (!claims.sub) throw new Error("Apple sign-in failed.");
   return String(claims.sub);
 }
 
@@ -297,4 +312,62 @@ function iconFor(id: string): number {
 
 function isUniqueConstraint(error: unknown): boolean {
   return String(error instanceof Error ? error.message : error).toLowerCase().includes("unique");
+}
+
+async function profileGet(request: Request, env: Env): Promise<Response> {
+  const player = await requirePlayer(request, env);
+  const row = await env.DB.prepare("SELECT data, updated_at FROM profiles WHERE player_id = ?").bind(player.id).first<{ data: string; updated_at: number }>();
+  if (!row) return json({ profile: null, updatedAt: 0 });
+  return json({ profile: JSON.parse(row.data), updatedAt: row.updated_at });
+}
+
+async function profilePut(request: Request, env: Env): Promise<Response> {
+  const player = await requirePlayer(request, env);
+  const text = await request.text();
+  if (text.length > PROFILE_MAX) return bad("Profile is too large.", 413);
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return bad("Invalid profile.");
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return bad("Invalid profile.");
+  const now = Date.now();
+  await env.DB.prepare(
+    "INSERT INTO profiles (player_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(player_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+  ).bind(player.id, JSON.stringify(body), now).run();
+  return json({ ok: true, updatedAt: now });
+}
+
+async function lemon(path: "activate" | "validate", fields: Record<string, string>): Promise<Record<string, any>> {
+  const res = await fetch(`https://api.lemonsqueezy.com/v1/licenses/${path}`, {
+    method: "POST",
+    headers: { accept: "application/json" },
+    body: new URLSearchParams(fields),
+  });
+  return (await res.json().catch(() => ({}))) as Record<string, any>;
+}
+
+function licenseMatch(meta: Record<string, any> | undefined): { unlock: "all" | "theme"; theme: string } | null {
+  if (!meta || meta.store_id !== LS_STORE_ID) return null;
+  return LICENSED[Number(meta.product_id)] ?? null;
+}
+
+async function licenseActivate(request: Request): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { key?: string };
+  const key = String(body.key || "").trim();
+  if (!key) return bad("Enter your license key.");
+  const r = await lemon("activate", { license_key: key, instance_name: "Hoops in the browser" });
+  if (r.activated !== true) return bad(String(r.error || "That license key was not accepted."), 400);
+  const match = licenseMatch(r.meta);
+  if (!match) return bad("That license key is for a different product.");
+  return json({ instance_id: String(r.instance?.id || ""), unlock: match.unlock, theme_id: match.theme });
+}
+
+async function licenseValidate(request: Request): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { key?: string };
+  const key = String(body.key || "").trim();
+  if (!key) return json({ valid: false });
+  const r = await lemon("validate", { license_key: key });
+  return json({ valid: r.valid === true && licenseMatch(r.meta) !== null });
 }

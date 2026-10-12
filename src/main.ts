@@ -21,6 +21,7 @@ import { onSettingChange, settings } from "./settings";
 import { setBackend } from "./leaderboard";
 import { createRemoteLeaderboard } from "./leaderboardRemote";
 import { connectLeaderboardScoreSync } from "./leaderboardSync";
+import { startProfileSync } from "./profileSync";
 import { UI } from "./ui";
 
 async function main(): Promise<void> {
@@ -29,6 +30,8 @@ async function main(): Promise<void> {
     const leaderboard = createRemoteLeaderboard(leaderboardUrl);
     setBackend(leaderboard);
     connectLeaderboardScoreSync(leaderboard);
+    await Promise.race([leaderboard.refreshUser(), new Promise((r) => window.setTimeout(r, 4000))]);
+    startProfileSync(leaderboardUrl, () => leaderboard.user(), () => window.dispatchEvent(new Event("storage")));
   }
 
   const monitors = await getMonitors();
