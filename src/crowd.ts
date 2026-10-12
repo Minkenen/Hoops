@@ -10,7 +10,7 @@ const HAIR = ["#1c1c22", "#4a3020", "#8a5a2a", "#c9a24a"];
 const SHIRTS = ["#e8731f", "#f4f6fb", "#3a5493", "#9aa1ad"];
 const BANDS = ["#181a30", "#1b1e36", "#1e223c", "#222643", "#262a4a", "#2a2f52"];
 /** How tall the strip of crowd is when only the front row is shown (art pixels). */
-export const CROWD_ROW_H = 24;
+export const CROWD_ROW_H = 30;
 const TIERS = 6;
 const TIER_H = 12;
 export const STANDS_H = TIERS * TIER_H + 3;
