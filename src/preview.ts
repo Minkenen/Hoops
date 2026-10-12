@@ -1,5 +1,5 @@
 import { makeCourtSprite } from "./court";
-import { Crowd } from "./crowd";
+import { CROWD_ROW_H, Crowd } from "./crowd";
 import { Net } from "./net";
 import { settings } from "./settings";
 import { BALL_SKINS } from "./skins";
@@ -19,6 +19,21 @@ export function setPreviewOverride(o: { ballSkin: string; courtSkin: string; cro
   override = o;
 }
 
+export type CrowdMode = "off" | "row" | "half" | "full";
+
+/** Options for a preview that shows one crowd choice, with the court sliding in and out like in the game. */
+export interface PreviewOptions {
+  mode: CrowdMode;
+  /** The court and crowd come in, stay, and go out again in a loop. */
+  slide?: boolean;
+}
+
+// the loop of a sliding preview, in ms: in 400 (like the game), stay, out 250, a pause
+const IN = 400;
+const STAY = 2400;
+const OUT = 250;
+const GAP = 1000;
+
 /** Live preview of the scene (crowd, court, hoop, ball) for the Appearance window. */
 export class Preview {
   static readonly W = W;
@@ -33,10 +48,10 @@ export class Preview {
   private pole: HTMLCanvasElement | null = null;
   private poleKey = "";
 
-  constructor(private cv: HTMLCanvasElement) {
+  constructor(private cv: HTMLCanvasElement, private opts?: PreviewOptions) {
     this.ctx = cv.getContext("2d")!;
     this.ctx.imageSmoothingEnabled = false;
-    cv.addEventListener("click", () => this.crowd.cheer(performance.now()));
+    if (!opts) cv.addEventListener("click", () => this.crowd.cheer(performance.now()));
     this.crowd.cheer(performance.now() + 300);
     requestAnimationFrame((t) => this.frame(t));
   }
@@ -51,17 +66,28 @@ export class Preview {
     const c = this.ctx;
     const ballSkin = (override?.ballSkin ?? settings.ballSkin) as typeof settings.ballSkin;
     const courtSkin = (override?.courtSkin ?? settings.courtSkin) as typeof settings.courtSkin;
-    const crowdStyle = (override?.crowd ?? settings.crowd) as typeof settings.crowd;
+    const mode = this.opts?.mode;
+    // a preview of one choice shows it whatever the settings say; the crowd style is the one in use, or the one that was switched off
+    const base = (override?.crowd ?? (settings.crowd === "none" ? settings.crowdBack : settings.crowd)) as typeof settings.crowd;
+    const crowdStyle = (mode ? (mode === "off" ? "none" : base) : (override?.crowd ?? settings.crowd)) as typeof settings.crowd;
+    const fill = mode ? mode === "full" : settings.arenaFill;
+    const row = mode ? mode === "row" : settings.crowdRow && !settings.arenaFill;
+    // 1 while the court is in; during the slide it rises from below (the same easing as the game)
+    let p = 1;
+    if (this.opts?.slide) {
+      const t = now % (IN + STAY + OUT + GAP);
+      p = t < IN ? t / IN : t < IN + STAY ? 1 : t < IN + STAY + OUT ? 1 - (t - IN - STAY) / OUT : 0;
+    }
     hoopSp ??= makeHoopSprite("left");
     const sp = hoopSp;
     if (this.courtKey !== courtSkin) {
       this.court = makeCourtSprite("left", W, courtSkin);
       this.courtKey = courtSkin;
     }
-    if (this.ballKey !== ballSkin + crowdStyle + settings.arenaFill) {
+    if (this.ballKey !== ballSkin + crowdStyle + fill) {
       const s = BALL_SKINS.find((k) => k.id === ballSkin) ?? BALL_SKINS[0];
-      this.ball = makeBallFrame(s.pal, s.seam, crowdStyle === "arena" ? Math.max(-0.8, Math.min(0.8, (W / 2 - BALL_X) / (this.crowd.keyH(FLOOR, settings.arenaFill) * 1.6))) : -0.5);
-      this.ballKey = ballSkin + crowdStyle + settings.arenaFill;
+      this.ball = makeBallFrame(s.pal, s.seam, crowdStyle === "arena" ? Math.max(-0.8, Math.min(0.8, (W / 2 - BALL_X) / (this.crowd.keyH(FLOOR, fill) * 1.6))) : -0.5);
+      this.ballKey = ballSkin + crowdStyle + fill;
     }
     const bottom = settings.court ? FLOOR + BASE_CENTER[settings.baseSkin] - 2 : H;
     const y0 = Math.max(RIM_Y, sp.rimY + 4) - sp.rimY;
@@ -74,20 +100,32 @@ export class Preview {
     c.clearRect(0, 0, W, H);
     c.fillStyle = "#c9d3e3";
     c.fillRect(0, 0, W, H);
-    if (settings.court && this.court) {
-      const top = FLOOR - Math.round(this.court.cy);
-      this.crowd.setBall(BALL_X, FLOOR, FLOOR - 10.5);
-      this.crowd.draw(c, crowdStyle, now, W, top + 1, settings.arenaFill);
+    const e = Math.pow(1 - p, 3);
+    if (p > 0 && (settings.court || this.opts) && this.court) {
+      const top = FLOOR - Math.round(this.court.cy) + Math.round(e * (H - (FLOOR - this.court.cy)));
+      this.crowd.setBall(BALL_X, FLOOR + e * H, FLOOR - 10.5);
+      if (row && crowdStyle !== "none") {
+        c.save();
+        c.beginPath();
+        c.rect(0, top + 1 - CROWD_ROW_H, W, CROWD_ROW_H);
+        c.clip();
+      }
+      this.crowd.draw(c, crowdStyle, now, W, top + 1, fill);
+      if (row && crowdStyle !== "none") c.restore();
       c.drawImage(this.court.canvas, 0, top);
       if (crowdStyle === "arena") this.crowd.arenaFloor(c, now, W, top, this.court.h);
     }
+    // the hoop slides in from the side with the court
+    c.save();
+    c.translate(-Math.round(e * (sp.w + 8)), 0);
     c.drawImage(this.pole!, -sp.shiftX, y0 - sp.shiftY);
     c.drawImage(sp.canvas, 0, y0);
     this.net?.draw(c, "back");
+    c.restore();
     const bx = Math.round(BALL_X - 11.5);
     const by = Math.round(FLOOR - 10.5 - 11.5);
     const lit = settings.court && crowdStyle === "arena";
-    const tl = (BALL_X - W / 2) / this.crowd.keyH(FLOOR, settings.arenaFill);
+    const tl = (BALL_X - W / 2) / this.crowd.keyH(FLOOR, fill);
     const srx = 9 + (lit ? 10 * Math.abs(tl) * 1.3 : 0);
     const off = lit ? Math.round(10 * tl * 0.8) + Math.sign(tl) * 3 : 0;
     for (let x = -Math.ceil(srx); x <= Math.ceil(srx) && !lit; x++) {
@@ -99,7 +137,10 @@ export class Preview {
       }
     }
     if (this.ball) c.drawImage(this.ball, bx, by);
+    c.save();
+    c.translate(-Math.round(e * (sp.w + 8)), 0);
     this.net?.draw(c, "front");
     c.drawImage(sp.front, 0, y0);
+    c.restore();
   }
 }

@@ -50,7 +50,7 @@ const DEFAULTS: Settings = {
   ballSkin: "classic",
   courtSkin: "parquet",
   crowd: "stands",
-  arenaFill: false,
+  arenaFill: true,
   crowdRow: false,
   crowdBack: "stands",
   stayOpen: false,

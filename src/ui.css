@@ -196,3 +196,6 @@
 #ui .mp-banner.bad{background:#4a1f1f}
 #ui .mp-sim{margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:2px}
 #ui .pb[disabled]{opacity:.6;cursor:default}
+
+#ui .ob-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+#ui .st-tile canvas[data-prev]{width:100%;height:auto;aspect-ratio:300/138;image-rendering:pixelated}

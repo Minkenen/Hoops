@@ -9,7 +9,7 @@ import { MULTIPLAYER_MOCK, MultiplayerMock } from "./multiplayerMock";
 import { drawSettingsArt } from "./settingsArt";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
-import { Preview, setPreviewOverride } from "./preview";
+import { type CrowdMode, Preview, setPreviewOverride } from "./preview";
 import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
 import { ALL_ACCESS_PRICE, ALL_ACCESS_VALUE, PRICE_VALUE, THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, getStats } from "./stats";
@@ -837,9 +837,9 @@ ${rows}
 
   /** The steps of the first-run guide. The leaderboard steps are only there when there is a leaderboard; naming yourself only once you are signed in. */
   private onbSteps(): string[] {
-    if (WEB) return ["welcome", "overlay", "board", ...(backend.user() ? ["name"] : []), "done"];
+    if (WEB) return ["welcome", "overlay", "crowd", "board", ...(backend.user() ? ["name"] : []), "done"];
     const lb = LEADERBOARD_ON && backend.available;
-    return ["welcome", "autostart", "fullscreen", ...(lb ? ["board", ...(backend.user() ? ["name"] : [])] : []), "done"];
+    return ["welcome", "autostart", "fullscreen", "crowd", ...(lb ? ["board", ...(backend.user() ? ["name"] : [])] : []), "done"];
   }
 
   private onboardingHtml(): string {
@@ -857,6 +857,12 @@ ${rows}
       body = `<h3>Start automatically?</h3><p>Hoops starts quietly in the background when you log in.</p><div class="tiles">${this.tile("autostart", 1, "Yes, start it for me", "Ready right after login")}${this.tile("autostart", 0, "No, I will start it", "Open Hoops whenever you want")}</div>`;
     } else if (id === "fullscreen") {
       body = `<h3>Over other apps?</h3><p>Should the ball show over fullscreen apps, like games and video?</p><div class="tiles">${this.tile("fullscreen", 1, "On top of everything", "Even fullscreen")}${this.tile("fullscreen", 0, "Regular windows only", "Hidden behind fullscreen")}</div>`;
+    } else if (id === "crowd") {
+      const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
+      const tiles = ([["off", "Off", "No crowd"], ["row", "Row", "Front row only"], ["half", "Half", "Usual height"], ["full", "Full", "Whole screen"]] as const)
+        .map(([m, name, hint]) => `<button class="st-tile${cur === m ? " on" : ""}" data-a="crowdmode" data-v="${m}" aria-pressed="${cur === m}"><canvas data-prev="${m}" width="300" height="138"></canvas><b>${name}</b><small>${hint}</small></button>`)
+        .join("");
+      body = `<h3>How much crowd?</h3><p>The stands show up behind the court when you shoot. Watch how each one comes in and goes out.</p><div class="ob-grid">${tiles}</div>`;
     } else if (id === "board") {
       body = user
         ? `<h3>You are on the board</h3><p>Signed in as <b>${user.nickname}</b>. Next you can pick your own name.</p>`
@@ -899,6 +905,7 @@ ${rows}
     this.host.innerHTML = html;
     const pv = this.host.querySelector<HTMLCanvasElement>("#prev");
     if (pv) new Preview(pv);
+    this.host.querySelectorAll<HTMLCanvasElement>("canvas[data-prev]").forEach((cv) => new Preview(cv, { mode: cv.dataset.prev as CrowdMode, slide: true }));
     drawSettingsArt(this.host);
     this.game?.syncHit();
   }

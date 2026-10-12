@@ -4,7 +4,7 @@ import { play } from "./audio";
 import { BallFire } from "./fire";
 import { type Achievement, getStats, recordGoal, recordHeroDown, recordMiss, recordThrow } from "./stats";
 import { Confetti } from "./confetti";
-import { Crowd } from "./crowd";
+import { Crowd, CROWD_ROW_H } from "./crowd";
 import { clamp, layer, rnd, text, textWidth } from "./draw";
 import { type CourtSprite, makeCourtSprite } from "./court";
 import { BALL_SKINS } from "./skins";
@@ -72,8 +72,6 @@ const SUB = 4;
 const isMilestone = (n: number): boolean => n === 25 || n === 50 || (n >= 100 && n % 100 === 0);
 const TIME_SCALE = 1.25;
 const SLIDE_GRAB = 1.2;
-/** How tall the strip of crowd is when only the front row is shown (art pixels). */
-const CROWD_ROW_H = 16;
 const TOUCH_WEB = import.meta.env.VITE_TARGET === "web" && window.matchMedia("(pointer: coarse)").matches;
 /** On a touch screen the ball never rests closer to an edge than this (in art pixels), so there is room to pull it back. */
 const EDGE_ROOM = 38;
