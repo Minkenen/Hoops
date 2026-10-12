@@ -272,16 +272,16 @@ async function upsertPlayer(env: Env, provider: Provider, providerUserId: string
   throw new Error("Could not create nickname.");
 }
 
-async function optionalPlayer(request: Request, env: Env): Promise<{ id: string; nickname: string } | null> {
-  const token = bearer(request);
+async function optionalPlayer(request: Request, env: Env, tokenOverride?: string): Promise<{ id: string; nickname: string } | null> {
+  const token = tokenOverride || bearer(request);
   if (!token) return null;
   const claims = await verifyJwt<{ playerId: string; exp: number }>(env, token);
   if (!claims || claims.exp < Math.floor(Date.now() / 1000)) return null;
   return env.DB.prepare("SELECT id, nickname FROM players WHERE id = ?").bind(claims.playerId).first<{ id: string; nickname: string }>();
 }
 
-async function requirePlayer(request: Request, env: Env): Promise<{ id: string; nickname: string }> {
-  const player = await optionalPlayer(request, env);
+async function requirePlayer(request: Request, env: Env, tokenOverride?: string): Promise<{ id: string; nickname: string }> {
+  const player = await optionalPlayer(request, env, tokenOverride);
   if (!player) throw new Error("Sign in first.");
   return player;
 }
@@ -735,7 +735,7 @@ async function mpRoom(request: Request, env: Env): Promise<Response> {
 
 async function mpWs(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return bad("Expected WebSocket.", 426);
-  const player = await requirePlayer(request, env);
+  const player = await requirePlayer(request, env, url.searchParams.get("token") || undefined);
   const mode = url.searchParams.get("mode") || "";
   const game = url.searchParams.get("game") || "speed";
   const code = (url.searchParams.get("code") || "").toUpperCase();

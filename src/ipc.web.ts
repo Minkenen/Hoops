@@ -75,6 +75,7 @@ export const leaderboardUser = async (u: string): Promise<LbUser | null> => {
     return null;
   }
 };
+export const leaderboardSessionToken = async (): Promise<string | null> => getToken() || null;
 /** Signing in leaves the page for Google and comes back to the play page with the session in the address (see main.ts). */
 export const leaderboardSignIn = (u: string, provider: LbProviderId): Promise<LbUser> => {
   try {

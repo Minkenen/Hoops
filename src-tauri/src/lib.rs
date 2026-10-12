@@ -573,6 +573,11 @@ async fn leaderboard_user(server_url: String) -> Result<Option<LbUser>, String> 
 }
 
 #[tauri::command]
+fn leaderboard_session_token() -> Option<String> {
+    get_leaderboard_token()
+}
+
+#[tauri::command]
 async fn leaderboard_sign_in(app: AppHandle, server_url: String, provider: String) -> Result<LbUser, String> {
     if provider != "apple" && provider != "google" {
         return Err("Unsupported sign-in provider.".into());
@@ -761,6 +766,7 @@ pub fn run() {
             activate_license,
             validate_license,
             leaderboard_user,
+            leaderboard_session_token,
             leaderboard_sign_in,
             leaderboard_sign_out,
             leaderboard_load,

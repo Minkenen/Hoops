@@ -48,6 +48,7 @@ export const activateLicense = (key: string): Promise<LicenseActivation> => invo
 /** Asks the license server if a key is still good. Resolves false when it is not; rejects when the server cannot be reached. */
 export const validateLicense = (key: string): Promise<boolean> => invoke<boolean>("validate_license", { key });
 export const leaderboardUser = (serverUrl: string): Promise<LbUser | null> => invoke<LbUser | null>("leaderboard_user", { serverUrl });
+export const leaderboardSessionToken = (): Promise<string | null> => invoke<string | null>("leaderboard_session_token");
 export const leaderboardSignIn = (serverUrl: string, provider: LbProviderId): Promise<LbUser> =>
   invoke<LbUser>("leaderboard_sign_in", { serverUrl, provider });
 export const leaderboardSignOut = (): Promise<void> => invoke("leaderboard_sign_out");

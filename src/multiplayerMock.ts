@@ -1,13 +1,17 @@
-// Online multiplayer, UI only. Everything here is MOCKED: no network, no WebRTC, no server.
+// Online multiplayer UI. With VITE_LEADERBOARD_URL and sign-in it uses the real signaling server;
+// WebRTC/match physics are still TODO, so the final "start match" remains a handoff point.
 // It follows mockups/multiplayer-1-start.html, -2-room.html and -3-lobby.html and is only shown when VITE_MULTIPLAYER_MOCK=1.
 //
 // The real thing later (backend by Codex, see server/leaderboard/MULTIPLAYER.md):
-//   quick match  -> WebSocket to /mp/ws?mode=quick&game=...  (TODO: replace startQuick())
-//   friend room  -> POST /mp/rooms, then /mp/ws?mode=room&code=...  (TODO: replace createRoom() and join())
-//   lobby        -> ready flags, rules and ping travel over the WebRTC data channel (TODO: replace the timers in setReady())
+//   quick match  -> WebSocket to /mp/ws?mode=quick&game=...
+//   friend room  -> POST /mp/rooms, then /mp/ws?mode=room&code=...
+//   lobby        -> ready flags and rule changes travel over the signaling server for now
 //   reconnect    -> ICE restart through the signalling channel for about 15 s (TODO: replace simulate())
 
+import { createMultiplayerConnection, type MpLobbyPlayer, type MpServerMessage, type MultiplayerConnection } from "./multiplayerClient";
+
 export const MULTIPLAYER_MOCK: boolean = import.meta.env.VITE_MULTIPLAYER_MOCK === "1";
+const SERVER_URL = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) || "").trim();
 
 export type GameId = "speed" | "horse" | "t21";
 export type MpScreen = "start" | "quick" | "found" | "friend" | "created" | "join" | "notfound" | "lobby" | "countdown" | "reconnect" | "gone" | "timeout";
@@ -40,7 +44,17 @@ export class MultiplayerMock {
   reconnectLeft = 12;
   me = false;
   opp = false;
+  connected = false;
+  error = "";
+  peerName = "Mia";
+  private players: MpLobbyPlayer[] = [];
   private timers: number[] = [];
+  private conn: MultiplayerConnection | null = createMultiplayerConnection(
+    SERVER_URL,
+    (m) => this.onServer(m),
+    () => this.onServerClose(),
+    (m) => this.fail(m),
+  );
 
   constructor(private host: MpHost) {}
 
@@ -55,6 +69,7 @@ export class MultiplayerMock {
   stop(): void {
     this.timers.forEach((t) => window.clearTimeout(t));
     this.timers = [];
+    this.conn?.close();
   }
 
   private later(ms: number, f: () => void): void {
@@ -66,6 +81,7 @@ export class MultiplayerMock {
   }
 
   private go(s: MpScreen): void {
+    this.error = "";
     this.screen = s;
     this.host.render();
   }
@@ -97,10 +113,12 @@ export class MultiplayerMock {
     switch (action) {
       case "game":
         this.game = v as GameId;
+        this.conn?.send("set_game", { game: this.game });
         this.host.render();
         break;
       case "court":
         this.court = v as MultiplayerMock["court"];
+        this.conn?.send("set_court", { court: this.court });
         this.host.render();
         break;
       case "quick":
@@ -157,67 +175,55 @@ export class MultiplayerMock {
     }
   }
 
-  // TODO(multiplayer): ask the matchmaking server for a quick match (WebSocket, mode=quick&game=this.game).
   private startQuick(): void {
     this.stop();
     this.elapsed = 0;
     this.screen = "quick";
+    this.connected = false;
+    this.players = [];
     this.host.render();
+    this.conn = createMultiplayerConnection(SERVER_URL, (m) => this.onServer(m), () => this.onServerClose(), (m) => this.fail(m));
+    void this.conn?.connectQuick(this.game).catch((e) => this.fail(e instanceof Error ? e.message : "Could not start quick match."));
     const tick = (): void => {
       this.elapsed++;
-      if (this.elapsed >= 4) {
-        this.go("found");
-        return;
-      }
       this.host.render();
       this.later(1000, tick);
     };
     this.later(1000, tick);
   }
 
-  // TODO(multiplayer): POST /mp/rooms for a real room code; keep the room open until a peer connects.
   private createRoom(): void {
-    const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-    const pick = (): string => A[Math.floor(Math.random() * A.length)];
-    this.code = `${pick()}${pick()}${pick()}-${pick()}${pick()}${pick()}`;
-    this.go("created");
-    // The mock: a friend "joins" after a few seconds, which goes to the lobby.
-    this.later(6000, () => {
-      if (this.screen === "created") this.go("found");
-    });
+    this.stop();
+    this.conn = createMultiplayerConnection(SERVER_URL, (m) => this.onServer(m), () => this.onServerClose(), (m) => this.fail(m));
+    void (async () => {
+      try {
+        const room = await this.mustConn().createRoom();
+        this.code = room.code;
+        this.go("created");
+        await this.mustConn().connectRoom(room.code);
+      } catch (e) {
+        this.fail(e instanceof Error ? e.message : "Could not create room.");
+      }
+    })();
   }
 
-  // TODO(multiplayer): send the code to the server (mode=room&code=...); on success exchange the WebRTC offer/answer through it.
   private join(): void {
     const clean = this.joinCode.replace(/-/g, "");
-    this.go(clean.length >= 6 ? "found" : "notfound");
+    if (clean.length < 6) {
+      this.go("notfound");
+      return;
+    }
+    this.stop();
+    this.screen = "quick";
+    this.host.render();
+    this.conn = createMultiplayerConnection(SERVER_URL, (m) => this.onServer(m), () => this.onServerClose(), (m) => this.fail(m));
+    void this.conn?.connectRoom(this.joinCode).catch((e) => this.fail(e instanceof Error ? e.message : "Could not join room."));
   }
 
-  // TODO(multiplayer): ready flags travel over the WebRTC data channel; both ready starts the match.
   private setReady(): void {
     this.me = !this.me;
+    this.conn?.send("ready", { ready: this.me });
     this.host.render();
-    if (!this.me) return;
-    this.later(1200, () => {
-      this.opp = true;
-      this.host.render();
-      this.later(500, () => this.startCountdown());
-    });
-  }
-
-  private startCountdown(): void {
-    this.countdown = 3;
-    this.go("countdown");
-    const step = (): void => {
-      this.countdown--;
-      this.host.render();
-      if (this.countdown >= 0) this.later(900, step);
-      else {
-        this.host.close();
-        this.host.toast("Mock: the match would start here", 2600);
-      }
-    };
-    this.later(900, step);
   }
 
   // TODO(multiplayer): real connection states from the peer connection (disconnected, failed) and the signalling channel.
@@ -240,6 +246,88 @@ export class MultiplayerMock {
       this.me = this.opp = false;
       this.go("lobby");
     } else this.go(what === "gone" ? "gone" : "timeout");
+  }
+
+  private mustConn(): MultiplayerConnection {
+    if (!this.conn) throw new Error("Multiplayer server is not configured.");
+    return this.conn;
+  }
+
+  private fail(message: string): void {
+    this.error = message;
+    if (message.includes("Room not found")) this.screen = "notfound";
+    else this.host.toast(message, 3200);
+    this.host.render();
+  }
+
+  private onServerClose(): void {
+    if (this.screen === "quick" || this.screen === "created" || this.screen === "lobby" || this.screen === "countdown") this.fail("Multiplayer connection closed.");
+  }
+
+  private onServer(m: MpServerMessage): void {
+    switch (m.type) {
+      case "room_created":
+        this.code = m.payload.code;
+        this.go("created");
+        break;
+      case "searching":
+        this.screen = "quick";
+        this.host.render();
+        break;
+      case "peer_found":
+        this.game = m.payload.game;
+        this.peerName = m.payload.peer.nickname;
+        this.connected = true;
+        this.go("found");
+        break;
+      case "lobby_state":
+        this.game = m.payload.game;
+        this.court = m.payload.court;
+        this.players = m.payload.players;
+        this.me = this.players.find((p) => p.nickname === this.host.nickname())?.ready ?? this.me;
+        this.opp = this.players.some((p) => p.nickname !== this.host.nickname() && p.ready);
+        if (this.screen !== "created" && this.screen !== "found" && this.screen !== "quick") this.host.render();
+        break;
+      case "start_countdown":
+        this.countdown = m.payload.countdownSeconds;
+        this.go("countdown");
+        this.tickCountdownTo(m.payload.startsAt);
+        break;
+      case "peer_disconnected":
+        this.peerName = this.peerName || "Opponent";
+        this.reconnectLeft = Math.max(1, Math.ceil((m.payload.reconnectUntil - Date.now()) / 1000));
+        this.go("reconnect");
+        break;
+      case "peer_reconnected":
+        this.go("lobby");
+        break;
+      case "peer_left":
+        this.go("gone");
+        break;
+      case "error":
+        this.fail(m.payload.message);
+        break;
+    }
+  }
+
+  private tickCountdownTo(startsAt: number): void {
+    this.stopTimersOnly();
+    const tick = (): void => {
+      const left = Math.ceil((startsAt - Date.now()) / 1000);
+      this.countdown = left > 0 ? left : 0;
+      this.host.render();
+      if (left > 0) this.later(250, tick);
+      else {
+        this.host.close();
+        this.host.toast("Online match is ready. Gameplay sync is the next step.", 2600);
+      }
+    };
+    tick();
+  }
+
+  private stopTimersOnly(): void {
+    this.timers.forEach((t) => window.clearTimeout(t));
+    this.timers = [];
   }
 
   // ---------- markup ----------
@@ -297,8 +385,8 @@ export class MultiplayerMock {
 <button class="pb full" data-a="mp:cancel" style="text-align:center;margin-top:12px">Cancel</button>`;
       case "found":
         return `<div class="mp-c" style="margin:14px 0"><span class="mp-pill"><i></i>Player found</span>
-<div class="mp-vs"><div class="mp-pl">${this.ball("you", 48)}<b>${nick}</b></div><div class="mp-vsx">VS</div><div class="mp-pl">${this.ball("opp", 48)}<b>Mia</b></div></div>
-<div class="hn">Connecting directly to Mia…</div><div class="hn" style="margin-top:4px">${GAMES[this.game].name} · ${GAMES[this.game].tag}</div></div>
+<div class="mp-vs"><div class="mp-pl">${this.ball("you", 48)}<b>${nick}</b></div><div class="mp-vsx">VS</div><div class="mp-pl">${this.ball("opp", 48)}<b>${this.peerName}</b></div></div>
+<div class="hn">Connecting directly to ${this.peerName}…</div><div class="hn" style="margin-top:4px">${GAMES[this.game].name} · ${GAMES[this.game].tag}</div></div>
 <button class="pb pri mp-big" data-a="mp:lobby" style="justify-content:center"><span><b>Continue to lobby</b></span></button>`;
       case "friend":
         return `<button class="pb pri mp-big" data-a="mp:create">${this.ball("you", 32)}<span><b>Create a room</b><small>You get a code to share</small></span></button>
@@ -316,6 +404,7 @@ export class MultiplayerMock {
         return `<div class="h4" style="margin-top:0">Room code</div>
 <input class="mp-in" id="mpcode" maxlength="7" placeholder="ABC-123" value="${this.joinCode}" autocomplete="off" spellcheck="false">
 ${this.screen === "notfound" ? '<div class="err">Room not found. Check the code and try again.</div>' : ""}
+${this.error ? `<div class="err">${this.error}</div>` : ""}
 <button class="pb pri mp-big" data-a="mp:join" style="justify-content:center"><span><b>Join</b></span></button>
 <button class="pb full" data-a="mp:friend" style="text-align:center">Back</button>`;
       case "countdown":
@@ -332,11 +421,11 @@ ${this.screen === "notfound" ? '<div class="err">Room not found. Check the code 
     const nick = this.host.nickname();
     const banner =
       s === "reconnect"
-        ? `<div class="mp-banner warn">Mia lost connection. Reconnecting… <b>0:${String(this.reconnectLeft).padStart(2, "0")}</b></div>`
+        ? `<div class="mp-banner warn">${this.peerName} lost connection. Reconnecting… <b>0:${String(this.reconnectLeft).padStart(2, "0")}</b></div>`
         : s === "gone"
-          ? `<div class="mp-banner bad">Mia left the match.</div>`
+          ? `<div class="mp-banner bad">${this.peerName} left the match.</div>`
           : s === "timeout"
-            ? `<div class="mp-banner bad">Connection lost. Could not reconnect to Mia.</div>`
+            ? `<div class="mp-banner bad">Connection lost. Could not reconnect to ${this.peerName}.</div>`
             : "";
     const oppPill =
       s === "reconnect"
@@ -348,7 +437,7 @@ ${this.screen === "notfound" ? '<div class="err">Room not found. Check the code 
     const cards = `<div class="mp-vs"><div class="mp-pl${this.me ? " ready" : ""}">${this.ball("you", 48)}<b>${nick}</b><div class="hn">You</div><span class="mp-pill"><i></i>Connected</span>${this.board("me")}
 <div style="margin-top:6px"><button class="pb${ready ? " on" : ""}" data-a="mp:ready"${s === "lobby" ? "" : " disabled"}>${ready ? "Ready ✓" : "Ready"}</button></div></div>
 <div class="mp-vsx">VS</div>
-<div class="mp-pl${this.opp ? " ready" : ""}">${this.ball("opp", 48)}<b>Mia</b><div class="hn">Rank #214</div>${oppPill}${this.board("opp")}
+<div class="mp-pl${this.opp ? " ready" : ""}">${this.ball("opp", 48)}<b>${this.peerName}</b><div class="hn">Opponent</div>${oppPill}${this.board("opp")}
 <div style="margin-top:6px"><span class="mp-pill${this.opp ? "" : " warn"}"><i></i>${this.opp ? "Ready" : "Not ready"}</span></div></div></div>`;
     if (s === "countdown") {
       return `${cards}<div class="mp-c hn">${GAMES[this.game].name} · ${GAMES[this.game].tag}</div><div class="mp-cd">${this.countdown > 0 ? this.countdown : "GO!"}</div>`;
@@ -364,7 +453,7 @@ ${this.screen === "notfound" ? '<div class="err">Room not found. Check the code 
     else
       actions = `<button class="pb pri mp-big" data-a="mp:menu" style="justify-content:center;margin-top:10px"><span><b>Back to menu</b></span></button><button class="pb full" data-a="mp:quick" style="text-align:center">Find another player</button>`;
     const sim =
-      `<div class="mp-sim hn">Mock: <button class="pb" data-a="mp:sim" data-v="reconnect">Lose connection</button><button class="pb" data-a="mp:sim" data-v="gone">Opponent leaves</button>` +
+      `<div class="mp-sim hn">Test states: <button class="pb" data-a="mp:sim" data-v="reconnect">Lose connection</button><button class="pb" data-a="mp:sim" data-v="gone">Opponent leaves</button>` +
       (s === "lobby" ? "" : `<button class="pb" data-a="mp:sim" data-v="restore">Reset</button>`) +
       `</div>`;
     return `${banner}${cards}${settings}${actions}${sim}`;
