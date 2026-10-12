@@ -95,7 +95,18 @@ function biplane(x: number, y: number, t: number): void {
 }
 
 /** Verde: a white suit with green trim and a green cape, a green basketball on the chest. Flies to the right. */
+/** How many times bigger the flying hero is drawn (a whole number, so the pixels stay square). */
+const HERO_SCALE = 2;
+
 function hero(x: number, y: number, t: number, wave: boolean): void {
+  c.save();
+  c.translate(Math.round(x), Math.round(y - OY));
+  c.scale(HERO_SCALE, HERO_SCALE);
+  heroBody(0, OY, t, wave);
+  c.restore();
+}
+
+function heroBody(x: number, y: number, t: number, wave: boolean): void {
   const suit = "#f2f4f7";
   const trim = "#2fa84f";
   const cape = "#1f8a3c";
@@ -203,7 +214,7 @@ export function skyBusy(): boolean {
  */
 export function heroHit(ballX: number, ballY: number, rad: number): boolean {
   if (!flying || fall) return false;
-  if (Math.hypot(ballX - flying.x, ballY - (flying.y - OY)) > rad + 14) return false;
+  if (Math.hypot(ballX - flying.x, ballY - (flying.y - OY)) > rad + 14 * HERO_SCALE) return false;
   fall = { x: flying.x, y: flying.y, vx: 30, vy: -60, ang: 0 };
   crashed = false;
   disabledCycle = Math.floor(lastT / CYCLE);
@@ -230,18 +241,18 @@ function fireball(cx: number, cy: number, rad: number, seed: number, u: number):
 /** The hero spinning on his way down: drawn small into its own canvas, then turned in 15 degree steps. */
 function drawFalling(f: FallingHero, t: number): void {
   heroCv ??= document.createElement("canvas");
-  heroCv.width = 64;
-  heroCv.height = 48;
+  heroCv.width = 64 * HERO_SCALE;
+  heroCv.height = 48 * HERO_SCALE;
   const main = c;
   c = heroCv.getContext("2d")!;
-  c.clearRect(0, 0, 64, 48);
-  hero(36, 24 + OY, t, false);
+  c.clearRect(0, 0, 64 * HERO_SCALE, 48 * HERO_SCALE);
+  hero(36 * HERO_SCALE, 24 * HERO_SCALE + OY, t, false);
   c = main;
   c.save();
   c.imageSmoothingEnabled = false;
   c.translate(Math.round(f.x), Math.round(f.y - OY));
   c.rotate(Math.round(f.ang / 0.2618) * 0.2618);
-  c.drawImage(heroCv, -36, -24);
+  c.drawImage(heroCv, -36 * HERO_SCALE, -24 * HERO_SCALE);
   c.restore();
 }
 
