@@ -1,4 +1,4 @@
-// The leaderboard: what the menu window needs from a backend, and a make-believe backend for trying the design.
+// The leaderboard: what the menu window needs from a backend.
 // The real backend (sign in with Google, scores kept on a server) plugs in through setBackend().
 
 export type LbTab = "global" | "weekly" | "friends";
@@ -46,14 +46,16 @@ export function cleanNickname(v: string): string | null {
   return c.length >= 3 ? c : null;
 }
 
-/** The leaderboard is shown while trying the app out, and in a release only when it is switched on at build time (VITE_LEADERBOARD=1). */
-export const LEADERBOARD_ON: boolean = import.meta.env.DEV || import.meta.env.VITE_LEADERBOARD === "1";
+const USE_MOCK_LEADERBOARD = import.meta.env.DEV && import.meta.env.VITE_LEADERBOARD_MOCK === "1";
+
+/** The leaderboard is shown in local mock mode, or in a release only when it is switched on at build time (VITE_LEADERBOARD=1). */
+export const LEADERBOARD_ON: boolean = USE_MOCK_LEADERBOARD || import.meta.env.VITE_LEADERBOARD === "1";
 
 const NAMES = ["DunkMaster", "SwishQueen", "BallBot", "CourtKid", "NetNinja", "RimRider", "HoopHero", "AirMia"];
 const FRIENDS = ["Mia", "Leo", "Sam", "Noa"];
 const ME = "lb.mock.user";
 
-/** Made-up players and sign-in, to look at the design. Nothing leaves the computer. */
+/** Made-up players and sign-in, only for intentional local UI testing. Nothing leaves the computer. */
 const mock: LbBackend = {
   available: true,
   user: () => {
@@ -99,7 +101,7 @@ const mock: LbBackend = {
   },
 };
 
-/** Used in a release when no server is connected: the window says the board is not open yet. */
+/** Used when no server is connected: the window says the board is not open yet. */
 const unavailable: LbBackend = {
   available: false,
   user: () => null,
@@ -109,7 +111,7 @@ const unavailable: LbBackend = {
   load: () => Promise.reject(new Error("The leaderboard is not open yet.")),
 };
 
-export let backend: LbBackend = import.meta.env.DEV ? mock : unavailable;
+export let backend: LbBackend = USE_MOCK_LEADERBOARD ? mock : unavailable;
 
 /** Connects a real backend. */
 export function setBackend(b: LbBackend): void {

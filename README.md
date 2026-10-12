@@ -33,6 +33,12 @@ VITE_LEADERBOARD=1
 VITE_LEADERBOARD_URL=https://your-worker.example
 ```
 
+Local UI mock data is opt-in only:
+
+```bash
+VITE_LEADERBOARD_MOCK=1 npm run tauri dev
+```
+
 The Worker lives in `server/leaderboard/`:
 
 ```bash
