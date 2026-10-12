@@ -120,7 +120,8 @@ export class OnlineMatch {
     if (!this.inFlight || this.over) return;
     this.inFlight = false;
     this.apply("me", goal, far);
-    this.conn?.sendPeer("result", { goal, far });
+    // with the totals as they stand now: the other player takes our own score from us, so the two screens cannot drift apart
+    this.conn?.sendPeer("result", { goal, far, score: this.scoreMe, letters: this.lettersMe });
     this.host.changed();
   }
 
@@ -159,16 +160,28 @@ export class OnlineMatch {
     if (!this.over) this.turn = me ? "opp" : "me";
   }
 
+  /** Looks again at who has got there, after a total was taken from the other player. */
+  private checkEnd(): void {
+    if (this.over) return;
+    if (this.game === "speed" && this.scoreOpp >= SPEED_GOAL) this.finish(false, `${this.opponent} got to 10 first`);
+    else if (this.game === "t21" && this.scoreOpp >= T21_GOAL) this.finish(false, `${this.opponent} got to 21 first`);
+    else if (this.game === "horse" && this.lettersOpp >= HORSE.length) this.finish(true, `${this.opponent} spelled HORSE`);
+  }
+
   private finish(won: boolean, reason: string): void {
     this.over = { won, reason };
   }
 
   private onPeer(d: unknown): void {
     if (typeof d !== "object" || d === null) return;
-    const m = d as { type?: string; payload?: { goal?: unknown; far?: unknown; nx?: unknown } & Record<string, unknown> };
+    const m = d as { type?: string; payload?: { goal?: unknown; far?: unknown; nx?: unknown; score?: unknown; letters?: unknown } & Record<string, unknown> };
     if (m.type === "result" && !this.over) {
       const goal = m.payload?.goal === true;
       this.apply("opp", goal, m.payload?.far === true);
+      // the other player's own score is what they say it is
+      if (typeof m.payload?.score === "number") this.scoreOpp = m.payload.score;
+      if (typeof m.payload?.letters === "number") this.lettersOpp = m.payload.letters;
+      this.checkEnd();
       if (this.game !== "speed") {
         this.peerBusy = true;
         window.clearTimeout(this.busyTimer);

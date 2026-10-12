@@ -291,9 +291,9 @@ export class Game {
     const m = this.onlineMatch;
     if (!m || !this.active) return;
     if (p.kind === "free") {
-      if (m.game !== "speed") return;
       this.pushGhost(p.nx * this.artW, this.floorY - p.h, p.ang);
-      this.ghostUntil = Infinity;
+      // Speedball: always there. HORSE and 21: there while it is their ball, kept up by their resting reports
+      this.ghostUntil = m.game === "speed" ? Infinity : performance.now() + 1200;
       this.start();
       return;
     }
@@ -340,7 +340,6 @@ export class Game {
   /** The other player's shot is over: the ball stays a moment, then the hoop goes. */
   opponentShotEnd(): void {
     if (this.onlineMatch?.game === "speed") return;
-    this.hoopSwapAt = performance.now() + 900;
     this.ghostUntil = performance.now() + 600;
     this.hideAt = performance.now() + 1500;
     this.start();
@@ -812,6 +811,8 @@ export class Game {
     b.moving = false;
     this.ghost = null;
     this.ghostBuf.length = 0;
+    // their ball has stopped: now the hoop can move
+    this.hoopSwapAt = performance.now() + 300;
     this.start();
     this.syncHit();
   }
@@ -857,8 +858,8 @@ export class Game {
       b.y = clamp(b.y + b.vy, BALL_R, this.floorY - BALL_R);
       b.ang += b.vx / BALL_R;
     }
-    if (this.hoopSwapAt && now >= this.hoopSwapAt) {
-      // after a goal or a miss the hoop moves to a new place (the court stays); not while a shot is being pulled
+    if (this.hoopSwapAt && now >= this.hoopSwapAt && !this.ball.moving) {
+      // after a goal or a miss the hoop moves to a new place (the court stays), but only once the ball has stopped; not while a shot is being pulled
       this.hoopSwapAt = 0;
       if ((this.onlineMatch || settings.stayOpen) && this.hoop && !this.drag) {
         // the court stays while the new hoop slides in
@@ -894,6 +895,10 @@ export class Game {
           this.ballSentAt = nowMs;
           this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
         }
+      } else if (!b.moving && !this.shot && this.onlineMatch.turn === "me" && nowMs - this.ballSentAt >= 250) {
+        // HORSE and 21, your turn, ball resting: the other player sees it where it is (it is the one ball)
+        this.ballSentAt = nowMs;
+        this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
       } else if (b.moving && this.shot && this.hoop && nowMs - this.ballSentAt >= 33) {
         // HORSE and 21: the other player watches this shot: where the ball is, relative to the rim
         this.ballSentAt = nowMs;
