@@ -10,7 +10,7 @@
 
 import { createMultiplayerConnection, type MpLobbyPlayer, type MpServerMessage, type MultiplayerConnection } from "./multiplayerClient";
 
-export const MULTIPLAYER_MOCK: boolean = import.meta.env.VITE_MULTIPLAYER_MOCK === "1";
+export const MULTIPLAYER_MOCK: boolean = import.meta.env.VITE_MULTIPLAYER === "1" || import.meta.env.VITE_MULTIPLAYER_MOCK === "1";
 const SERVER_URL = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) || "").trim();
 
 import type { GameId, MpCourt, OnlineMatchInit } from "./onlineMatch";

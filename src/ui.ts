@@ -593,7 +593,7 @@ ${this.row("Sound", this.tog("sound"))}
 <div class="hr"></div>
 <button class="pb full" data-a="cos">Appearance…</button>
 <button class="pb full" data-a="ach">Achievements…</button>
-${MULTIPLAYER_MOCK ? `<button class="pb pri full" data-a="online">Play online</button>` : ""}
+${MULTIPLAYER_MOCK ? `<button class="pb pri full" data-a="online">Play online (beta)</button>` : ""}
 ${LEADERBOARD_ON ? `<button class="pb full lbl" data-a="lb"><span>Leaderboard…</span>${this.lbBoards.global?.you ? `<small>#${this.lbBoards.global.you.rank}</small>` : ""}</button>` : ""}
 <button class="pb full" data-a="inst">Settings…</button>
 ${this.donateHtml()}
