@@ -89,6 +89,20 @@ async function main(): Promise<void> {
   }
 
   if (web) {
+    const gate = document.createElement("div");
+    gate.id = "webgate";
+    gate.innerHTML = '<div><h1>HOOPS</h1><p>Plays in fullscreen. Press Esc to leave.</p><button>PLAY FULLSCREEN</button><a href="../#download">Get the desktop app: play over your whole desktop</a></div>';
+    document.body.appendChild(gate);
+    const sync = (): void => {
+      const full = !!document.fullscreenElement;
+      gate.style.display = full ? "none" : "flex";
+      if (full) window.setTimeout(() => game.rescale(), 100);
+    };
+    gate.querySelector("button")!.addEventListener("click", () => void document.documentElement.requestFullscreen().catch(() => {}));
+    document.addEventListener("fullscreenchange", sync);
+    sync();
+  }
+  if (web) {
     const b = document.createElement("button");
     b.id = "webmenu";
     b.textContent = "MENU";
