@@ -224,16 +224,8 @@ export class MultiplayerMock {
     this.stop();
     this.direct = false;
     this.conn = this.connect();
-    void (async () => {
-      try {
-        const room = await this.mustConn().createRoom();
-        this.code = room.code;
-        this.go("created");
-        await this.mustConn().connectRoom(room.code);
-      } catch (e) {
-        this.fail(e instanceof Error ? e.message : "Could not create room.");
-      }
-    })();
+    // the server makes the room when we connect, and answers with room_created (see onServer)
+    void this.mustConn().connectCreate().catch((e) => this.fail(e instanceof Error ? e.message : "Could not create room."));
   }
 
   private join(): void {
@@ -461,7 +453,7 @@ export class MultiplayerMock {
       case "notfound":
         return `<div class="h4" style="margin-top:0">Room code</div>
 <input class="mp-in" id="mpcode" maxlength="7" placeholder="ABC-123" value="${this.joinCode}" autocomplete="off" spellcheck="false">
-${this.screen === "notfound" ? '<div class="err">Room not found. Check the code and try again.</div>' : ""}
+${this.screen === "notfound" && !this.error ? '<div class="err">Room not found. Check the code and try again.</div>' : ""}
 ${this.error ? `<div class="err">${this.error}</div>` : ""}
 <button class="pb pri mp-big" data-a="mp:join" style="justify-content:center"><span><b>Join</b></span></button>
 <button class="pb full" data-a="mp:friend" style="text-align:center">Back</button>`;

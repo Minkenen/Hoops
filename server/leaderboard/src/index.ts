@@ -408,6 +408,12 @@ export class MultiplayerHub {
     const { player } = (await request.json().catch(() => ({}))) as { player?: { id?: string; nickname?: string } };
     if (!player?.id || !player.nickname) return bad("Sign in before playing online.", 401);
     this.sweep();
+    const code = this.makeRoom(player.id);
+    return json({ code, expiresIn: Math.round(MP_ROOM_TTL_MS / 1000) });
+  }
+
+  /** Makes an empty room for a host and returns its code. */
+  private makeRoom(hostId: string): string {
     const code = this.newCode();
     const now = Date.now();
     const room: MpRoom = {
@@ -416,14 +422,14 @@ export class MultiplayerHub {
       mode: "friend",
       game: "speed",
       court: "Street",
-      hostId: player.id,
+      hostId,
       players: new Map(),
       createdAt: now,
       expiresAt: now + MP_ROOM_TTL_MS,
     };
     this.rooms.set(room.id, room);
     this.codeToRoom.set(code, room.id);
-    return json({ code, expiresIn: Math.round(MP_ROOM_TTL_MS / 1000) });
+    return code;
   }
 
   private connect(request: Request, url: URL): Response {
@@ -431,10 +437,12 @@ export class MultiplayerHub {
     if (!player.id || !player.nickname) return bad("Sign in before playing online.", 401);
     const mode = url.searchParams.get("mode") || "";
     const game = (url.searchParams.get("game") || "speed") as MpGame;
-    const code = normalizeRoomCode(url.searchParams.get("code") || "");
+    let code = normalizeRoomCode(url.searchParams.get("code") || "");
     if (mode !== "quick" && mode !== "room") return bad("Unsupported multiplayer mode.");
     if (!MP_GAMES.has(game)) return bad("Unknown game.");
     this.sweep();
+    // create=1: make the room right here, so there is no gap between making it and joining it
+    if (mode === "room" && url.searchParams.get("create") === "1") code = this.makeRoom(player.id);
 
     const pair = new WebSocketPair();
     const client = pair[0];
@@ -749,12 +757,14 @@ async function mpWs(request: Request, env: Env, url: URL): Promise<Response> {
   const code = (url.searchParams.get("code") || "").toUpperCase();
   if (mode !== "quick" && mode !== "room") return bad("Unsupported multiplayer mode.");
   if (!MP_GAMES.has(game)) return bad("Unknown game.");
-  if (mode === "room" && !/^[A-Z0-9]{3}-?[A-Z0-9]{3}$/.test(code)) return bad("Room not found. Check the code and try again.", 404);
+  const create = url.searchParams.get("create") === "1";
+  if (mode === "room" && !create && !/^[A-Z0-9]{3}-?[A-Z0-9]{3}$/.test(code)) return bad("Room not found. Check the code and try again.", 404);
   const hub = env.MP.get(env.MP.idFromName("v1"));
   const next = new URL("https://mp.local/ws");
   next.searchParams.set("mode", mode);
   next.searchParams.set("game", game);
   if (code) next.searchParams.set("code", code);
+  if (create) next.searchParams.set("create", "1");
   return hub.fetch(
     new Request(next, {
       headers: {

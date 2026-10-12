@@ -91,6 +91,11 @@ export class MultiplayerConnection {
     await this.connect(`/mp/ws?mode=quick&game=${encodeURIComponent(game)}`);
   }
 
+  /** Makes a room and joins it in one step; the server answers with room_created and the code. */
+  async connectCreate(): Promise<void> {
+    await this.connect("/mp/ws?mode=room&create=1");
+  }
+
   async connectRoom(code: string): Promise<void> {
     await this.connect(`/mp/ws?mode=room&code=${encodeURIComponent(code)}`);
   }
