@@ -44,6 +44,13 @@ async function main(): Promise<void> {
   lookForUpdate();
   window.setInterval(lookForUpdate, 6 * 3600 * 1000);
   if (me.index === 0) void recheckLicenses().then((changed) => changed && ui.refresh());
+  const web = import.meta.env.VITE_TARGET === "web";
+  if (web) {
+    document.body.classList.add("web");
+    window.addEventListener("resize", () => {
+      if (game.active) game.rescale();
+    });
+  }
   const game = new Game(cv, me, monitors);
   ui.attach(game);
   game.ui = ui;
@@ -81,6 +88,14 @@ async function main(): Promise<void> {
     /* autostart unavailable in dev */
   }
 
+  if (web) {
+    const b = document.createElement("button");
+    b.id = "webmenu";
+    b.textContent = "MENU";
+    b.title = "Menu (or right-click the ball)";
+    b.addEventListener("click", () => ui.toggleMenu());
+    document.body.appendChild(b);
+  }
   window.setTimeout(preloadSounds, 800);
   if (await isWindowVisible()) game.intro();
 }
