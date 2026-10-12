@@ -15,6 +15,20 @@ const SERVER_URL = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined)
 
 export type GameId = "speed" | "horse" | "t21";
 export type MpScreen = "start" | "quick" | "found" | "friend" | "created" | "join" | "notfound" | "lobby" | "countdown" | "reconnect" | "gone" | "timeout";
+export type MpCourt = "Street" | "Gym" | "Arena";
+
+export interface OnlineMatchStart {
+  game: GameId;
+  court: MpCourt;
+  opponent: string;
+  direct: boolean;
+  seed: string;
+}
+
+export type OnlineGameEvent =
+  | { type: "shot"; payload: { x: number; y: number; vx: number; vy: number; t: number } }
+  | { type: "goal"; payload: { score: number } }
+  | { type: "miss"; payload: { t: number } };
 
 const GAMES: Record<GameId, { name: string; rule: string; tag: string; small: string }> = {
   speed: { name: "Speedball", rule: "You each get a ball. First to 10 baskets wins.", tag: "First to 10", small: "First to 10" },
@@ -30,12 +44,13 @@ export interface MpHost {
   openMenu(): void;
   toast(m: string, ms?: number): void;
   nickname(): string;
+  startOnlineMatch(match: OnlineMatchStart): void;
 }
 
 export class MultiplayerMock {
   screen: MpScreen = "start";
   game: GameId = "speed";
-  court: "Street" | "Gym" | "Arena" = "Street";
+  court: MpCourt = "Street";
   code = "";
   joinCode = "";
   copied = false;
@@ -48,6 +63,7 @@ export class MultiplayerMock {
   direct = false;
   error = "";
   peerName = "Mia";
+  private seed = "";
   private players: MpLobbyPlayer[] = [];
   private timers: number[] = [];
   private conn: MultiplayerConnection | null = createMultiplayerConnection(
@@ -124,6 +140,10 @@ export class MultiplayerMock {
     this.joinCode = v.replace(/[^a-zA-Z0-9-]/g, "").toUpperCase();
   }
 
+  sendGameEvent(event: OnlineGameEvent): void {
+    this.conn?.sendPeer(event.type, event.payload);
+  }
+
   /** Handles a click on an element with data-a="mp:<action>" and an optional data-v. */
   click(action: string, v?: string): void {
     switch (action) {
@@ -133,7 +153,7 @@ export class MultiplayerMock {
         this.host.render();
         break;
       case "court":
-        this.court = v as MultiplayerMock["court"];
+        this.court = v as MpCourt;
         this.conn?.send("set_court", { court: this.court });
         this.host.render();
         break;
@@ -310,6 +330,7 @@ export class MultiplayerMock {
         break;
       case "start_countdown":
         this.countdown = m.payload.countdownSeconds;
+        this.seed = m.payload.seed;
         this.go("countdown");
         this.tickCountdownTo(m.payload.startsAt);
         break;
@@ -332,13 +353,23 @@ export class MultiplayerMock {
 
   private onDirectOpen(): void {
     this.direct = true;
-    this.conn?.sendPeer("hello", { game: this.game, court: this.court });
+    this.conn?.sendPeer("hello", { game: this.game, court: this.court, nickname: this.host.nickname() });
     this.host.render();
   }
 
   private onDirectMessage(data: unknown): void {
     if (typeof data !== "object" || data === null) return;
     this.direct = true;
+    const msg = data as { type?: string; payload?: Partial<OnlineMatchStart> };
+    if (msg.type === "match_start" && this.screen !== "countdown") {
+      this.host.startOnlineMatch({
+        game: (msg.payload?.game as GameId) || this.game,
+        court: (msg.payload?.court as MpCourt) || this.court,
+        opponent: this.peerName,
+        direct: true,
+        seed: String(msg.payload?.seed || this.seed || "online"),
+      });
+    }
   }
 
   private tickCountdownTo(startsAt: number): void {
@@ -349,8 +380,9 @@ export class MultiplayerMock {
       this.host.render();
       if (left > 0) this.later(250, tick);
       else {
-        this.host.close();
-        this.host.toast(this.direct ? "Online match is ready. Direct link is open." : "Online match is ready. Direct link is still connecting.", 2600);
+        const match = { game: this.game, court: this.court, opponent: this.peerName, direct: this.direct, seed: this.seed || "online" };
+        this.conn?.sendPeer("match_start", match);
+        this.host.startOnlineMatch(match);
       }
     };
     tick();
