@@ -21,6 +21,8 @@ export interface OnlineMatchHost {
   changed(): void;
   /** A short message for the player. */
   toast(m: string): void;
+  /** The other player's ball has stopped (HORSE and 21: it is one ball, so it is now yours to shoot from there). nx = across the screen, 0 to 1. */
+  peerRest(nx: number): void;
   /** The other player's ball, in flight. */
   ball(p: OpponentBall): void;
   /** The other player's shot is over. */
@@ -64,6 +66,9 @@ export class OnlineMatch {
   /** The opponent has lost the connection for a moment. */
   peerAway = false;
   private inFlight = false;
+  /** HORSE and 21 use one ball: the other player's shot is still rolling, so it is not yet your turn to shoot. */
+  private peerBusy = false;
+  private busyTimer = 0;
   private beat = 0;
 
   constructor(
@@ -90,13 +95,18 @@ export class OnlineMatch {
     this.beat = window.setInterval(() => this.conn?.send("ping"), 25000);
   }
 
+  /** The other player's shot is still rolling (HORSE and 21). */
+  get waitingForPeer(): boolean {
+    return this.peerBusy;
+  }
+
   get goalText(): string {
     return this.game === "speed" ? `First to ${SPEED_GOAL}` : this.game === "t21" ? `First to ${T21_GOAL}` : "Miss = a letter";
   }
 
   /** Can the player start a shot now? */
   canShoot(): boolean {
-    return !this.over && !this.inFlight && (this.turn === "both" || this.turn === "me");
+    return !this.over && !this.inFlight && !this.peerBusy && (this.turn === "both" || this.turn === "me");
   }
 
   /** Called when the player lets go of the ball. */
@@ -112,6 +122,11 @@ export class OnlineMatch {
     this.apply("me", goal, far);
     this.conn?.sendPeer("result", { goal, far });
     this.host.changed();
+  }
+
+  /** HORSE and 21: the player's ball has stopped; the other player continues with it from here. */
+  sendRest(nx: number): void {
+    this.conn?.sendPeer("rest", { nx });
   }
 
   /** While the player's own shot is in flight (HORSE and 21): tells the other player where the ball is. */
@@ -136,7 +151,7 @@ export class OnlineMatch {
         if ((me ? this.lettersMe : this.lettersOpp) >= HORSE.length) this.finish(!me, me ? "You spelled HORSE" : `${this.opponent} spelled HORSE`);
       }
     } else if (goal) {
-      const pts = far ? 3 : 2;
+      const pts = far ? 2 : 1;
       if (me) this.scoreMe += pts;
       else this.scoreOpp += pts;
       if ((me ? this.scoreMe : this.scoreOpp) >= T21_GOAL) this.finish(me, me ? "You got to 21 first" : `${this.opponent} got to 21 first`);
@@ -150,10 +165,19 @@ export class OnlineMatch {
 
   private onPeer(d: unknown): void {
     if (typeof d !== "object" || d === null) return;
-    const m = d as { type?: string; payload?: { goal?: unknown; far?: unknown } & Record<string, unknown> };
+    const m = d as { type?: string; payload?: { goal?: unknown; far?: unknown; nx?: unknown } & Record<string, unknown> };
     if (m.type === "result" && !this.over) {
       const goal = m.payload?.goal === true;
       this.apply("opp", goal, m.payload?.far === true);
+      if (this.game !== "speed") {
+        this.peerBusy = true;
+        window.clearTimeout(this.busyTimer);
+        // if the "stopped" message never comes, do not block the game for ever
+        this.busyTimer = window.setTimeout(() => {
+          this.peerBusy = false;
+          this.host.changed();
+        }, 7000);
+      }
       this.host.toast(goal ? `${this.opponent} scored` : `${this.opponent} missed`);
       this.host.peerShotEnded();
       this.host.changed();
@@ -165,6 +189,11 @@ export class OnlineMatch {
       } else if (typeof p.dx === "number" && typeof p.dy === "number" && (p.side === "left" || p.side === "right") && typeof p.rimH === "number") {
         this.host.ball({ kind: "arc", dx: p.dx, dy: p.dy, side: p.side, rimH: p.rimH, ang });
       }
+    } else if (m.type === "rest" && m.payload && typeof m.payload.nx === "number") {
+      window.clearTimeout(this.busyTimer);
+      this.peerBusy = false;
+      this.host.peerRest(m.payload.nx);
+      this.host.changed();
     } else if (m.type === "leave" && !this.over) {
       this.finish(true, `${this.opponent} left the match`);
       this.host.changed();
@@ -193,6 +222,7 @@ export class OnlineMatch {
   /** Leaves the match: tells the other player and closes the connections. */
   leave(): void {
     window.clearInterval(this.beat);
+    window.clearTimeout(this.busyTimer);
     this.conn?.sendPeer("leave");
     this.conn?.send("bye");
     this.conn?.close();

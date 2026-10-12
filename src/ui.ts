@@ -207,6 +207,7 @@ export class UI {
       toast: (m) => this.toast(m, 1800),
       ball: (p) => this.game.opponentBall(p),
       peerShotEnded: () => this.game.opponentShotEnd(),
+      peerRest: (nx) => this.game.takeBallAt(nx),
     });
     this.close(true);
     this.game.startOnlineMatch(match);

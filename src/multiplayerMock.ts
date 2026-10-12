@@ -19,8 +19,8 @@ export type MpScreen = "start" | "quick" | "found" | "friend" | "created" | "joi
 
 const GAMES: Record<GameId, { name: string; rule: string; tag: string; small: string }> = {
   speed: { name: "Speedball", rule: "You each get a ball. First to 10 baskets wins.", tag: "First to 10", small: "First to 10" },
-  horse: { name: "HORSE", rule: "Take turns shooting. Miss and you get a letter. Spell HORSE and you are out.", tag: "Miss = a letter", small: "Miss = a letter" },
-  t21: { name: "21", rule: "Take turns, one shot each. First to 21 points wins.", tag: "First to 21", small: "Take turns" },
+  horse: { name: "HORSE", rule: "Take turns with the same ball. Miss and you get a letter. Spell HORSE and you are out.", tag: "Miss = a letter", small: "Miss = a letter" },
+  t21: { name: "21", rule: "Take turns with the same ball, one shot each. 1 point, 2 from far away. First to 21 wins.", tag: "First to 21", small: "Take turns" },
 };
 
 /** What the mock needs from the window around it. */

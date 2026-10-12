@@ -793,10 +793,31 @@ export class Game {
     );
   }
 
+  /** HORSE and 21 online, and it is the other player's turn (or their shot is still rolling): your ball is not there. */
+  private sharedBallAway(): boolean {
+    const m = this.onlineMatch;
+    // (your own ball stays while it is still rolling after your shot)
+    return !!m && m.game !== "speed" && !m.over && (m.turn === "opp" || m.waitingForPeer) && !this.ball.moving && !this.shot && !this.drag;
+  }
+
+  /** The other player's ball has stopped across the screen at nx: it is yours now, from there. */
+  takeBallAt(nx: number): void {
+    const b = this.ball;
+    b.x = clamp(nx * this.artW, BALL_R, this.artW - BALL_R);
+    b.y = this.floorY - BALL_R;
+    b.vx = 0;
+    b.vy = 0;
+    b.moving = false;
+    this.ghost = null;
+    this.ghostBuf.length = 0;
+    this.start();
+    this.syncHit();
+  }
+
   private ballTargetAlpha(): number {
     if (this.ball.moving || this.drag) return 1;
-    // online, on the other player's turn your ball fades, so you can see it is not yours to shoot
-    if (this.onlineMatch && !this.onlineMatch.over && this.onlineMatch.turn === "opp") return 0.3;
+    // HORSE and 21 use one ball: on the other player's turn yours is gone, theirs is the one you see fly
+    if (this.sharedBallAway()) return 0;
     return 1 - settings.ballFade;
   }
 
@@ -959,6 +980,8 @@ export class Game {
     if (this.shot) {
       if (!b.scored) this.markMiss();
       this.shot = false;
+      // HORSE and 21: one ball, so the other player carries on from where it stopped
+      if (this.onlineMatch && this.onlineMatch.game !== "speed") this.onlineMatch.sendRest(b.x / this.artW);
       const soon = now + 600;
       this.hideAt = this.hideAt === null ? now + 700 : Math.min(this.hideAt, soon);
     }
@@ -1411,7 +1434,7 @@ export class Game {
     const sOff = lit ? Math.round(BALL_R * tl * 0.8 * (1 - height * 0.5)) + Math.sign(tl) * 3 : 0;
     const sy = lit ? 3 : 2.4;
     // In the arena the key light's shadow is drawn by the crowd, inside the floor pool along the beam.
-    for (let y = -3; y <= 3 && !lit; y++) {
+    for (let y = -3; y <= 3 && !lit && !this.sharedBallAway(); y++) {
       for (let x = -Math.round(rx); x <= Math.round(rx); x++) {
         const q = (x / rx) ** 2 + (y / sy) ** 2;
         if (q > 1) continue;
@@ -1483,10 +1506,11 @@ export class Game {
     if (gn) {
       const g = gn;
       this.ghostFrames ??= makeBallFrames((BALL_SKINS.find((k) => k.id === "blue") ?? BALL_SKINS[0]).pal, (BALL_SKINS.find((k) => k.id === "blue") ?? BALL_SKINS[0]).seam);
+      const frames = this.onlineMatch?.game === "speed" ? this.ghostFrames : this.ballFrames;
       const gt = ((g.ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       ctx.globalAlpha = this.onlineMatch?.game === "speed" ? 0.6 : 1;
       ctx.drawImage(
-        this.ghostFrames[Math.round((gt / (2 * Math.PI)) * BALL_FRAMES) % BALL_FRAMES],
+        frames[Math.round((gt / (2 * Math.PI)) * BALL_FRAMES) % BALL_FRAMES],
         Math.round(g.x - BALL_SPRITE_SIZE / 2),
         Math.round(g.y - BALL_SPRITE_SIZE / 2),
         BALL_SPRITE_SIZE,
