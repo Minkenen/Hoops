@@ -366,29 +366,29 @@ function bulletTrain(t: number): void {
   fight(t, Math.round(nx - LOCO_LEN - CAR_GAP - (CAR_W + CAR_GAP) - CAR_W / 2));
 }
 
-// ---- night city: a deep skyline in layers, a Bat-signal on one tower and Batman on another
+// ---- night city: a deep skyline in layers, a owl-signal on one tower and Night Owl on another
 
 /**
  * The night city round. The two landmark towers must slide in from beyond the right edge and out past the left edge
  * before the round starts over, or they would pop in and out. So the length of the round, and when the signal and
- * Batman come on, depend on how wide the picture is.
+ * Night Owl come on, depend on how wide the picture is.
  */
 interface Round {
   cyc: number;
   sigMid: number;
   batStart: number;
-  batMid: number;
+  guardMid: number;
 }
-let TL: Round = { cyc: 56000, sigMid: 16, batStart: 23.5, batMid: 29.5 };
+let TL: Round = { cyc: 56000, sigMid: 16, batStart: 23.5, guardMid: 29.5 };
 
 function roundFor(w: number): Round {
   const need = w + 120; // a tower has to cross the picture and its own width plus some
   const lead = 0.3 * w + 20; // how far it still has to go from the right edge to the spot where the signal shows
   const sigMid = Math.max(16, lead / 12 + 2);
   const batStart = sigMid + 7.5;
-  const batMid = Math.max(batStart + 6, lead / 24 + 2);
-  const cyc = Math.max(sigMid - lead / 12 + need / 12 + 2, batMid - lead / 24 + need / 24 + 2, batStart + 14);
-  return { cyc: cyc * 1000, sigMid, batStart, batMid };
+  const guardMid = Math.max(batStart + 6, lead / 24 + 2);
+  const cyc = Math.max(sigMid - lead / 12 + need / 12 + 2, guardMid - lead / 24 + need / 24 + 2, batStart + 14);
+  return { cyc: cyc * 1000, sigMid, batStart, guardMid };
 }
 const WD = -1; // the wind blows to the left, the way the train is going
 
@@ -445,7 +445,7 @@ function drawLayer(t: number, L: (typeof LAY)[number], cfg: Layer, antennas = fa
   }
 }
 
-/** A landmark tower in a layer: its position is fixed to the time of the round, so the signal and Batman come on cue. */
+/** A landmark tower in a layer: its position is fixed to the time of the round, so the signal and Night Owl come on cue. */
 function landmark(t: number, cfg: Layer, Tmid: number, xmid: number, w: number, hgt: number, withRoof: boolean): { x: number; top: number; w: number } {
   const x = Math.round(xmid + (Tmid - mod(t, TL.cyc) / 1000) * cfg.v);
   const top = Math.round(cfg.base - hgt * cfg.hm);
@@ -476,14 +476,14 @@ function sigK(t: number): number {
   return a > 8000 ? Math.max(0, (9000 - a) / 1000) : 1;
 }
 
-function batK(t: number): number {
+function guardK(t: number): number {
   const T = mod(t, TL.cyc);
   const B = TL.batStart * 1000;
-  // Batman pops in with the first flash of lightning and pops out with the first flash of the last pair, so no fading
+  // Night Owl pops in with the first flash of lightning and pops out with the first flash of the last pair, so no fading
   return T >= B && T < B + 10000 ? 1 : 0;
 }
 
-/** Flashes of lightning: three as Batman appears, two as he disappears. Returns the time into the Batman window, or null. */
+/** Flashes of lightning: three as Night Owl appears, two as he disappears. Returns the time into the Night Owl window, or null. */
 function lightningAt(t: number): number | null {
   const T = mod(t, TL.cyc) - TL.batStart * 1000;
   if (T < 0 || T > 11000) return null;
@@ -491,17 +491,54 @@ function lightningAt(t: number): number | null {
   return on ? T : null;
 }
 
-function emblem(cx: number, cy: number, sc: number, col: string): void {
-  const P = (x: number, y: number): void => r(cx + x * sc, cy + y * sc, sc, sc, col);
-  for (let y = -4; y <= 2; y++) for (let x = -2; x <= 2; x++) P(x, y);
-  for (const [x, y] of [[-2, -6], [-2, -5], [2, -6], [2, -5], [-1, -5], [1, -5], [-3, -4], [3, -4], [0, 3], [-1, 3], [1, 3]]) P(x, y);
-  for (const s2 of [-1, 1]) {
-    for (let x = 3; x <= 11; x++) {
-      const yt = -4 - Math.floor((x - 3) / 4);
-      const yb = 1 + (x < 5 ? 1 : 0) + ([6, 9].includes(x) ? 2 : 0) + (x % 3 === 0 ? 1 : 0) - Math.floor((x - 3) / 5);
-      for (let y = yt; y <= yb; y++) P(s2 * x, y);
-    }
-  }
+let owlSilhouette: HTMLCanvasElement | null = null;
+
+/** The owl-signal: a black silhouette of a flying owl (wings spread, big round eyes), made once as small pixel art. */
+function owlSignal(): HTMLCanvasElement {
+  if (owlSilhouette) return owlSilhouette;
+  const W = 32;
+  const H = 24;
+  const cv = document.createElement("canvas");
+  cv.width = W;
+  cv.height = H;
+  const x = cv.getContext("2d")!;
+  const poly = (pts: number[][]): void => {
+    const t = document.createElement("canvas");
+    t.width = W;
+    t.height = H;
+    const g = t.getContext("2d")!;
+    g.fillStyle = "#14141c";
+    g.beginPath();
+    pts.forEach(([a, b], i) => (i ? g.lineTo(a, b) : g.moveTo(a, b)));
+    g.closePath();
+    g.fill();
+    const d = g.getImageData(0, 0, W, H);
+    for (let i = 3; i < d.data.length; i += 4) d.data[i] = d.data[i] > 110 ? 255 : 0;
+    g.putImageData(d, 0, 0);
+    x.drawImage(t, 0, 0);
+  };
+  const mirror = (pts: number[][]): number[][] => pts.map(([a, b]) => [32 - a, b]).reverse();
+  const wing = [[12, 8], [8, 3], [3, 3], [0, 7], [1, 11], [3, 10], [3, 14], [5, 12], [6, 16], [8, 13], [10, 17], [12, 14], [13, 18]];
+  poly([...wing, ...mirror(wing), [16, 22]]);
+  poly([[11, 4], [12, 1], [14, 3], [18, 3], [20, 1], [21, 4], [22, 8], [20, 11], [12, 11], [10, 8]]);
+  poly([[13, 16], [13, 23], [19, 23], [19, 16]]);
+  x.fillStyle = "rgba(230,240,255,0.95)";
+  x.fillRect(12, 4, 3, 3);
+  x.fillRect(17, 4, 3, 3);
+  x.fillStyle = "#14141c";
+  x.fillRect(13, 5, 1, 1);
+  x.fillRect(18, 5, 1, 1);
+  owlSilhouette = cv;
+  return cv;
+}
+
+/** Draws the owl-signal centred on cx, cy at sc times its pixel size. */
+function emblem(cx: number, cy: number, sc: number): void {
+  const cv = owlSignal();
+  const smooth = c.imageSmoothingEnabled;
+  c.imageSmoothingEnabled = false;
+  c.drawImage(cv, Math.round(cx - (cv.width * sc) / 2), Math.round(cy - (cv.height * sc) / 2), cv.width * sc, cv.height * sc);
+  c.imageSmoothingEnabled = smooth;
 }
 
 function lamp(x: number, y: number, k: number, tx: number, ty: number): [number, number] {
@@ -576,46 +613,74 @@ function signalCloud(cx: number, cy: number, rx: number, ry: number, k: number, 
   c.globalAlpha = 1;
 }
 
-/** Batman standing, facing right, with the cape streaming to the left, a pale rim light and a faint glow so he shows against the night. */
-function batBody(x: number, y: number, t: number, dark: string, hi: string): void {
-  r(x - 3, y - 6, 3, 6, dark);
-  r(x + 1, y - 6, 3, 6, dark);
-  r(x - 4, y - 1, 4, 1, "#0c0c10");
-  r(x + 1, y - 1, 4, 1, "#0c0c10");
-  r(x - 4, y - 14, 9, 9, dark);
-  r(x - 4, y - 14, 9, 1, hi);
-  r(x - 3, y - 8, 7, 1, "#e8b92d");
-  r(x, y - 12, 3, 3, "#2a2a38");
-  r(x + 1, y - 11, 1, 1, "#e8b92d");
-  r(x - 5, y - 12, 10, 2, dark);
-  r(x - 5, y - 12, 10, 1, hi);
-  r(x - 3, y - 20, 6, 6, dark);
-  r(x - 3, y - 24, 1, 4, dark);
-  r(x + 2, y - 24, 1, 4, dark);
-  r(x - 2, y - 17, 5, 2, "#f2c9a0");
+/** Night Owl standing, facing us, in a black costume with the cape streaming to the left from the shoulder. The outline passes (dark === hi) only draw the shape, in the glow colour. */
+function owlBody(x: number, y: number, t: number, dark: string, hi: string): void {
+  const main = dark !== hi;
+  const K = main ? "#0b0b12" : dark;
+  const boot = main ? "#050508" : dark;
+  // the cape is a chain fixed at the shoulder: every part bends a little more than the one before it, so it hardly moves near the shoulder and most at the free end, which splits into tails
+  let px = x - 5;
+  let py = y - 17;
+  let th = 0.05;
+  for (let i = 0; i < 18; i++) {
+    th += Math.sin(t / 230 - i * 0.45) * 0.07 * (i / 4) + 0.02;
+    px -= Math.cos(th);
+    py += Math.sin(th) * 0.9;
+    const frayed = i >= 13 && i % 2 === 0;
+    const h = Math.max(2, 13 - Math.floor(i * 0.5) - (frayed ? 3 : 0)) - (frayed ? 1 : 0);
+    const top = Math.round(py) + (frayed ? 1 : 0);
+    r(Math.round(px) - 1, top, 2, h, K);
+    if (main) {
+      r(Math.round(px) - 1, top, 2, 1, "#6f8ae0");
+      if (i % 4 === 3) r(Math.round(px) - 1, top + h - 1, 2, 1, "#9a5ae0");
+    }
+  }
+  r(x - 6, y - 18, 3, 3, K);
+  r(x - 3, y - 7, 3, 7, K);
+  r(x + 1, y - 7, 3, 7, K);
+  r(x - 4, y - 1, 4, 2, boot);
+  r(x + 1, y - 1, 4, 2, boot);
+  r(x - 4, y - 16, 9, 10, K);
+  r(x - 5, y - 14, 2, 8, main ? "#16161f" : K);
+  r(x + 4, y - 14, 2, 8, main ? "#16161f" : K);
+  r(x - 3, y - 23, 7, 8, K);
+  r(x - 3, y - 26, 2, 3, K);
+  r(x + 2, y - 26, 2, 3, K);
+  if (!main) return;
+  r(x - 4, y - 7, 9, 1, "#ee7a24");
+  r(x, y - 8, 2, 3, "#ee7a24");
+  // the owl mark on the chest
+  r(x - 2, y - 14, 5, 3, "#ffd84a");
+  r(x - 1, y - 15, 1, 1, "#ffd84a");
+  r(x + 1, y - 15, 1, 1, "#ffd84a");
+  r(x - 1, y - 13, 1, 1, K);
+  r(x + 1, y - 13, 1, 1, K);
+  r(x - 2, y - 17, 5, 2, boot);
+  // glowing eyes (they blink now and then)
   if (Math.floor(t / 1600) % 7 !== 0) {
-    r(x, y - 19, 2, 1, "#ffffff");
-    r(x + 2, y - 19, 1, 1, "#ffffff");
+    r(x - 2, y - 21, 2, 2, "#ffe14a");
+    r(x + 1, y - 21, 2, 2, "#ffe14a");
+    c.globalAlpha *= 0.35;
+    r(x - 3, y - 22, 4, 4, "#ffe14a");
+    r(x, y - 22, 4, 4, "#ffe14a");
+    c.globalAlpha /= 0.35;
   }
-  for (let k = 0; k < 14; k++) {
-    const sw = Math.sin(t / 160 + k * 0.55) * 1 * (1 + k * 0.18);
-    r(x - 5 - k * 2, y - 14 + k * 0.3 + sw, 3, 12 - Math.floor(k * 0.5), dark);
-    r(x - 5 - k * 2, y - 14 + k * 0.3 + sw, 3, 1, hi);
-  }
+  r(x - 3, y - 23, 7, 1, "#6f8ae0");
+  r(x + 4, y - 16, 1, 9, "#6f8ae0");
 }
 
-/** Where Batman stands right now (in the picture's coordinates), or null when he is not there. */
-let batAt: { x: number; y: number } | null = null;
+/** Where Night Owl stands right now (in the picture's coordinates), or null when he is not there. */
+let guardAt: { x: number; y: number } | null = null;
 let swat = { at: -1e9, dir: 1 };
 
 /**
- * Tests a ball (picture x, and y in the game's local coordinates) against Batman. On a hit he swats it away:
+ * Tests a ball (picture x, and y in the game's local coordinates) against Night Owl. On a hit he swats it away:
  * returns -1 or 1 for the way the ball is knocked, otherwise null.
  */
-export function batmanHit(x: number, localY: number, rad: number, now: number): number | null {
-  if (!batAt || now - swat.at < 600) return null;
-  const cx = batAt.x;
-  const cy = batAt.y - 12;
+export function guardianHit(x: number, localY: number, rad: number, now: number): number | null {
+  if (!guardAt || now - swat.at < 600) return null;
+  const cx = guardAt.x;
+  const cy = guardAt.y - 12;
   const dx = (x - cx) / (7 + rad);
   const dy = (localY + OFFSET - cy) / (14 + rad);
   if (dx * dx + dy * dy > 1) return null;
@@ -623,15 +688,15 @@ export function batmanHit(x: number, localY: number, rad: number, now: number): 
   return swat.dir;
 }
 
-function batman(x: number, y: number, t: number): void {
+function guardian(x: number, y: number, t: number): void {
   c.globalAlpha *= 0.18;
   c.fillStyle = "#7fa0ff";
   c.beginPath();
   c.ellipse(x - 6, y - 12, 22, 18, 0, 0, 6.283);
   c.fill();
   c.globalAlpha /= 0.18;
-  for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) batBody(x + dx, y + dy, t, "#6a7ab0", "#6a7ab0");
-  batBody(x, y, t, "#14141c", "#2a2a38");
+  for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) owlBody(x + dx, y + dy, t, "#6a7ab0", "#6a7ab0");
+  owlBody(x, y, t, "#14141c", "#2a2a38");
   // the swat: an arm shoots out toward the ball with a little burst at the fist
   const age = performance.now() - swat.at;
   if (age >= 0 && age < 350) {
@@ -662,20 +727,20 @@ function nightCity(t: number, w: number, TOP: number): void {
     if (Math.floor(t / 500 + i) % 2) r(x, 40 + i * 30, 2, 2, i % 2 ? "#ff3b3b" : "#ffffff");
   }
   const k = sigK(t);
-  const bk = batK(t);
+  const bk = guardK(t);
   let sTop = { x: 0, top: 0, w: 0 };
   let bTower = { x: 0, top: 0, w: 0 };
   const signal = (): void => {
-    // the Bat-signal: a searchlight on one tower, the beam sweeping across a low cloud
+    // the owl-signal: a searchlight on one tower, the beam sweeping across a low cloud
     const cx = sTop.x - 30 + Math.sin(t / 1400) * 54;
     const cy = 34;
     const flick = k > 0 && Math.floor(t / 130) % 17 === 0 ? 0.55 : 1;
     if (k > 0) {
       const [lx, ly] = lamp(sTop.x + 8, sTop.top - 4, k, cx, cy);
-      signalCloud(cx, cy, 52, 22, k, flick);
+      signalCloud(cx, cy, 52, 26, k, flick);
       beam(lx, ly, cx, cy, 52, k * flick, t);
       c.globalAlpha = k * flick;
-      emblem(Math.round(cx - 1), Math.round(cy - 1), 3, "#14141c");
+      emblem(cx, cy, 2);
       c.globalAlpha = 1;
     } else lamp(sTop.x + 8, sTop.top - 4, 0, sTop.x - 30, 34);
   };
@@ -696,13 +761,13 @@ function nightCity(t: number, w: number, TOP: number): void {
       sTop = landmark(t, cfg, TL.sigMid, 0.7 * w, 46, 170, true);
       signal();
     }
-    if (idx === 2) bTower = landmark(t, cfg, TL.batMid, 0.6 * w, 44, 170, false);
+    if (idx === 2) bTower = landmark(t, cfg, TL.guardMid, 0.6 * w, 44, 170, false);
   });
-  // Batman on a different tower, shown by flashes of lightning
-  batAt = null;
+  // Night Owl on a different tower, shown by flashes of lightning
+  guardAt = null;
   if (bk > 0) {
-    batAt = { x: bTower.x + bTower.w - 12, y: bTower.top - 3 };
-    batman(batAt.x, batAt.y, t);
+    guardAt = { x: bTower.x + bTower.w - 12, y: bTower.top - 3 };
+    guardian(guardAt.x, guardAt.y, t);
     if (Math.floor(t / 90) % 23 === 0) {
       c.globalAlpha = 0.2;
       r(0, TOP - 4, W, 240 - TOP, "#cfe0ff");

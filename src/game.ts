@@ -1220,9 +1220,9 @@ export class Game {
       this.announce(recordHeroDown());
       play("boom", 0.9);
     }
-    const swat = this.ball.moving ? this.crowd.batmanSwat(settings.crowd, b.x, b.y, BALL_R) : null;
+    const swat = this.ball.moving ? this.crowd.guardianSwat(settings.crowd, b.x, b.y, BALL_R) : null;
     if (swat !== null) {
-      // Batman bats it away: back where it came from, and it does not count
+      // Night Owl bats it away: back where it came from, and it does not count
       b.vx = swat * Math.max(2.5, Math.abs(b.vx) * 0.9);
       b.vy = -Math.abs(b.vy) * 0.4 - 1.5;
       b.noScore = true;

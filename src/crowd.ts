@@ -1,5 +1,5 @@
 import { drawParkSky, heroHit, skyBusy } from "./parksky";
-import { batmanHit, drawTrain } from "./trainsky";
+import { guardianHit, drawTrain } from "./trainsky";
 import { drawGraffitiFront, drawGraffitiWall } from "./graffiti";
 import { LedScreen, SCREEN_NEEDS } from "./ledscreen";
 import type { CrowdStyle } from "./skins";
@@ -1238,9 +1238,9 @@ export class Crowd {
     return style === "park" && heroHit(x, y - this.parkDy, rad);
   }
 
-  /** Does the ball (in screen art pixels) hit Batman in the night city? Returns the way he knocks it, or null. */
-  batmanSwat(style: CrowdStyle, x: number, y: number, rad: number): number | null {
-    return style === "trainnight" ? batmanHit(x, y - this.parkDy, rad, performance.now()) : null;
+  /** Does the ball (in screen art pixels) hit Night Owl in the night city? Returns the way he knocks it, or null. */
+  guardianSwat(style: CrowdStyle, x: number, y: number, rad: number): number | null {
+    return style === "trainnight" ? guardianHit(x, y - this.parkDy, rad, performance.now()) : null;
   }
 
   /** Something in the sky is still going on (smoke, a falling hero), so keep drawing. */
