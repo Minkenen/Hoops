@@ -22,6 +22,17 @@ export default defineConfig(() => ({
   plugins: web
     ? [
         {
+          name: "fresh-page",
+          transformIndexHtml: () => [
+            {
+              tag: "script",
+              injectTo: "head-prepend" as const,
+              children:
+                '(function(){try{var u=location.href.split("#")[0].replace(/[?&]v=\\d+/,"");fetch(u).then(function(a){return a.text()}).then(function(a){return fetch(u,{cache:"no-store"}).then(function(r){return r.text()}).then(function(b){if(a!==b)location.replace(u+(u.indexOf("?")<0?"?":"&")+"v="+Date.now()+location.hash)})}).catch(function(){})}catch(e){}})()',
+            },
+          ],
+        },
+        {
           name: "web-ipc",
           enforce: "pre" as const,
           resolveId(id: string, importer?: string) {
