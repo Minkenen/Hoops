@@ -7,7 +7,7 @@ export type MpServerMessage =
   | { type: "searching"; payload: { game: GameId; estimatedSeconds: number } }
   | { type: "peer_found"; payload: { roomId: string; game: GameId; role: "offerer" | "answerer"; you: MpPlayerInfo; peer: MpPlayerInfo } }
   | { type: "lobby_state"; payload: { roomId: string; game: GameId; court: "Street" | "Gym" | "Arena"; players: MpLobbyPlayer[] } }
-  | { type: "start_countdown"; payload: { startsAt: number; seed: string; countdownSeconds: number } }
+  | { type: "start_countdown"; payload: { startsAt: number; seed: string; countdownSeconds: number; game?: GameId; court?: "Street" | "Gym" | "Arena" } }
   | { type: "signal"; payload: { from: string; kind: MpSignalKind; data: unknown } }
   | { type: "peer_disconnected"; payload: { playerId: string; reconnectUntil: number } }
   | { type: "peer_reconnected"; payload: { playerId: string } }
@@ -92,8 +92,8 @@ export class MultiplayerConnection {
   }
 
   /** Makes a room and joins it in one step; the server answers with room_created and the code. */
-  async connectCreate(): Promise<void> {
-    await this.connect("/mp/ws?mode=room&create=1");
+  async connectCreate(game: GameId): Promise<void> {
+    await this.connect(`/mp/ws?mode=room&create=1&game=${encodeURIComponent(game)}`);
   }
 
   async connectRoom(code: string): Promise<void> {

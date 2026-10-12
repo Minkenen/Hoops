@@ -54,6 +54,8 @@ export class MultiplayerMock {
   joining = false;
   peerName = "Mia";
   private seed = "";
+  /** The match has started (once only: a second start would make a match without a connection). */
+  private started = false;
   private myId = "";
   private peerId = "";
   private players: MpLobbyPlayer[] = [];
@@ -72,6 +74,7 @@ export class MultiplayerMock {
   /** Opens at the first screen. */
   open(): void {
     this.stop();
+    this.started = false;
     this.conn ??= this.connect();
     this.screen = "start";
     this.joinCode = "";
@@ -225,7 +228,7 @@ export class MultiplayerMock {
     this.direct = false;
     this.conn = this.connect();
     // the server makes the room when we connect, and answers with room_created (see onServer)
-    void this.mustConn().connectCreate().catch((e) => this.fail(e instanceof Error ? e.message : "Could not create room."));
+    void this.mustConn().connectCreate(this.game).catch((e) => this.fail(e instanceof Error ? e.message : "Could not create room."));
   }
 
   private join(): void {
@@ -321,6 +324,10 @@ export class MultiplayerMock {
         if (this.screen !== "created" && this.screen !== "found" && this.screen !== "quick") this.host.render();
         break;
       case "start_countdown":
+        // the server decides the game and the court: both players must play the same rules
+        if (this.started) break;
+        if (m.payload.game) this.game = m.payload.game;
+        if (m.payload.court) this.court = m.payload.court;
         this.countdown = m.payload.countdownSeconds;
         this.seed = m.payload.seed;
         this.go("countdown");
@@ -363,6 +370,8 @@ export class MultiplayerMock {
       if (left > 0) this.later(250, tick);
       else {
         // the match takes over the connection; this window gets a fresh one next time
+        if (this.started) return;
+        this.started = true;
         const conn = this.conn;
         this.conn = null;
         this.stopTimersOnly();

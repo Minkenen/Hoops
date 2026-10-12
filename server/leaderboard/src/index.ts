@@ -413,14 +413,14 @@ export class MultiplayerHub {
   }
 
   /** Makes an empty room for a host and returns its code. */
-  private makeRoom(hostId: string): string {
+  private makeRoom(hostId: string, game: MpGame = "speed"): string {
     const code = this.newCode();
     const now = Date.now();
     const room: MpRoom = {
       id: crypto.randomUUID(),
       code,
       mode: "friend",
-      game: "speed",
+      game,
       court: "Street",
       hostId,
       players: new Map(),
@@ -442,7 +442,7 @@ export class MultiplayerHub {
     if (!MP_GAMES.has(game)) return bad("Unknown game.");
     this.sweep();
     // create=1: make the room right here, so there is no gap between making it and joining it
-    if (mode === "room" && url.searchParams.get("create") === "1") code = this.makeRoom(player.id);
+    if (mode === "room" && url.searchParams.get("create") === "1") code = this.makeRoom(player.id, game);
 
     const pair = new WebSocketPair();
     const client = pair[0];
@@ -491,12 +491,14 @@ export class MultiplayerHub {
         break;
       }
       case "ready": {
+        // once the countdown has started nobody can change their mind, and the start is sent only once
+        if (room.startsAt) return;
         player.ready = payload.ready === true;
         broadcastLobby(room);
         if (room.players.size === 2 && [...room.players.values()].every((p) => p.ready && p.connected)) {
           room.startsAt = Date.now() + 3000;
           room.seed = room.seed || crypto.randomUUID();
-          broadcast(room, "start_countdown", { startsAt: room.startsAt, seed: room.seed, countdownSeconds: 3 });
+          broadcast(room, "start_countdown", { startsAt: room.startsAt, seed: room.seed, countdownSeconds: 3, game: room.game, court: room.court });
         }
         break;
       }
