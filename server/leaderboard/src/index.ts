@@ -439,7 +439,11 @@ export class MultiplayerHub {
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
-    this.state.acceptWebSocket(server);
+    // The normal WebSocket API, not the hibernating one: the rooms live in this object's memory, and a hibernating object forgets them while players wait.
+    (server as unknown as { accept(): void }).accept();
+    server.addEventListener("message", (e: MessageEvent) => void this.webSocketMessage(server, e.data as string | ArrayBuffer));
+    server.addEventListener("close", () => void this.webSocketClose(server));
+    server.addEventListener("error", () => void this.webSocketError(server));
 
     if (mode === "quick") this.connectQuick(player, game, server);
     else this.connectRoom(player, code, server);
@@ -625,7 +629,8 @@ export class MultiplayerHub {
   private sweep(): void {
     const now = Date.now();
     for (const room of this.rooms.values()) {
-      const allGone = [...room.players.values()].every((p) => !p.connected && (!p.reconnectUntil || p.reconnectUntil < now));
+      // a room that nobody has joined yet is not "gone": an empty list would count as all gone
+      const allGone = room.players.size > 0 && [...room.players.values()].every((p) => !p.connected && (!p.reconnectUntil || p.reconnectUntil < now));
       if (room.expiresAt < now || allGone) this.deleteRoom(room);
     }
   }
