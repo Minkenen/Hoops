@@ -138,6 +138,8 @@ export class Game {
   /** The positions the other player's ball has been reported at, with the time they arrived: the ghost is drawn a moment in the past, between two of them, so it moves smoothly. */
   private ghostBuf: { t: number; x: number; y: number; ang: number }[] = [];
   private ballSentAt = 0;
+  /** When the hoop moves to a new place after a goal or a miss in an online match (0 = not planned). */
+  private hoopSwapAt = 0;
   /** Your own look, put back after an online match that used the court you both picked. */
   private savedLook: { ball: typeof settings.ballSkin; court: typeof settings.courtSkin; crowd: typeof settings.crowd } | null = null;
 
@@ -336,6 +338,7 @@ export class Game {
   /** The other player's shot is over: the ball stays a moment, then the hoop goes. */
   opponentShotEnd(): void {
     if (this.onlineMatch?.game === "speed") return;
+    this.hoopSwapAt = performance.now() + 900;
     this.ghostUntil = performance.now() + 600;
     this.hideAt = performance.now() + 1500;
     this.start();
@@ -831,6 +834,14 @@ export class Game {
       b.y = clamp(b.y + b.vy, BALL_R, this.floorY - BALL_R);
       b.ang += b.vx / BALL_R;
     }
+    if (this.hoopSwapAt && now >= this.hoopSwapAt) {
+      // after a goal or a miss the hoop moves to a new place (the court stays); not while a shot is being pulled
+      this.hoopSwapAt = 0;
+      if (this.onlineMatch && this.hoop && !this.drag) {
+        this.hoop = null;
+        this.showHoop();
+      }
+    }
     if (this.ghost && (performance.now() > this.ghostUntil || !this.onlineMatch || this.onlineMatch.over)) {
       this.ghost = null;
       this.ghostBuf.length = 0;
@@ -1292,7 +1303,10 @@ export class Game {
       this.fireOn = false;
       this.putOutFire(b.x, b.y, true);
     }
-    this.onlineMatch?.localResult(false);
+    if (this.onlineMatch) {
+      this.onlineMatch.localResult(false);
+      this.hoopSwapAt = performance.now() + 900;
+    }
   }
 
   private goal(h: Hoop): void {
@@ -1324,7 +1338,10 @@ export class Game {
     h.net.impulse(rnd(-0.25, 0.25), 0.3);
     this.hideAt = performance.now() + 1500;
     // an online match does not count for the leaderboard score
-    if (this.onlineMatch) this.onlineMatch.localResult(true, this.shotFar);
+    if (this.onlineMatch) {
+      this.onlineMatch.localResult(true, this.shotFar);
+      this.hoopSwapAt = performance.now() + 900;
+    }
     else {
       setScore(getScore() + 1);
       queueLeaderboardScoreSync();
@@ -1365,7 +1382,8 @@ export class Game {
     const ch = this.hoop;
     if (ch && settings.court) {
       const cs: CourtSprite = ch.side === "right" ? this.courtR : this.courtL;
-      const rise = Math.pow(1 - ch.p, 3) * (this.artH - (this.floorY - cs.cy));
+      // in an online match the court is always fully up, even while a new hoop slides in
+      const rise = Math.pow(1 - (this.onlineMatch ? 1 : ch.p), 3) * (this.artH - (this.floorY - cs.cy));
       const courtTop = Math.round(this.floorY - cs.cy + rise);
       this.crowd.setBall(this.ball.x, this.floorY + rise, this.ball.y);
       this.crowd.setHoop(ch.x0 + ch.sprite.rimCx, ch.rimY, ch.side);
