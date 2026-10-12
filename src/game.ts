@@ -131,12 +131,13 @@ export class Game {
   private lastHit = "";
   private introDone = false;
   private onlineMatch: OnlineMatch | null = null;
-  /** The other player's ball in flight (HORSE and 21: you watch their shot), drawn in blue. */
+  /** The other player's ball in Speedball, drawn in blue. HORSE and 21 move the shared ball instead. */
   private ghost: { x: number; y: number; ang: number } | null = null;
   private ghostUntil = 0;
   private ghostFrames: HTMLCanvasElement[] | null = null;
   /** The positions the other player's ball has been reported at, with the time they arrived: the ghost is drawn a moment in the past, between two of them, so it moves smoothly. */
   private ghostBuf: { t: number; x: number; y: number; ang: number }[] = [];
+  private sharedBallTarget: { x: number; y: number; ang: number; until: number } | null = null;
   private ballSentAt = 0;
   /** When the hoop moves to a new place after a goal or a miss in an online match (0 = not planned). */
   private hoopSwapAt = 0;
@@ -286,11 +287,21 @@ export class Game {
     this.ghost = { x, y, ang };
   }
 
-  /** The other player's ball (a blue "ghost"): in HORSE and 21 you watch their shot at the hoop, in Speedball you see where their ball is. */
+  /** The other player's ball. Speedball draws a second ghost ball; HORSE and 21 move the shared ball itself. */
   opponentBall(p: OpponentBall): void {
     const m = this.onlineMatch;
     if (!m || !this.active) return;
     if (p.kind === "free") {
+      if (m.game !== "speed") {
+        this.sharedBallTarget = {
+          x: clamp(p.nx * this.artW, BALL_R, this.artW - BALL_R),
+          y: clamp(this.floorY - p.h, BALL_R, this.floorY - BALL_R),
+          ang: p.ang,
+          until: performance.now() + 900,
+        };
+        this.start();
+        return;
+      }
       this.pushGhost(p.nx * this.artW, this.floorY - p.h, p.ang);
       // Speedball: always there. HORSE and 21: there while it is their ball, kept up by their resting reports
       this.ghostUntil = m.game === "speed" ? Infinity : performance.now() + 1200;
@@ -306,8 +317,12 @@ export class Game {
     // their rim can be higher or lower than yours: stretch the height so their ball rests on your floor and passes through your rim
     const myRimH = this.floorY - h.rimY;
     const k = clamp((myRimH - BALL_R) / Math.max(20, p.rimH - BALL_R), 0.4, 2.5);
-    this.pushGhost(h.x0 + h.sprite.rimCx + mir * p.dx, h.rimY + p.dy * k, p.ang);
-    this.ghostUntil = performance.now() + 700;
+    this.sharedBallTarget = {
+      x: clamp(h.x0 + h.sprite.rimCx + mir * p.dx, BALL_R, this.artW - BALL_R),
+      y: clamp(h.rimY + p.dy * k, BALL_R, this.floorY - BALL_R),
+      ang: p.ang,
+      until: performance.now() + 900,
+    };
     this.hideAt = null;
     this.start();
   }
@@ -355,6 +370,7 @@ export class Game {
     this.onlineMatch?.leave();
     this.onlineMatch = null;
     this.ghost = null;
+    this.sharedBallTarget = null;
     this.restoreLook();
     this.ui.close(true);
     this.start();
@@ -403,6 +419,7 @@ export class Game {
     this.bubble = null;
     this.introDone = true;
     this.ghost = match.game === "speed" ? { x: this.artW * 0.7, y: this.floorY - BALL_R, ang: 0 } : null;
+    this.sharedBallTarget = null;
     this.ghostUntil = Infinity;
     this.showHoop();
     this.start();
@@ -781,6 +798,7 @@ export class Game {
   private needsLoop(now: number): boolean {
     return (
       this.ghost !== null ||
+      this.sharedBallTarget !== null ||
       this.nudgeX !== null ||
       this.ball.moving ||
       !!this.drag ||
@@ -794,7 +812,7 @@ export class Game {
     );
   }
 
-  /** HORSE and 21 online, and it is the other player's turn (or their shot is still rolling): your ball is not there. */
+  /** HORSE and 21 online, and it is the other player's turn (or their shot is still rolling): the shared ball is passive. */
   private sharedBallAway(): boolean {
     const m = this.onlineMatch;
     // (your own ball stays while it is still rolling after your shot)
@@ -811,6 +829,7 @@ export class Game {
     b.moving = false;
     this.ghost = null;
     this.ghostBuf.length = 0;
+    this.sharedBallTarget = null;
     // their ball has stopped: now the hoop can move
     this.hoopSwapAt = performance.now() + 300;
     this.start();
@@ -887,6 +906,16 @@ export class Game {
         }
       }
     }
+    const sharedTarget = this.sharedBallTarget;
+    if (sharedTarget) {
+      if (now > sharedTarget.until || !this.sharedBallAway()) {
+        this.sharedBallTarget = null;
+      } else {
+        b.x += (sharedTarget.x - b.x) * 0.32;
+        b.y += (sharedTarget.y - b.y) * 0.32;
+        b.ang += (sharedTarget.ang - b.ang) * 0.32;
+      }
+    }
     if (this.onlineMatch && !this.onlineMatch.over) {
       const nowMs = performance.now();
       if (this.onlineMatch.game === "speed") {
@@ -899,11 +928,10 @@ export class Game {
         // HORSE and 21, your turn, ball resting: the other player sees it where it is (it is the one ball)
         this.ballSentAt = nowMs;
         this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
-      } else if (b.moving && this.shot && this.hoop && nowMs - this.ballSentAt >= 33) {
-        // HORSE and 21: the other player watches this shot: where the ball is, relative to the rim
+      } else if (b.moving && this.shot && nowMs - this.ballSentAt >= 33) {
+        // HORSE and 21: send the actual shared ball position, not a separate simulated arc.
         this.ballSentAt = nowMs;
-        const hh = this.hoop;
-        this.onlineMatch.sendBall({ kind: "arc", dx: b.x - (hh.x0 + hh.sprite.rimCx), dy: b.y - hh.rimY, side: hh.side, rimH: this.floorY - hh.rimY, ang: b.ang });
+        this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
       }
     }
     if (b.moving) {
