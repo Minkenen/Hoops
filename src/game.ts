@@ -140,6 +140,8 @@ export class Game {
   private ballSentAt = 0;
   /** When the hoop moves to a new place after a goal or a miss in an online match (0 = not planned). */
   private hoopSwapAt = 0;
+  /** The court stays fully up while a new hoop slides in. */
+  private keepCourt = false;
   /** Your own look, put back after an online match that used the court you both picked. */
   private savedLook: { ball: typeof settings.ballSkin; court: typeof settings.courtSkin; crowd: typeof settings.crowd } | null = null;
 
@@ -858,7 +860,9 @@ export class Game {
     if (this.hoopSwapAt && now >= this.hoopSwapAt) {
       // after a goal or a miss the hoop moves to a new place (the court stays); not while a shot is being pulled
       this.hoopSwapAt = 0;
-      if (this.onlineMatch && this.hoop && !this.drag) {
+      if ((this.onlineMatch || settings.stayOpen) && this.hoop && !this.drag) {
+        // the court stays while the new hoop slides in
+        this.keepCourt = true;
         this.hoop = null;
         this.showHoop();
       }
@@ -919,12 +923,14 @@ export class Game {
         h.p = Math.min(1, h.p + ms / 400);
         if (h.p >= 1) {
           h.phase = "shown";
+          this.keepCourt = false;
           this.syncHit();
         }
       } else if (h.phase === "out") {
         h.p = Math.max(0, h.p - ms / 250);
         if (h.p <= 0) {
           this.hoop = null;
+          this.keepCourt = false;
           this.syncHit();
         }
       }
@@ -1329,6 +1335,8 @@ export class Game {
     if (this.onlineMatch) {
       this.onlineMatch.localResult(false);
       this.hoopSwapAt = performance.now() + 900;
+    } else if (settings.stayOpen) {
+      this.hoopSwapAt = performance.now() + 900;
     }
   }
 
@@ -1368,6 +1376,8 @@ export class Game {
     else {
       setScore(getScore() + 1);
       queueLeaderboardScoreSync();
+      // "Keep the court open": the hoop still moves to a new place after a goal
+      if (settings.stayOpen) this.hoopSwapAt = performance.now() + 900;
     }
     const s = this.onlineMatch ? -1 : getScore();
     play("swish");
@@ -1405,8 +1415,8 @@ export class Game {
     const ch = this.hoop;
     if (ch && settings.court) {
       const cs: CourtSprite = ch.side === "right" ? this.courtR : this.courtL;
-      // in an online match the court is always fully up, even while a new hoop slides in
-      const rise = Math.pow(1 - (this.onlineMatch ? 1 : ch.p), 3) * (this.artH - (this.floorY - cs.cy));
+      // in an online match, and while a new hoop slides in, the court is fully up
+      const rise = Math.pow(1 - (this.onlineMatch || this.keepCourt ? 1 : ch.p), 3) * (this.artH - (this.floorY - cs.cy));
       const courtTop = Math.round(this.floorY - cs.cy + rise);
       this.crowd.setBall(this.ball.x, this.floorY + rise, this.ball.y);
       this.crowd.setHoop(ch.x0 + ch.sprite.rimCx, ch.rimY, ch.side);
