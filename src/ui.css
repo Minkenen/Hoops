@@ -241,3 +241,17 @@
 #ui .mp-turnbanner.me{color:#7ad89a;animation:mppulse 1s ease-in-out infinite}
 #ui .mp-turnbanner.opp{color:#ee7a24}
 @keyframes mppulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.06)}}
+
+/* online scoreboard and turn banner: clear of the Mac notch (like the toast), and tidy on a phone */
+#ui .mp-turnbanner{top:60px}
+#ui .mp-hud{top:calc(12px + env(safe-area-inset-top,0px));left:calc(12px + env(safe-area-inset-left,0px));max-width:min(260px,calc(50vw - 20px))}
+#ui .mp-hud .r span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+@media(max-width:700px){
+  #ui .mp-turnbanner{display:none}
+  #ui .mp-hud{min-width:0;padding:6px 8px;top:calc(58px + env(safe-area-inset-top,0px))}
+  #ui .mp-hud .t{font-size:10px}
+  #ui .mp-hud .r{gap:6px;font-size:13px}
+  #ui .mp-hud .r b{font-size:16px}
+  #ui .mp-hud .n{font-size:14px;font-weight:500;margin-top:4px}
+  #ui .mp-hud .n.opp{color:#ee7a24}
+}

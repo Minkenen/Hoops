@@ -272,6 +272,9 @@ export class Game {
   private pushGhost(x: number, y: number, ang: number): void {
     const now = performance.now();
     const buf = this.ghostBuf;
+    // always inside the screen and above the floor
+    x = clamp(x, BALL_R, this.artW - BALL_R);
+    y = Math.min(y, this.floorY - BALL_R);
     // a long pause (a new shot): do not glide across it
     if (buf.length && now - buf[buf.length - 1].t > 400) buf.length = 0;
     buf.push({ t: now, x, y, ang });
@@ -296,7 +299,10 @@ export class Game {
     const h = this.hoop;
     if (!h) return;
     const mir = h.side === p.side ? 1 : -1;
-    this.pushGhost(h.x0 + h.sprite.rimCx + mir * p.dx, h.rimY + p.dy, p.ang);
+    // their rim can be higher or lower than yours: stretch the height so their ball rests on your floor and passes through your rim
+    const myRimH = this.floorY - h.rimY;
+    const k = clamp((myRimH - BALL_R) / Math.max(20, p.rimH - BALL_R), 0.4, 2.5);
+    this.pushGhost(h.x0 + h.sprite.rimCx + mir * p.dx, h.rimY + p.dy * k, p.ang);
     this.ghostUntil = performance.now() + 700;
     this.hideAt = null;
     this.start();

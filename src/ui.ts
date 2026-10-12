@@ -224,7 +224,7 @@ export class UI {
 <div class="r"><span>You</span>${mine(m.scoreMe, m.lettersMe)}</div>
 <div class="r"><span>${esc(m.opponent)}</span>${mine(m.scoreOpp, m.lettersOpp)}</div>
 ${m.game !== "speed" && !m.over ? `<div class="mp-turnbanner ${m.turn === "me" ? "me" : "opp"}">${m.turn === "me" ? "YOUR TURN" : `${esc(m.opponent).toUpperCase()}'S TURN`}</div>` : ""}
-${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>` : turn ? `<div class="n${m.turn === "me" ? " me" : ""}">${esc(turn)}</div>` : ""}</div>`;
+${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>` : turn ? `<div class="n${m.turn === "me" ? " me" : " opp"}">${esc(turn)}</div>` : ""}</div>`;
   }
 
   private onlineEndHtml(): string {
