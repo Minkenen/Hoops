@@ -72,6 +72,8 @@ const SUB = 4;
 const isMilestone = (n: number): boolean => n === 25 || n === 50 || (n >= 100 && n % 100 === 0);
 const TIME_SCALE = 1.25;
 const SLIDE_GRAB = 1.2;
+/** How tall the strip of crowd is when only the front row is shown (art pixels). */
+const CROWD_ROW_H = 16;
 const TOUCH_WEB = import.meta.env.VITE_TARGET === "web" && window.matchMedia("(pointer: coarse)").matches;
 /** On a touch screen the ball never rests closer to an edge than this (in art pixels), so there is room to pull it back. */
 const EDGE_ROOM = 38;
@@ -1166,7 +1168,16 @@ export class Game {
       const courtTop = Math.round(this.floorY - cs.cy + rise);
       this.crowd.setBall(this.ball.x, this.floorY + rise, this.ball.y);
       this.crowd.setHoop(ch.x0 + ch.sprite.rimCx, ch.rimY, ch.side);
+      const row = settings.crowdRow && !settings.arenaFill && settings.crowd !== "none";
+      if (row) {
+        // Just the front row: a strip of the crowd right behind the court.
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, courtTop + 1 - CROWD_ROW_H, this.artW, CROWD_ROW_H);
+        ctx.clip();
+      }
       this.crowd.draw(ctx, settings.crowd, now, this.artW, courtTop + 1, settings.arenaFill);
+      if (row) ctx.restore();
       ctx.drawImage(cs.canvas, ch.side === "right" ? this.artW - cs.w : 0, courtTop);
       if (settings.crowd === "arena") this.crowd.arenaFloor(ctx, now, this.artW, courtTop, cs.h);
     }

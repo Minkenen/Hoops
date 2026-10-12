@@ -444,12 +444,12 @@ ${login}
     this.go("achievements");
   }
 
-  /** Crowd: off, half (the usual height) or filling the screen. */
+  /** Crowd: off, only the front row, half (the usual height) or filling the screen. */
   private crowdSeg(): string {
-    const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : "half";
+    const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
     return (
       "<div>" +
-      ([["off", "Off"], ["half", "Half"], ["full", "Full"]] as const)
+      ([["off", "Off"], ["row", "Row"], ["half", "Half"], ["full", "Full"]] as const)
         .map(([v, l]) => `<button class="pb${cur === v ? " on" : ""}" data-a="crowdmode" data-v="${v}">${l}</button>`)
         .join("") +
       "</div>"
@@ -913,6 +913,7 @@ ${rows}
             setSetting("crowd", back === "none" ? "stands" : back);
           }
           setSetting("arenaFill", v === "full");
+          setSetting("crowdRow", v === "row");
         }
         this.viewTheme = null;
         this.render();
