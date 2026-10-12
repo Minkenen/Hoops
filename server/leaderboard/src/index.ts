@@ -474,19 +474,22 @@ export class MultiplayerHub {
     switch (msg.type) {
       case "set_game": {
         if (player.id !== room.hostId) return sendError(ws, msg, "not_host", "Only the room host can change this setting.");
-        if (anyReady(room)) return sendError(ws, msg, "already_ready", "Game cannot change after ready.");
+        if (room.startsAt) return sendError(ws, msg, "already_started", "The match is about to start.");
         const game = String(payload.game || "");
         if (!MP_GAMES.has(game)) return sendError(ws, msg, "bad_game", "Unknown game.");
         room.game = game as MpGame;
+        // a change takes back everyone's "ready", so nobody starts a match with other rules than they agreed to
+        for (const p of room.players.values()) p.ready = false;
         broadcastLobby(room);
         break;
       }
       case "set_court": {
         if (player.id !== room.hostId) return sendError(ws, msg, "not_host", "Only the room host can change this setting.");
-        if (anyReady(room)) return sendError(ws, msg, "already_ready", "Court cannot change after ready.");
+        if (room.startsAt) return sendError(ws, msg, "already_started", "The match is about to start.");
         const court = String(payload.court || "");
         if (!MP_COURTS.has(court)) return sendError(ws, msg, "bad_court", "Unknown court.");
         room.court = court as MpCourt;
+        for (const p of room.players.values()) p.ready = false;
         broadcastLobby(room);
         break;
       }

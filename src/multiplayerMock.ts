@@ -57,6 +57,8 @@ export class MultiplayerMock {
   /** The match has started (once only: a second start would make a match without a connection). */
   private started = false;
   private myId = "";
+  /** You are the host: only the host picks the game and the court. */
+  isHost = true;
   private peerId = "";
   private players: MpLobbyPlayer[] = [];
   private timers: number[] = [];
@@ -141,11 +143,13 @@ export class MultiplayerMock {
   click(action: string, v?: string): void {
     switch (action) {
       case "game":
+        if (this.screen !== "start" && !this.isHost) return;
         this.game = v as GameId;
         this.conn?.send("set_game", { game: this.game });
         this.host.render();
         break;
       case "court":
+        if (!this.isHost) return;
         this.court = v as MpCourt;
         this.conn?.send("set_court", { court: this.court });
         this.host.render();
@@ -311,6 +315,7 @@ export class MultiplayerMock {
         this.game = m.payload.game;
         this.peerName = m.payload.peer.nickname;
         this.myId = m.payload.you.id;
+        this.isHost = m.payload.role === "offerer";
         this.peerId = m.payload.peer.id;
         this.connected = true;
         this.go("found");
@@ -399,14 +404,14 @@ export class MultiplayerMock {
     return `<canvas data-art="ball-${kind}" width="${size}" height="${size}"></canvas>`;
   }
 
-  private modes(): string {
+  private modes(enabled = true): string {
     const icon: Record<GameId, string> = {
       speed: `<div class="ic">${this.ball("you", 16)}${this.ball("opp", 16)}</div>`,
       horse: `<div class="ic">H·O</div>`,
       t21: `<div class="ic">21</div>`,
     };
     return `<div class="mp-modes">${(Object.keys(GAMES) as GameId[])
-      .map((g) => `<button class="mp-mode${this.game === g ? " on" : ""}" data-a="mp:game" data-v="${g}">${icon[g]}<b>${GAMES[g].name}</b><small>${GAMES[g].small}</small></button>`)
+      .map((g) => `<button class="mp-mode${this.game === g ? " on" : ""}"${enabled ? ` data-a="mp:game" data-v="${g}"` : " disabled"}>${icon[g]}<b>${GAMES[g].name}</b><small>${GAMES[g].small}</small></button>`)
       .join("")}</div>`;
   }
 
@@ -501,9 +506,9 @@ ${this.error ? `<div class="err">${this.error}</div>` : ""}
     if (s === "countdown") {
       return `${cards}<div class="mp-c hn">${GAMES[this.game].name} · ${GAMES[this.game].tag}</div><div class="mp-cd">${this.countdown > 0 ? this.countdown : "GO!"}</div>`;
     }
-    const settings = `<div class="h4">Game <span class="hn">(the host picks)</span></div>${this.modes()}${this.rule()}
+    const settings = `<div class="h4">Game <span class="hn">${this.isHost ? "(you pick)" : "(the host picks)"}</span></div>${this.modes(this.isHost)}${this.rule()}
 <div class="h4">Court</div><div class="mp-seg">${(["Street", "Gym", "Arena"] as const)
-      .map((c) => `<button class="pb${this.court === c ? " on" : ""}" data-a="mp:court" data-v="${c}">${c}</button>`)
+      .map((c) => `<button class="pb${this.court === c ? " on" : ""}"${this.isHost ? ` data-a="mp:court" data-v="${c}"` : " disabled"}>${c}</button>`)
       .join("")}</div><div class="hn" style="margin-top:6px">Both players see the same court and hoop.</div>`;
     let actions: string;
     if (s === "lobby") actions = `<button class="pb full" data-a="mp:leave" style="text-align:center;margin-top:10px">Leave</button>`;

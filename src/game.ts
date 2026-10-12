@@ -73,6 +73,8 @@ interface Drag {
 const SUB = 4;
 const isMilestone = (n: number): boolean => n === 25 || n === 50 || (n >= 100 && n % 100 === 0);
 const TIME_SCALE = 1.25;
+/** The other player's ball is drawn this many ms behind, so there are always two reports to glide between. */
+const GHOST_DELAY = 90;
 const SLIDE_GRAB = 1.2;
 const TOUCH_WEB = import.meta.env.VITE_TARGET === "web" && window.matchMedia("(pointer: coarse)").matches;
 /** On a touch screen the ball never rests closer to an edge than this (in art pixels), so there is room to pull it back. */
@@ -133,6 +135,8 @@ export class Game {
   private ghost: { x: number; y: number; ang: number } | null = null;
   private ghostUntil = 0;
   private ghostFrames: HTMLCanvasElement[] | null = null;
+  /** The positions the other player's ball has been reported at, with the time they arrived: the ghost is drawn a moment in the past, between two of them, so it moves smoothly. */
+  private ghostBuf: { t: number; x: number; y: number; ang: number }[] = [];
   private ballSentAt = 0;
   /** Your own look, put back after an online match that used the court you both picked. */
   private savedLook: { ball: typeof settings.ballSkin; court: typeof settings.courtSkin; crowd: typeof settings.crowd } | null = null;
@@ -264,26 +268,63 @@ export class Game {
     this.start();
   }
 
+  /** Notes where the other player's ball is now. */
+  private pushGhost(x: number, y: number, ang: number): void {
+    const now = performance.now();
+    const buf = this.ghostBuf;
+    // a long pause (a new shot): do not glide across it
+    if (buf.length && now - buf[buf.length - 1].t > 400) buf.length = 0;
+    buf.push({ t: now, x, y, ang });
+    if (buf.length > 24) buf.shift();
+    this.ghost = { x, y, ang };
+  }
+
   /** The other player's ball (a blue "ghost"): in HORSE and 21 you watch their shot at the hoop, in Speedball you see where their ball is. */
   opponentBall(p: OpponentBall): void {
     const m = this.onlineMatch;
     if (!m || !this.active) return;
     if (p.kind === "free") {
       if (m.game !== "speed") return;
-      this.ghost = { x: p.nx * this.artW, y: this.floorY - p.h, ang: p.ang };
+      this.pushGhost(p.nx * this.artW, this.floorY - p.h, p.ang);
       this.ghostUntil = Infinity;
       this.start();
       return;
     }
     if (m.game === "speed") return;
-    if (this.hoop && this.hoop.side !== p.side) this.hoop = null;
-    this.showHoop(p.side, p.rimH);
+    // your hoop stays where it is; their ball is mirrored if their hoop was on the other side
+    if (!this.hoop || this.hoop.phase === "out") this.showHoop(p.side, p.rimH);
     const h = this.hoop;
     if (!h) return;
-    this.ghost = { x: h.x0 + h.sprite.rimCx + p.dx, y: h.rimY + p.dy, ang: p.ang };
+    const mir = h.side === p.side ? 1 : -1;
+    this.pushGhost(h.x0 + h.sprite.rimCx + mir * p.dx, h.rimY + p.dy, p.ang);
     this.ghostUntil = performance.now() + 700;
     this.hideAt = null;
     this.start();
+  }
+
+  /** Where the ghost is drawn at this moment: a short while in the past, between the two reports around that time. */
+  private ghostNow(now: number): { x: number; y: number; ang: number } | null {
+    const buf = this.ghostBuf;
+    if (!buf.length) return this.ghost;
+    const rt = now - GHOST_DELAY;
+    if (buf.length === 1 || rt <= buf[0].t) return buf[0];
+    const last = buf[buf.length - 1];
+    if (rt >= last.t) {
+      // past the newest report: carry on in the direction it was going, for a moment
+      const prev = buf[buf.length - 2];
+      const span = Math.max(1, last.t - prev.t);
+      const dt = Math.min(rt - last.t, 120);
+      return { x: last.x + ((last.x - prev.x) / span) * dt, y: last.y + ((last.y - prev.y) / span) * dt, ang: last.ang + ((last.ang - prev.ang) / span) * dt };
+    }
+    for (let i = buf.length - 1; i > 0; i--) {
+      const a = buf[i - 1];
+      const c = buf[i];
+      if (a.t <= rt && rt <= c.t) {
+        const k = (rt - a.t) / Math.max(1, c.t - a.t);
+        return { x: a.x + (c.x - a.x) * k, y: a.y + (c.y - a.y) * k, ang: a.ang + (c.ang - a.ang) * k };
+      }
+    }
+    return last;
   }
 
   /** The other player's shot is over: the ball stays a moment, then the hoop goes. */
@@ -423,7 +464,7 @@ export class Game {
       b.t = 999;
       b.moving = true;
       this.shot = false;
-    } else if (this.hoop) {
+    } else if (this.hoop && !this.onlineMatch) {
       this.hoop.phase = "out";
     }
     this.start();
@@ -462,7 +503,7 @@ export class Game {
   /** After a miss, a click anywhere on the screen puts the court, crowd and hoop away. */
   private canDismiss(): boolean {
     const h = this.hoop;
-    return !!h && h.phase === "shown" && !this.drag && this.ui.view === "none" && (!this.ball.moving || this.floorHit);
+    return !this.onlineMatch && !!h && h.phase === "shown" && !this.drag && this.ui.view === "none" && (!this.ball.moving || this.floorHit);
   }
 
   /** Esc closes the court when it is set to stay open. It is only a global shortcut while the court is up. */
@@ -608,7 +649,7 @@ export class Game {
       this.onlineMatch?.localShot();
       this.crowd.shotStart(performance.now());
       play("shoot", clamp(d.power, 0.3, 1));
-    } else if (this.hoop) {
+    } else if (this.hoop && !this.onlineMatch) {
       this.hoop.phase = "out";
     }
     this.start();
@@ -784,7 +825,10 @@ export class Game {
       b.y = clamp(b.y + b.vy, BALL_R, this.floorY - BALL_R);
       b.ang += b.vx / BALL_R;
     }
-    if (this.ghost && (performance.now() > this.ghostUntil || !this.onlineMatch || this.onlineMatch.over)) this.ghost = null;
+    if (this.ghost && (performance.now() > this.ghostUntil || !this.onlineMatch || this.onlineMatch.over)) {
+      this.ghost = null;
+      this.ghostBuf.length = 0;
+    }
     if (this.nudgeX !== null) {
       // A finger needs room to pull the ball back: ease a ball that stopped by an edge a little inwards.
       if (dr || b.moving) {
@@ -804,11 +848,11 @@ export class Game {
       const nowMs = performance.now();
       if (this.onlineMatch.game === "speed") {
         // both play at once: the other player sees your ball as a ghost, about 20 times a second while it moves, and now and then when it rests
-        if (nowMs - this.ballSentAt >= (b.moving ? 45 : 250)) {
+        if (nowMs - this.ballSentAt >= (b.moving ? 33 : 250)) {
           this.ballSentAt = nowMs;
           this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
         }
-      } else if (b.moving && this.shot && this.hoop && nowMs - this.ballSentAt >= 45) {
+      } else if (b.moving && this.shot && this.hoop && nowMs - this.ballSentAt >= 33) {
         // HORSE and 21: the other player watches this shot: where the ball is, relative to the rim
         this.ballSentAt = nowMs;
         const hh = this.hoop;
@@ -846,7 +890,8 @@ export class Game {
           this.syncHit();
         }
       }
-      if (!settings.stayOpen && this.hideAt !== null && now >= this.hideAt && now >= this.crowd.holdUntil(settings.crowd, now) && h.phase === "shown") {
+      // in an online match the court stays up all the time
+      if (!settings.stayOpen && !this.onlineMatch && this.hideAt !== null && now >= this.hideAt && now >= this.crowd.holdUntil(settings.crowd, now) && h.phase === "shown") {
         const toward = h.side === "right" ? b.vx > 1.2 : b.vx < -1.2;
         const inAir = b.y < this.floorY - BALL_R - 5;
         if (b.moving && (inAir || toward)) {
@@ -1410,8 +1455,9 @@ export class Game {
       ctx.globalAlpha = 1;
     }
 
-    if (this.ghost) {
-      const g = this.ghost;
+    const gn = this.ghost ? this.ghostNow(now) : null;
+    if (gn) {
+      const g = gn;
       this.ghostFrames ??= makeBallFrames((BALL_SKINS.find((k) => k.id === "blue") ?? BALL_SKINS[0]).pal, (BALL_SKINS.find((k) => k.id === "blue") ?? BALL_SKINS[0]).seam);
       const gt = ((g.ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       ctx.globalAlpha = this.onlineMatch?.game === "speed" ? 0.6 : 1;
