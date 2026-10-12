@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    io::{Read, Write},
+    net::TcpListener,
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -152,6 +154,26 @@ fn open_external(url: String) -> Result<(), String> {
     cmd.arg(&url);
     #[cfg(all(unix, not(target_os = "macos")))]
     cmd.arg(&url);
+
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+fn open_system_url(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", url]);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = std::process::Command::new("xdg-open");
+
+    #[cfg(target_os = "macos")]
+    cmd.arg(url);
+    #[cfg(all(unix, not(target_os = "macos")))]
+    cmd.arg(url);
 
     cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
@@ -412,6 +434,205 @@ async fn validate_license(key: String) -> Result<bool, String> {
         .map_err(|e| e.to_string())?
 }
 
+const LEADERBOARD_SERVICE: &str = "Hoops";
+const LEADERBOARD_ACCOUNT: &str = "leaderboard-session";
+
+#[derive(Deserialize, Serialize, Clone)]
+struct LbUser {
+    id: String,
+    nickname: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct LbEntry {
+    rank: u32,
+    name: String,
+    score: u32,
+    icon: u32,
+}
+
+#[derive(Deserialize, Serialize)]
+struct LbBoard {
+    top: Vec<LbEntry>,
+    you: Option<LbEntry>,
+    players: u32,
+    #[serde(rename = "updatedAt")]
+    updated_at: u64,
+}
+
+#[derive(Deserialize)]
+struct LbSession {
+    user: LbUser,
+}
+
+#[derive(Serialize)]
+struct LbScore {
+    score: u32,
+    #[serde(rename = "bestStreak")]
+    best_streak: u32,
+    throws: u32,
+    goals: u32,
+}
+
+#[derive(Serialize)]
+struct LbNickname {
+    nickname: String,
+}
+
+fn leaderboard_keyring() -> Result<keyring::Entry, String> {
+    keyring::Entry::new(LEADERBOARD_SERVICE, LEADERBOARD_ACCOUNT).map_err(|e| e.to_string())
+}
+
+fn get_leaderboard_token() -> Option<String> {
+    leaderboard_keyring().ok()?.get_password().ok()
+}
+
+fn set_leaderboard_token(token: &str) -> Result<(), String> {
+    leaderboard_keyring()?.set_password(token).map_err(|e| e.to_string())
+}
+
+fn clear_leaderboard_token() {
+    if let Ok(entry) = leaderboard_keyring() {
+        let _ = entry.delete_credential();
+    }
+}
+
+fn leaderboard_url(base: &str, path: &str) -> Result<String, String> {
+    let base = base.trim().trim_end_matches('/');
+    if !base.starts_with("https://") && !base.starts_with("http://127.0.0.1:") && !base.starts_with("http://localhost:") {
+        return Err("The leaderboard server URL must use HTTPS.".into());
+    }
+    Ok(format!("{base}{path}"))
+}
+
+fn leaderboard_get<T: for<'de> Deserialize<'de>>(base: &str, path: &str, token: Option<&str>) -> Result<T, String> {
+    let url = leaderboard_url(base, path)?;
+    let mut req = ureq::get(&url).set("Accept", "application/json");
+    if let Some(token) = token {
+        req = req.set("Authorization", &format!("Bearer {token}"));
+    }
+    match req.call() {
+        Ok(r) => r.into_json().map_err(|e| e.to_string()),
+        Err(ureq::Error::Status(_, r)) => Err(r.into_string().unwrap_or_else(|_| "Leaderboard request failed.".into())),
+        Err(_) => Err("Could not reach the leaderboard server.".into()),
+    }
+}
+
+fn leaderboard_post<B: Serialize, T: for<'de> Deserialize<'de>>(base: &str, path: &str, token: Option<&str>, body: &B) -> Result<T, String> {
+    let url = leaderboard_url(base, path)?;
+    let mut req = ureq::post(&url).set("Accept", "application/json");
+    if let Some(token) = token {
+        req = req.set("Authorization", &format!("Bearer {token}"));
+    }
+    match req.send_json(serde_json::to_value(body).map_err(|e| e.to_string())?) {
+        Ok(r) => r.into_json().map_err(|e| e.to_string()),
+        Err(ureq::Error::Status(_, r)) => Err(r.into_string().unwrap_or_else(|_| "Leaderboard request failed.".into())),
+        Err(_) => Err("Could not reach the leaderboard server.".into()),
+    }
+}
+
+fn read_loopback_callback(listener: TcpListener) -> Result<String, String> {
+    let (mut stream, _) = listener.accept().map_err(|e| e.to_string())?;
+    let mut buf = [0_u8; 4096];
+    let n = stream.read(&mut buf).map_err(|e| e.to_string())?;
+    let req = String::from_utf8_lossy(&buf[..n]);
+    let first = req.lines().next().unwrap_or_default();
+    let path = first.split_whitespace().nth(1).unwrap_or_default();
+    let body = b"<html><body>You can close this window and return to Hoops.</body></html>";
+    let _ = stream.write_all(
+        format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+            body.len()
+        )
+        .as_bytes(),
+    );
+    let _ = stream.write_all(body);
+    path.split('?')
+        .nth(1)
+        .and_then(|q| q.split('&').find_map(|p| p.strip_prefix("token=").map(|v| v.replace("%2E", "."))))
+        .ok_or_else(|| "Sign-in did not return a session.".into())
+}
+
+#[tauri::command]
+async fn leaderboard_user(server_url: String) -> Result<Option<LbUser>, String> {
+    let Some(token) = get_leaderboard_token() else {
+        return Ok(None);
+    };
+    let session: LbSession = tauri::async_runtime::spawn_blocking(move || leaderboard_get(&server_url, "/me", Some(&token)))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(Some(session.user))
+}
+
+#[tauri::command]
+async fn leaderboard_sign_in(app: AppHandle, server_url: String, provider: String) -> Result<LbUser, String> {
+    if provider != "apple" && provider != "google" {
+        return Err("Unsupported sign-in provider.".into());
+    }
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let redirect = format!("http://127.0.0.1:{port}/callback");
+    let redirect = redirect.replace(':', "%3A").replace('/', "%2F");
+    let auth_url = leaderboard_url(&server_url, &format!("/auth/start?provider={provider}&redirect_uri={redirect}"))?;
+    app.run_on_main_thread(move || {
+        let _ = open_system_url(&auth_url);
+    })
+    .map_err(|e| e.to_string())?;
+    let token = tauri::async_runtime::spawn_blocking(move || read_loopback_callback(listener))
+        .await
+        .map_err(|e| e.to_string())??;
+    set_leaderboard_token(&token)?;
+    let session: LbSession = tauri::async_runtime::spawn_blocking(move || leaderboard_get(&server_url, "/me", Some(&token)))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(session.user)
+}
+
+#[tauri::command]
+fn leaderboard_sign_out() {
+    clear_leaderboard_token();
+}
+
+#[tauri::command]
+async fn leaderboard_load(server_url: String, tab: String) -> Result<LbBoard, String> {
+    let tab = match tab.as_str() {
+        "global" | "weekly" | "friends" => tab,
+        _ => return Err("Unsupported leaderboard tab.".into()),
+    };
+    let token = get_leaderboard_token();
+    tauri::async_runtime::spawn_blocking(move || leaderboard_get(&server_url, &format!("/leaderboard?tab={tab}"), token.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn leaderboard_submit_score(server_url: String, score: u32, best_streak: u32, throws: u32, goals: u32) -> Result<(), String> {
+    let Some(token) = get_leaderboard_token() else {
+        return Ok(());
+    };
+    let body = LbScore {
+        score,
+        best_streak,
+        throws,
+        goals,
+    };
+    tauri::async_runtime::spawn_blocking(move || leaderboard_post::<_, serde_json::Value>(&server_url, "/score", Some(&token), &body))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(())
+}
+
+#[tauri::command]
+async fn leaderboard_set_nickname(server_url: String, nickname: String) -> Result<LbUser, String> {
+    let Some(token) = get_leaderboard_token() else {
+        return Err("Sign in first.".into());
+    };
+    let body = LbNickname { nickname };
+    tauri::async_runtime::spawn_blocking(move || leaderboard_post(&server_url, "/nickname", Some(&token), &body))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Opens or closes the Hoops menu on the visible overlays: the same thing the global shortcut does.
 fn toggle_menu(app: &AppHandle) {
     for (label, win) in app.webview_windows() {
@@ -478,6 +699,12 @@ pub fn run() {
             open_external,
             activate_license,
             validate_license,
+            leaderboard_user,
+            leaderboard_sign_in,
+            leaderboard_sign_out,
+            leaderboard_load,
+            leaderboard_submit_score,
+            leaderboard_set_nickname,
             quit_app
         ])
         .setup(|app| {

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { LbBoard, LbProviderId, LbTab, LbUser } from "./leaderboard";
 
 export interface MonitorInfo {
   index: number;
@@ -46,6 +47,15 @@ export interface LicenseActivation {
 export const activateLicense = (key: string): Promise<LicenseActivation> => invoke<LicenseActivation>("activate_license", { key });
 /** Asks the license server if a key is still good. Resolves false when it is not; rejects when the server cannot be reached. */
 export const validateLicense = (key: string): Promise<boolean> => invoke<boolean>("validate_license", { key });
+export const leaderboardUser = (serverUrl: string): Promise<LbUser | null> => invoke<LbUser | null>("leaderboard_user", { serverUrl });
+export const leaderboardSignIn = (serverUrl: string, provider: LbProviderId): Promise<LbUser> =>
+  invoke<LbUser>("leaderboard_sign_in", { serverUrl, provider });
+export const leaderboardSignOut = (): Promise<void> => invoke("leaderboard_sign_out");
+export const leaderboardLoad = (serverUrl: string, tab: LbTab): Promise<LbBoard> => invoke<LbBoard>("leaderboard_load", { serverUrl, tab });
+export const leaderboardSubmitScore = (serverUrl: string, score: number, bestStreak: number, throws: number, goals: number): Promise<void> =>
+  invoke("leaderboard_submit_score", { serverUrl, score, bestStreak, throws, goals });
+export const leaderboardSetNickname = (serverUrl: string, nickname: string): Promise<LbUser> =>
+  invoke<LbUser>("leaderboard_set_nickname", { serverUrl, nickname });
 export const focusWindow = (): Promise<void> => getCurrentWindow().setFocus();
 export const quitApp = (): Promise<void> => invoke("quit_app");
 

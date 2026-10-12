@@ -1,0 +1,49 @@
+export const SCORE_SYNC_MS = 30_000;
+export const MAX_SCORE = 100_000;
+export const MAX_POINTS_PER_MINUTE = 180;
+
+export function weekKey(now = Date.now()) {
+  const d = new Date(now);
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() - day + 1);
+  d.setUTCHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+export function cleanNickname(value) {
+  const cleaned = String(value || "")
+    .replace(/[^a-zA-Z0-9 _-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 18);
+  const banned = /\b(fuck|shit|cunt|bitch|nazi|rape)\b/i;
+  return cleaned && !banned.test(cleaned) ? cleaned : null;
+}
+
+export function defaultNickname(seed) {
+  const digits = String(Math.abs(hashCode(seed)) % 9000 + 1000);
+  return `HoopsFan${digits}`;
+}
+
+export function scoreDecision(input, previous, now = Date.now()) {
+  const score = Number(input?.score);
+  const bestStreak = Number(input?.bestStreak);
+  const throws = Number(input?.throws);
+  const goals = Number(input?.goals);
+  if (![score, bestStreak, throws, goals].every(Number.isInteger)) return { ok: false, reason: "Scores must be integers." };
+  if (score < 0 || bestStreak < 0 || throws < 0 || goals < 0 || score > MAX_SCORE) return { ok: false, reason: "Score is out of range." };
+  if (goals > throws || score > goals) return { ok: false, reason: "Score stats are inconsistent." };
+  if (previous?.updated_at && now - previous.updated_at < SCORE_SYNC_MS) return { ok: false, reason: "Too many score submissions." };
+  if (previous?.best_score != null && score > previous.best_score) {
+    const elapsedMinutes = Math.max(1, (now - (previous.updated_at || now)) / 60_000);
+    const allowedGain = Math.ceil(elapsedMinutes * MAX_POINTS_PER_MINUTE) + 5;
+    if (score - previous.best_score > allowedGain) return { ok: false, reason: "Score increase is implausible." };
+  }
+  return { ok: true, score, bestStreak, throws, goals };
+}
+
+function hashCode(value) {
+  let h = 0;
+  for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0;
+  return h;
+}

@@ -18,9 +18,19 @@ import { enforceOwned } from "./purchases";
 import { recheckLicenses } from "./licensing";
 import { checkForUpdate } from "./update";
 import { onSettingChange, settings } from "./settings";
+import { setBackend } from "./leaderboard";
+import { createRemoteLeaderboard } from "./leaderboardRemote";
+import { connectLeaderboardScoreSync } from "./leaderboardSync";
 import { UI } from "./ui";
 
 async function main(): Promise<void> {
+  const leaderboardUrl = (import.meta.env.VITE_LEADERBOARD_URL as string | undefined)?.trim();
+  if (leaderboardUrl) {
+    const leaderboard = createRemoteLeaderboard(leaderboardUrl);
+    setBackend(leaderboard);
+    connectLeaderboardScoreSync(leaderboard);
+  }
+
   const monitors = await getMonitors();
   const label = currentLabel();
   const me = monitors.find((m) => m.label === label);

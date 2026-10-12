@@ -21,6 +21,7 @@ import {
 } from "./ipc";
 import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch, setScore, settings } from "./settings";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
+import { queueLeaderboardScoreSync } from "./leaderboardSync";
 import type { UI } from "./ui";
 
 interface Ball {
@@ -1079,6 +1080,7 @@ export class Game {
     this.hideAt = performance.now() + 1500;
     const s = getScore() + 1;
     setScore(s);
+    queueLeaderboardScoreSync();
     play("swish");
     play("swoosh2", 0.8);
     play("cheer", 0.9);
