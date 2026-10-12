@@ -3,9 +3,12 @@ import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
 const WEB = import.meta.env.VITE_TARGET === "web";
 const TOUCH = WEB && window.matchMedia("(pointer: coarse)").matches;
+const esc = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
-import { MULTIPLAYER_MOCK, MultiplayerMock, type OnlineGameEvent, type OnlineMatchStart } from "./multiplayerMock";
+import type { MultiplayerConnection } from "./multiplayerClient";
+import { MULTIPLAYER_MOCK, MultiplayerMock } from "./multiplayerMock";
+import { HORSE, OnlineMatch, type OnlineMatchInit } from "./onlineMatch";
 import { drawSettingsArt } from "./settingsArt";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
@@ -17,7 +20,7 @@ import type { UpdateInfo } from "./update";
 import { backend, cleanNickname, LEADERBOARD_ON, type LbBoard, type LbEntry, type LbProviderId, type LbTab } from "./leaderboard";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
-type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "leaderboard" | "onboarding" | "online";
+type View = "none" | "onlineend" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "leaderboard" | "onboarding" | "online";
 type DonateVariant = "button" | "footer";
 
 const DONATE_URL = "https://ko-fi.com/hoopsgame";
@@ -127,7 +130,7 @@ export class UI {
     openMenu: () => this.openMenu(),
     toast: (m, ms) => this.toast(m, ms),
     nickname: () => backend.user()?.nickname ?? "You",
-    startOnlineMatch: (match) => this.startOnlineMatch(match),
+    startOnlineMatch: (init, conn) => this.startOnlineMatch(init, conn),
   });
   private cosTab: "ball" | "court" | "crowd" | "base" = "ball";
   private thumbs = new Map<string, string>();
@@ -168,14 +171,47 @@ export class UI {
     this.game = game;
   }
 
-  private startOnlineMatch(match: OnlineMatchStart): void {
+  /** The countdown reached GO: the match takes over the connection and the game goes to the court. */
+  private startOnlineMatch(init: OnlineMatchInit, conn: MultiplayerConnection | null): void {
+    const match = new OnlineMatch(init, conn, {
+      changed: () => {
+        this.game.refresh();
+        if (match.over && this.view !== "onlineend") {
+          this.stack = [];
+          this.view = "onlineend";
+        }
+        this.render();
+      },
+      toast: (m) => this.toast(m, 1800),
+    });
     this.close();
     this.game.startOnlineMatch(match);
-    this.toast(match.direct ? `Online match vs ${match.opponent}` : `Online match vs ${match.opponent}. Direct link still connecting.`, 2600);
+    this.toast(`Online ${match.game === "speed" ? "Speedball" : match.game === "horse" ? "HORSE" : "21"} vs ${match.opponent}`, 2600);
   }
 
-  onlineGameEvent(event: OnlineGameEvent): void {
-    this.mp.sendGameEvent(event);
+  /** The scoreboard shown over the court during an online match. */
+  private onlineHudHtml(): string {
+    const m = this.game?.online;
+    if (!m) return "";
+    const name = m.game === "speed" ? "Speedball" : m.game === "horse" ? "HORSE" : "21";
+    const mine = (n: number, l: number): string => (m.game === "horse" ? [...HORSE].map((c, i) => `<i class="${i < l ? "x" : ""}">${c}</i>`).join("") : `<b>${n}</b>`);
+    const turn = m.yourTurnText();
+    return `<div class="px mp-hud"><div class="t">Online ${name} · ${m.goalText}</div>
+<div class="r"><span>You</span>${mine(m.scoreMe, m.lettersMe)}</div>
+<div class="r"><span>${esc(m.opponent)}</span>${mine(m.scoreOpp, m.lettersOpp)}</div>
+${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>` : turn ? `<div class="n${m.turn === "me" ? " me" : ""}">${esc(turn)}</div>` : ""}</div>`;
+  }
+
+  private onlineEndHtml(): string {
+    const m = this.game?.online;
+    const r = m?.over;
+    if (!m || !r) return "";
+    const score = m.game === "horse" ? `${[...HORSE].slice(0, m.lettersMe).join("") || "–"} · ${[...HORSE].slice(0, m.lettersOpp).join("") || "–"}` : `${m.scoreMe} – ${m.scoreOpp}`;
+    return `<div class="px win" data-hit style="width:min(380px,92vw)">
+<div class="wt"><span class="wl">Online match</span></div>
+<div class="wb mp"><div class="mp-end ${r.won ? "win" : "lose"}">${r.won ? "You win!" : "You lose"}</div>
+<div class="mp-c hn">${esc(r.reason)}</div><div class="mp-c" style="margin:8px 0;font-size:18px">${esc(score)}</div>
+<button class="pb pri mp-big" data-a="leavematch" style="justify-content:center"><span><b>Back to menu</b></span></button></div></div>`;
   }
 
   toggleMenu(): void {
@@ -561,6 +597,7 @@ ${MULTIPLAYER_MOCK ? `<button class="pb pri full" data-a="online">Play online</b
 ${LEADERBOARD_ON ? `<button class="pb full lbl" data-a="lb"><span>Leaderboard…</span>${this.lbBoards.global?.you ? `<small>#${this.lbBoards.global.you.rank}</small>` : ""}</button>` : ""}
 <button class="pb full" data-a="inst">Settings…</button>
 ${this.donateHtml()}
+${this.game?.online ? `<button class="pb full danger" data-a="leavematch">Leave online match</button>` : ""}
 ${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}</div>`;
   }
 
@@ -924,10 +961,12 @@ ${rows}
     else if (this.view === "achievements") html = this.achievementsHtml();
     else if (this.view === "leaderboard") html = this.leaderboardHtml();
     else if (this.view === "online") html = this.mp.html();
+    else if (this.view === "onlineend") html = this.onlineEndHtml();
     else if (this.view === "onboarding") html = this.onboardingHtml();
     if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements" || this.view === "leaderboard" || this.view === "online") {
       html = `<div class="catch" data-hit data-a="dismiss"></div>${html}`;
     }
+    if (this.game?.online && this.view !== "onlineend") html += this.onlineHudHtml();
     if (this.resetDialog) html += this.resetDialogHtml();
     if (this.premiumDialog) html += this.premiumDialogHtml();
     if (this.toastMsg) html += `<div class="px toast">${this.toastMsg}</div>`;
@@ -974,6 +1013,10 @@ ${rows}
       return;
     }
     switch (a) {
+      case "leavematch":
+        this.game.endOnlineMatch();
+        this.openMenu();
+        break;
       case "online":
         this.mp.open();
         this.go("online");

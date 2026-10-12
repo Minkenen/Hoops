@@ -1,0 +1,183 @@
+// An online match in progress: the rules for Speedball, HORSE and 21, whose turn it is, and the messages to and from the other player.
+// The game itself (ball, hoop, court) is played locally on each computer. Each side reports the result of every shot of its own
+// over the direct WebRTC channel, and both sides apply the same rules to both players, so the scores always agree.
+// TODO(multiplayer): show the other player's ball in flight too (send the throw), and a rematch button.
+import type { MultiplayerConnection, MpServerMessage } from "./multiplayerClient";
+
+export type GameId = "speed" | "horse" | "t21";
+export type MpCourt = "Street" | "Gym" | "Arena";
+
+export interface OnlineMatchInit {
+  game: GameId;
+  court: MpCourt;
+  opponent: string;
+  seed: string;
+  myId: string;
+  peerId: string;
+}
+
+export interface OnlineMatchHost {
+  /** Something changed: redraw the scoreboard. */
+  changed(): void;
+  /** A short message for the player. */
+  toast(m: string): void;
+}
+
+export interface OnlineResult {
+  won: boolean;
+  reason: string;
+}
+
+export const HORSE = "HORSE";
+const SPEED_GOAL = 10;
+const T21_GOAL = 21;
+
+const hash = (s: string): number => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+};
+
+export class OnlineMatch {
+  readonly game: GameId;
+  readonly court: MpCourt;
+  readonly opponent: string;
+  scoreMe = 0;
+  scoreOpp = 0;
+  lettersMe = 0;
+  lettersOpp = 0;
+  /** Whose shot it is. In Speedball both shoot at once. */
+  turn: "me" | "opp" | "both";
+  over: OnlineResult | null = null;
+  /** The opponent has lost the connection for a moment. */
+  peerAway = false;
+  private inFlight = false;
+  private beat = 0;
+
+  constructor(
+    init: OnlineMatchInit,
+    private conn: MultiplayerConnection | null,
+    private host: OnlineMatchHost,
+  ) {
+    this.game = init.game;
+    this.court = init.court;
+    this.opponent = init.opponent;
+    if (init.game === "speed") this.turn = "both";
+    else {
+      // a coin flip both sides agree on: the same seed and the same two ids give the same answer
+      const ids = [init.myId, init.peerId].sort();
+      this.turn = ids[hash(init.seed) % 2] === init.myId ? "me" : "opp";
+    }
+    conn?.setHandlers({
+      onMessage: (m) => this.onServer(m),
+      onDirectMessage: (d) => this.onPeer(d),
+      onClose: () => this.onClosed(),
+      onError: () => undefined,
+    });
+    // keeps the server connection from going quiet
+    this.beat = window.setInterval(() => this.conn?.send("ping"), 25000);
+  }
+
+  get goalText(): string {
+    return this.game === "speed" ? `First to ${SPEED_GOAL}` : this.game === "t21" ? `First to ${T21_GOAL}` : "Miss = a letter";
+  }
+
+  /** Can the player start a shot now? */
+  canShoot(): boolean {
+    return !this.over && !this.inFlight && (this.turn === "both" || this.turn === "me");
+  }
+
+  /** Called when the player lets go of the ball. */
+  localShot(): void {
+    this.inFlight = true;
+    this.host.changed();
+  }
+
+  /** Called when the shot is over: it went in (far = from a long way off) or it missed. */
+  localResult(goal: boolean, far = false): void {
+    if (!this.inFlight || this.over) return;
+    this.inFlight = false;
+    this.apply("me", goal, far);
+    this.conn?.sendPeer("result", { goal, far });
+    this.host.changed();
+  }
+
+  private apply(who: "me" | "opp", goal: boolean, far: boolean): void {
+    const me = who === "me";
+    if (this.game === "speed") {
+      if (goal) {
+        if (me) this.scoreMe++;
+        else this.scoreOpp++;
+      }
+      if ((me ? this.scoreMe : this.scoreOpp) >= SPEED_GOAL) this.finish(me, me ? "You got to 10 first" : `${this.opponent} got to 10 first`);
+      return;
+    }
+    if (this.game === "horse") {
+      if (!goal) {
+        if (me) this.lettersMe++;
+        else this.lettersOpp++;
+        if ((me ? this.lettersMe : this.lettersOpp) >= HORSE.length) this.finish(!me, me ? "You spelled HORSE" : `${this.opponent} spelled HORSE`);
+      }
+    } else if (goal) {
+      const pts = far ? 3 : 2;
+      if (me) this.scoreMe += pts;
+      else this.scoreOpp += pts;
+      if ((me ? this.scoreMe : this.scoreOpp) >= T21_GOAL) this.finish(me, me ? "You got to 21 first" : `${this.opponent} got to 21 first`);
+    }
+    if (!this.over) this.turn = me ? "opp" : "me";
+  }
+
+  private finish(won: boolean, reason: string): void {
+    this.over = { won, reason };
+  }
+
+  private onPeer(d: unknown): void {
+    if (typeof d !== "object" || d === null) return;
+    const m = d as { type?: string; payload?: { goal?: unknown; far?: unknown } };
+    if (m.type === "result" && !this.over) {
+      const goal = m.payload?.goal === true;
+      this.apply("opp", goal, m.payload?.far === true);
+      this.host.toast(goal ? `${this.opponent} scored` : `${this.opponent} missed`);
+      this.host.changed();
+    } else if (m.type === "leave" && !this.over) {
+      this.finish(true, `${this.opponent} left the match`);
+      this.host.changed();
+    }
+  }
+
+  private onServer(m: MpServerMessage): void {
+    if (m.type === "peer_disconnected") {
+      this.peerAway = true;
+      this.host.changed();
+    } else if (m.type === "peer_reconnected") {
+      this.peerAway = false;
+      this.host.changed();
+    } else if (m.type === "peer_left" && !this.over) {
+      this.finish(true, `${this.opponent} left the match`);
+      this.host.changed();
+    }
+  }
+
+  private onClosed(): void {
+    if (this.over) return;
+    this.finish(false, "The connection was lost");
+    this.host.changed();
+  }
+
+  /** Leaves the match: tells the other player and closes the connections. */
+  leave(): void {
+    window.clearInterval(this.beat);
+    this.conn?.sendPeer("leave");
+    this.conn?.send("bye");
+    this.conn?.close();
+    this.conn = null;
+  }
+
+  // ---------- what the scoreboard shows ----------
+
+  yourTurnText(): string {
+    if (this.over) return "";
+    if (this.game === "speed") return "";
+    return this.turn === "me" ? "Your turn" : `${this.opponent}'s turn`;
+  }
+}

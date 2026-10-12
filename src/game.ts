@@ -23,7 +23,7 @@ import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch,
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
 import type { UI } from "./ui";
-import type { OnlineMatchStart } from "./multiplayerMock";
+import type { OnlineMatch } from "./onlineMatch";
 
 interface Ball {
   x: number;
@@ -127,7 +127,12 @@ export class Game {
   private acc = 0;
   private lastHit = "";
   private introDone = false;
-  private onlineMatch: OnlineMatchStart | null = null;
+  private onlineMatch: OnlineMatch | null = null;
+
+  /** The online match being played, or null. */
+  get online(): OnlineMatch | null {
+    return this.onlineMatch;
+  }
 
   constructor(
     cv: HTMLCanvasElement,
@@ -250,7 +255,20 @@ export class Game {
     this.start();
   }
 
-  startOnlineMatch(match: OnlineMatchStart): void {
+  /** Redraws now (the online scoreboard changed). */
+  refresh(): void {
+    this.start();
+  }
+
+  /** Leaves the online match and goes back to the normal game. */
+  endOnlineMatch(): void {
+    this.onlineMatch?.leave();
+    this.onlineMatch = null;
+    this.ui.close();
+    this.start();
+  }
+
+  startOnlineMatch(match: OnlineMatch): void {
     this.onlineMatch = match;
     this.activate();
     this.ui.close();
@@ -428,6 +446,11 @@ export class Game {
     }
     if ((this.ball.moving && !this.canGrabSliding()) || this.ui.view !== "none") return;
     if (!onBall) return;
+    // online: it can be the other player's turn
+    if (this.onlineMatch && !this.onlineMatch.canShoot()) {
+      this.ui.render();
+      return;
+    }
     if (this.ball.moving) {
       this.ball.moving = false;
       this.ball.vx = 0;
@@ -520,9 +543,7 @@ export class Game {
       this.hideAt = null;
       this.announce(recordThrow());
       addShot();
-      if (this.onlineMatch) {
-        this.ui.onlineGameEvent({ type: "shot", payload: { x: b.x, y: b.y, vx: b.vx, vy: b.vy, t: performance.now() } });
-      }
+      this.onlineMatch?.localShot();
       this.crowd.shotStart(performance.now());
       play("shoot", clamp(d.power, 0.3, 1));
     } else if (this.hoop) {
@@ -1137,7 +1158,7 @@ export class Game {
       this.fireOn = false;
       this.putOutFire(b.x, b.y, true);
     }
-    if (this.onlineMatch) this.ui.onlineGameEvent({ type: "miss", payload: { t: performance.now() } });
+    this.onlineMatch?.localResult(false);
   }
 
   private goal(h: Hoop): void {
@@ -1168,10 +1189,13 @@ export class Game {
     }
     h.net.impulse(rnd(-0.25, 0.25), 0.3);
     this.hideAt = performance.now() + 1500;
-    const s = getScore() + 1;
-    setScore(s);
-    if (this.onlineMatch) this.ui.onlineGameEvent({ type: "goal", payload: { score: s } });
-    queueLeaderboardScoreSync();
+    // an online match does not count for the leaderboard score
+    if (this.onlineMatch) this.onlineMatch.localResult(true, this.shotFar);
+    else {
+      setScore(getScore() + 1);
+      queueLeaderboardScoreSync();
+    }
+    const s = this.onlineMatch ? -1 : getScore();
     play("swish");
     play("swoosh2", 0.8);
     play("cheer", 0.9);
@@ -1326,25 +1350,14 @@ export class Game {
         this.drawBubble(e, dur);
       }
     }
-    if (this.onlineMatch) this.drawOnlineBadge();
     this.milestone.draw(ctx);
     ctx.restore();
-  }
-
-  private drawOnlineBadge(): void {
-    const ctx = this.ctx;
-    const label = `ONLINE ${this.onlineMatch!.game.toUpperCase()}`;
-    const w = textWidth(label, 1) + 10;
-    layer(ctx, (put) => {
-      for (let y = 0; y < 16; y++) for (let x = 0; x < w; x++) put(6 + x, 6 + y, y < 2 || y > 13 || x < 2 || x > w - 3 ? "#0d0e12" : "#343943");
-      text(put, label, 11, 10, 1, "#ffb257", "#ee7a24");
-    });
   }
 
   private drawBubble(e: number, dur: number): void {
     const ctx = this.ctx;
     const bb = this.bubble!;
-    const str = String(getScore());
+    const str = String(this.onlineMatch ? this.onlineMatch.scoreMe : getScore());
     ctx.globalAlpha = clamp(e > dur - 500 ? (dur - e) / 500 : 1, 0, 1);
     const w = textWidth(str, 2) + 10 + (e < 150 ? 4 : 0);
     const hh = 22 + (e < 150 ? 2 : 0);

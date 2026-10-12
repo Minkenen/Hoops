@@ -34,6 +34,18 @@ export class MultiplayerConnection {
   private dc: RTCDataChannel | null = null;
   private role: "offerer" | "answerer" | null = null;
 
+  /** Hands the connection to someone else (the lobby gives it to the match). */
+  setHandlers(h: { onMessage?: (m: MpServerMessage) => void; onClose?: () => void; onError?: (message: string) => void; onDirectMessage?: (data: unknown) => void }): void {
+    if (h.onMessage) this.onMessage = h.onMessage;
+    if (h.onClose) this.onClose = h.onClose;
+    if (h.onError) this.onError = h.onError;
+    if (h.onDirectMessage) this.onDirectMessage = h.onDirectMessage;
+  }
+
+  get directOpen(): boolean {
+    return this.dc?.readyState === "open";
+  }
+
   constructor(
     private serverUrl: string,
     private onMessage: (m: MpServerMessage) => void,
