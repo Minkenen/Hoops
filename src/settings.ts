@@ -40,7 +40,7 @@ const DEFAULTS: Settings = {
   confetti: 140,
   bubble: 2.5,
   sound: true,
-  volume: 0.6,
+  volume: 0.3,
   ballScale: 3,
   ballFade: 0.5,
   autostart: false,
