@@ -964,8 +964,10 @@ export class Game {
       }
       if (b.postGoal && !b.kicked) {
         b.kicked = true;
-        const dir = this.artW / 2 - b.x >= 0 ? 1 : -1;
-        b.vx = dir * rnd(0.8, 3.2);
+        // Where it rolls to after a goal is a matter of luck: usually a short roll, sometimes a long one, and now and then away from the middle.
+        const dir = (this.artW / 2 - b.x >= 0 ? 1 : -1) * (Math.random() < 0.2 ? -1 : 1);
+        const r = Math.random();
+        b.vx = dir * (r < 0.4 ? rnd(0.4, 1.6) : r < 0.8 ? rnd(1.6, 3.6) : rnd(3.6, 6.5));
       }
     }
 
@@ -1105,6 +1107,8 @@ export class Game {
     b.scored = true;
     this.shotResolved = true;
     b.postGoal = true;
+    // The net takes the speed out of a long shot, so the ball does not fly on to the far wall and back.
+    b.vx *= rnd(0.15, 0.5);
     this.gaspAt = 0;
     pushLast10(true);
     this.crowd.goal(performance.now());
