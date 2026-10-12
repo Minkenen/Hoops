@@ -143,8 +143,9 @@ fn open_external(url: String) -> Result<(), String> {
     let mut cmd = std::process::Command::new("open");
     #[cfg(target_os = "windows")]
     let mut cmd = {
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/C", "start", "", &url]);
+        // not "cmd /C start": cmd would cut the address at the first &
+        let mut c = std::process::Command::new("rundll32");
+        c.args(["url.dll,FileProtocolHandler", &url]);
         c
     };
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -163,8 +164,9 @@ fn open_system_url(url: &str) -> Result<(), String> {
     let mut cmd = std::process::Command::new("open");
     #[cfg(target_os = "windows")]
     let mut cmd = {
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/C", "start", "", url]);
+        // not "cmd /C start": cmd treats the & in an address as the end of the command, which cut the sign-in address short
+        let mut c = std::process::Command::new("rundll32");
+        c.args(["url.dll,FileProtocolHandler", url]);
         c
     };
     #[cfg(all(unix, not(target_os = "macos")))]
