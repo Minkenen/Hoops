@@ -27,14 +27,13 @@ export interface OnlineMatchHost {
   peerShotEnded(): void;
 }
 
-/** Where the other player's ball is, relative to the hoop on their screen. */
-export interface OpponentBall {
-  dx: number;
-  dy: number;
-  side: "left" | "right";
-  rimH: number;
-  ang: number;
-}
+/**
+ * Where the other player's ball is. In HORSE and 21 ("arc") it is relative to the hoop on their screen, which is shown on our screen too.
+ * In Speedball ("free") both play at once with their own hoops, so it is just a place on the screen: across, and height above the floor.
+ */
+export type OpponentBall =
+  | { kind: "arc"; dx: number; dy: number; side: "left" | "right"; rimH: number; ang: number }
+  | { kind: "free"; nx: number; h: number; ang: number };
 
 export interface OnlineResult {
   won: boolean;
@@ -159,9 +158,12 @@ export class OnlineMatch {
       this.host.peerShotEnded();
       this.host.changed();
     } else if (m.type === "ball" && !this.over && m.payload) {
-      const p = m.payload as Partial<OpponentBall>;
-      if (typeof p.dx === "number" && typeof p.dy === "number" && (p.side === "left" || p.side === "right") && typeof p.rimH === "number") {
-        this.host.ball({ dx: p.dx, dy: p.dy, side: p.side, rimH: p.rimH, ang: typeof p.ang === "number" ? p.ang : 0 });
+      const p = m.payload as Record<string, unknown>;
+      const ang = typeof p.ang === "number" ? p.ang : 0;
+      if (p.kind === "free" && typeof p.nx === "number" && typeof p.h === "number") {
+        this.host.ball({ kind: "free", nx: p.nx, h: p.h, ang });
+      } else if (typeof p.dx === "number" && typeof p.dy === "number" && (p.side === "left" || p.side === "right") && typeof p.rimH === "number") {
+        this.host.ball({ kind: "arc", dx: p.dx, dy: p.dy, side: p.side, rimH: p.rimH, ang });
       }
     } else if (m.type === "leave" && !this.over) {
       this.finish(true, `${this.opponent} left the match`);

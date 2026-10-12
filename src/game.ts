@@ -23,7 +23,7 @@ import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch,
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
 import type { UI } from "./ui";
-import type { OnlineMatch } from "./onlineMatch";
+import type { OnlineMatch, OpponentBall } from "./onlineMatch";
 
 interface Ball {
   x: number;
@@ -260,10 +260,18 @@ export class Game {
     this.start();
   }
 
-  /** The other player's ball, as it flies: where it is relative to the rim, which side the hoop is on and how high the rim is. */
-  opponentBall(p: { dx: number; dy: number; side: "left" | "right"; rimH: number; ang: number }): void {
+  /** The other player's ball (a blue "ghost"): in HORSE and 21 you watch their shot at the hoop, in Speedball you see where their ball is. */
+  opponentBall(p: OpponentBall): void {
     const m = this.onlineMatch;
-    if (!m || m.game === "speed" || !this.active) return;
+    if (!m || !this.active) return;
+    if (p.kind === "free") {
+      if (m.game !== "speed") return;
+      this.ghost = { x: p.nx * this.artW, y: this.floorY - p.h, ang: p.ang };
+      this.ghostUntil = Infinity;
+      this.start();
+      return;
+    }
+    if (m.game === "speed") return;
     if (this.hoop && this.hoop.side !== p.side) this.hoop = null;
     this.showHoop(p.side, p.rimH);
     const h = this.hoop;
@@ -276,6 +284,7 @@ export class Game {
 
   /** The other player's shot is over: the ball stays a moment, then the hoop goes. */
   opponentShotEnd(): void {
+    if (this.onlineMatch?.game === "speed") return;
     this.ghostUntil = performance.now() + 600;
     this.hideAt = performance.now() + 1500;
     this.start();
@@ -290,14 +299,15 @@ export class Game {
   endOnlineMatch(): void {
     this.onlineMatch?.leave();
     this.onlineMatch = null;
-    this.ui.close();
+    this.ghost = null;
+    this.ui.close(true);
     this.start();
   }
 
   startOnlineMatch(match: OnlineMatch): void {
     this.onlineMatch = match;
     this.activate();
-    this.ui.close();
+    this.ui.close(true);
     const b = this.ball;
     b.gs = 1;
     b.t = 999;
@@ -317,6 +327,8 @@ export class Game {
     this.hideAt = null;
     this.bubble = null;
     this.introDone = true;
+    this.ghost = match.game === "speed" ? { x: this.artW * 0.7, y: this.floorY - BALL_R, ang: 0 } : null;
+    this.ghostUntil = Infinity;
     this.showHoop();
     this.start();
     this.syncHit();
@@ -748,7 +760,7 @@ export class Game {
       b.y = clamp(b.y + b.vy, BALL_R, this.floorY - BALL_R);
       b.ang += b.vx / BALL_R;
     }
-    if (this.ghost && performance.now() > this.ghostUntil) this.ghost = null;
+    if (this.ghost && (performance.now() > this.ghostUntil || !this.onlineMatch || this.onlineMatch.over)) this.ghost = null;
     if (this.nudgeX !== null) {
       // A finger needs room to pull the ball back: ease a ball that stopped by an edge a little inwards.
       if (dr || b.moving) {
@@ -764,13 +776,19 @@ export class Game {
         }
       }
     }
-    if (b.moving && this.onlineMatch && this.onlineMatch.game !== "speed" && this.shot && this.hoop) {
-      // the other player watches this shot: send where the ball is, relative to the rim, about 20 times a second
+    if (this.onlineMatch && !this.onlineMatch.over) {
       const nowMs = performance.now();
-      if (nowMs - this.ballSentAt >= 45) {
+      if (this.onlineMatch.game === "speed") {
+        // both play at once: the other player sees your ball as a ghost, about 20 times a second while it moves, and now and then when it rests
+        if (nowMs - this.ballSentAt >= (b.moving ? 45 : 250)) {
+          this.ballSentAt = nowMs;
+          this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
+        }
+      } else if (b.moving && this.shot && this.hoop && nowMs - this.ballSentAt >= 45) {
+        // HORSE and 21: the other player watches this shot: where the ball is, relative to the rim
         this.ballSentAt = nowMs;
         const hh = this.hoop;
-        this.onlineMatch.sendBall({ dx: b.x - (hh.x0 + hh.sprite.rimCx), dy: b.y - hh.rimY, side: hh.side, rimH: this.floorY - hh.rimY, ang: b.ang });
+        this.onlineMatch.sendBall({ kind: "arc", dx: b.x - (hh.x0 + hh.sprite.rimCx), dy: b.y - hh.rimY, side: hh.side, rimH: this.floorY - hh.rimY, ang: b.ang });
       }
     }
     if (b.moving) {
@@ -1372,6 +1390,7 @@ export class Game {
       const g = this.ghost;
       this.ghostFrames ??= makeBallFrames((BALL_SKINS.find((k) => k.id === "blue") ?? BALL_SKINS[0]).pal, (BALL_SKINS.find((k) => k.id === "blue") ?? BALL_SKINS[0]).seam);
       const gt = ((g.ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      ctx.globalAlpha = this.onlineMatch?.game === "speed" ? 0.6 : 1;
       ctx.drawImage(
         this.ghostFrames[Math.round((gt / (2 * Math.PI)) * BALL_FRAMES) % BALL_FRAMES],
         Math.round(g.x - BALL_SPRITE_SIZE / 2),
@@ -1379,6 +1398,7 @@ export class Game {
         BALL_SPRITE_SIZE,
         BALL_SPRITE_SIZE,
       );
+      ctx.globalAlpha = 1;
     }
 
     this.fire.drawFront(ctx);

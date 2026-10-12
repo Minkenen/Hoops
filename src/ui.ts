@@ -126,7 +126,7 @@ export class UI {
   private mp = new MultiplayerMock({
     render: () => this.render(),
     isOpen: () => this.view === "online",
-    close: () => this.close(),
+    close: () => this.close(true),
     openMenu: () => this.openMenu(),
     toast: (m, ms) => this.toast(m, ms),
     nickname: () => backend.user()?.nickname ?? "You",
@@ -208,7 +208,7 @@ export class UI {
       ball: (p) => this.game.opponentBall(p),
       peerShotEnded: () => this.game.opponentShotEnd(),
     });
-    this.close();
+    this.close(true);
     this.game.startOnlineMatch(match);
     this.toast(`Online ${match.game === "speed" ? "Speedball" : match.game === "horse" ? "HORSE" : "21"} vs ${match.opponent}`, 2600);
   }
@@ -334,7 +334,7 @@ ${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>`
     if (prev) {
       this.view = prev;
       this.render();
-    } else if (this.view !== "menu" && this.view !== "none") this.close();
+    } else if (this.view !== "menu" && this.view !== "none") this.close(true);
   }
 
   /** Backspace goes back, from anywhere while a window is open (but not while you are typing a license key). */
@@ -469,7 +469,9 @@ ${login}
     this.render();
   }
 
-  close(): void {
+  /** Closes whatever is open. The online window only closes when you ask for it (force): the game must not close it behind your back. */
+  close(force = false): void {
+    if (this.view === "online" && !force) return;
     this.stack = [];
     this.mp.stop();
     this.view = "none";
@@ -1269,7 +1271,7 @@ ${rows}
         }
         break;
       case "close":
-        this.close();
+        this.close(true);
         break;
       case "next":
         if (this.onbSteps()[this.step] === "name") void this.saveNick();
