@@ -20,6 +20,8 @@ export interface Settings {
   courtSkin: CourtSkinId;
   crowd: CrowdStyle;
   arenaFill: boolean;
+  /** The crowd that was showing before it was switched off from the menu, so "Half" and "Full" can bring it back. */
+  crowdBack: CrowdStyle;
   stayOpen: boolean;
   sfxBounce: boolean;
   sfxShoot: boolean;
@@ -47,6 +49,7 @@ const DEFAULTS: Settings = {
   courtSkin: "parquet",
   crowd: "stands",
   arenaFill: false,
+  crowdBack: "stands",
   stayOpen: false,
   sfxBounce: true,
   sfxShoot: true,

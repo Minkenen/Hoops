@@ -444,6 +444,18 @@ ${login}
     this.go("achievements");
   }
 
+  /** Crowd: off, half (the usual height) or filling the screen. */
+  private crowdSeg(): string {
+    const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : "half";
+    return (
+      "<div>" +
+      ([["off", "Off"], ["half", "Half"], ["full", "Full"]] as const)
+        .map(([v, l]) => `<button class="pb${cur === v ? " on" : ""}" data-a="crowdmode" data-v="${v}">${l}</button>`)
+        .join("") +
+      "</div>"
+    );
+  }
+
   private seg(k: keyof Settings, opts: [string | number, string][]): string {
     return (
       "<div>" +
@@ -512,6 +524,7 @@ ${this.row("Footer panel", `<span class="val">${f.clicks}/${f.views}</span>`, ra
 <div class="row" style="padding:2px 0"><span class="lb">Score</span><b class="score">${getScore()}</b></div><div class="hr"></div>
 ${this.update ? `<button class="pb buy full" data-a="update">Update available: v${this.update.version}</button>` : ""}
 ${this.row("Aim line", this.seg("arrow", [["arrow", "Arrow"], ["dots", "Dotted"]]))}
+${this.row("Crowd", this.crowdSeg())}
 ${this.row("Sound", this.tog("sound"))}
 <div class="hr"></div>
 <button class="pb full" data-a="cos">Appearance…</button>
@@ -890,6 +903,21 @@ ${rows}
         if (k === "ballSkin" || k === "courtSkin" || k === "crowd") this.viewTheme = null;
         this.render();
         break;
+      case "crowdmode": {
+        if (v === "off") {
+          if (settings.crowd !== "none") setSetting("crowdBack", settings.crowd);
+          setSetting("crowd", "none");
+        } else {
+          if (settings.crowd === "none") {
+            const back = isItemOwned("crowd", settings.crowdBack) ? settings.crowdBack : themeById(settings.theme).crowd;
+            setSetting("crowd", back === "none" ? "stands" : back);
+          }
+          setSetting("arenaFill", v === "full");
+        }
+        this.viewTheme = null;
+        this.render();
+        break;
+      }
       case "viewtheme":
         this.viewTheme = v as ThemeId;
         if (!isOwned(this.viewTheme)) {
