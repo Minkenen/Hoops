@@ -1,6 +1,6 @@
 [package]
 name = "hoops"
-version = "0.1.3"
+version = "0.1.4"
 description = "A tiny basketball game that lives at the bottom of your screen"
 authors = ["Team Hoops"]
 edition = "2024"
