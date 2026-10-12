@@ -25,8 +25,10 @@ export interface OnlineMatchHost {
   peerRest(nx: number): void;
   /** The other player's ball, in flight. */
   ball(p: OpponentBall): void;
+  /** The other player has started a shot. */
+  peerShotStarted(): void;
   /** The other player's shot is over. */
-  peerShotEnded(): void;
+  peerShotEnded(goal: boolean): void;
 }
 
 /**
@@ -112,6 +114,7 @@ export class OnlineMatch {
   /** Called when the player lets go of the ball. */
   localShot(): void {
     this.inFlight = true;
+    this.conn?.sendPeer("shot");
     this.host.changed();
   }
 
@@ -192,7 +195,10 @@ export class OnlineMatch {
         }, 7000);
       }
       this.host.toast(goal ? `${this.opponent} scored` : `${this.opponent} missed`);
-      this.host.peerShotEnded();
+      this.host.peerShotEnded(goal);
+      this.host.changed();
+    } else if (m.type === "shot" && !this.over) {
+      this.host.peerShotStarted();
       this.host.changed();
     } else if (m.type === "ball" && !this.over && m.payload) {
       const p = m.payload as Record<string, unknown>;

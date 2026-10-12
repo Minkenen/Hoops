@@ -206,7 +206,8 @@ export class UI {
       },
       toast: (m) => this.toast(m, 1800),
       ball: (p) => this.game.opponentBall(p),
-      peerShotEnded: () => this.game.opponentShotEnd(),
+      peerShotStarted: () => this.game.opponentShotStart(),
+      peerShotEnded: (goal) => this.game.opponentShotEnd(goal),
       peerRest: (nx) => this.game.takeBallAt(nx),
     });
     this.close(true);

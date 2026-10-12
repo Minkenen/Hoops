@@ -352,8 +352,18 @@ export class Game {
     return last;
   }
 
+  /** The other player has started a shot. */
+  opponentShotStart(): void {
+    play("shoot", 0.55);
+    this.start();
+  }
+
   /** The other player's shot is over: the ball stays a moment, then the hoop goes. */
-  opponentShotEnd(): void {
+  opponentShotEnd(goal: boolean): void {
+    if (goal) {
+      play("swish", 0.75);
+      play("swoosh2", 0.45);
+    }
     if (this.onlineMatch?.game === "speed") return;
     this.ghostUntil = performance.now() + 600;
     this.hideAt = performance.now() + 1500;
@@ -911,9 +921,12 @@ export class Game {
       if (now > sharedTarget.until || !this.sharedBallAway()) {
         this.sharedBallTarget = null;
       } else {
-        b.x += (sharedTarget.x - b.x) * 0.32;
-        b.y += (sharedTarget.y - b.y) * 0.32;
-        b.ang += (sharedTarget.ang - b.ang) * 0.32;
+        const dx = sharedTarget.x - b.x;
+        const dy = sharedTarget.y - b.y;
+        const k = Math.hypot(dx, dy) > 80 ? 0.9 : 0.62;
+        b.x += dx * k;
+        b.y += dy * k;
+        b.ang += (sharedTarget.ang - b.ang) * k;
       }
     }
     if (this.onlineMatch && !this.onlineMatch.over) {
@@ -924,11 +937,11 @@ export class Game {
           this.ballSentAt = nowMs;
           this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
         }
-      } else if (!b.moving && !this.shot && this.onlineMatch.turn === "me" && nowMs - this.ballSentAt >= 250) {
+      } else if (!b.moving && !this.shot && this.onlineMatch.turn === "me" && nowMs - this.ballSentAt >= 120) {
         // HORSE and 21, your turn, ball resting: the other player sees it where it is (it is the one ball)
         this.ballSentAt = nowMs;
         this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
-      } else if (b.moving && this.shot && nowMs - this.ballSentAt >= 33) {
+      } else if (b.moving && this.shot && nowMs - this.ballSentAt >= 16) {
         // HORSE and 21: send the actual shared ball position, not a separate simulated arc.
         this.ballSentAt = nowMs;
         this.onlineMatch.sendBall({ kind: "free", nx: b.x / this.artW, h: this.floorY - b.y, ang: b.ang });
