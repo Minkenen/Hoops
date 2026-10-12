@@ -72,6 +72,9 @@ const SUB = 4;
 const isMilestone = (n: number): boolean => n === 25 || n === 50 || (n >= 100 && n % 100 === 0);
 const TIME_SCALE = 1.25;
 const SLIDE_GRAB = 1.2;
+const TOUCH_WEB = import.meta.env.VITE_TARGET === "web" && window.matchMedia("(pointer: coarse)").matches;
+/** On a touch screen the ball never rests closer to an edge than this (in art pixels), so there is room to pull it back. */
+const EDGE_ROOM = 38;
 const HOLD_K = 0.16;
 const HOLD_DAMP = 0.8;
 const THROW_CAP = 8;
@@ -603,6 +606,7 @@ export class Game {
 
   private needsLoop(now: number): boolean {
     return (
+      this.nudgeX !== null ||
       this.ball.moving ||
       !!this.drag ||
       !!this.hoop ||
@@ -652,6 +656,21 @@ export class Game {
       b.x = clamp(b.x + b.vx, BALL_R, this.artW - BALL_R);
       b.y = clamp(b.y + b.vy, BALL_R, this.floorY - BALL_R);
       b.ang += b.vx / BALL_R;
+    }
+    if (this.nudgeX !== null) {
+      // A finger needs room to pull the ball back: ease a ball that stopped by an edge a little inwards.
+      if (dr || b.moving) {
+        this.nudgeX = null;
+      } else {
+        const dx = this.nudgeX - b.x;
+        const step = Math.abs(dx) < 0.4 ? dx : dx * 0.12;
+        b.x += step;
+        b.ang += step / BALL_R;
+        if (Math.abs(this.nudgeX - b.x) < 0.01) {
+          this.nudgeX = null;
+          this.syncHit();
+        }
+      }
     }
     if (b.moving) {
       for (let i = 0; i < SUB && this.active; i++) this.sub(0.25 * TIME_SCALE);
@@ -717,8 +736,15 @@ export class Game {
     }
   }
 
+  private nudgeX: number | null = null;
+
   private rest(now: number): void {
     const b = this.ball;
+    if (TOUCH_WEB) {
+      const lo = EDGE_ROOM;
+      const hi = this.artW - EDGE_ROOM;
+      if (b.x < lo || b.x > hi) this.nudgeX = clamp(b.x, lo, hi);
+    }
     this.slowSlide = false;
     b.vx = 0;
     b.vy = 0;
