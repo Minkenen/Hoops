@@ -127,3 +127,4 @@
 #ui .login{position:relative;margin:12px 4px 4px;padding:10px 12px}
 #ui .pb.gold{background:#ffc83a;color:#1c1c22}
 #ui .lbsign{display:flex !important;align-items:center;gap:8px}
+.ob .lk{color:#ff9a4a;text-decoration:underline;pointer-events:auto}

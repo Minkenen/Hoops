@@ -1,6 +1,7 @@
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { type Sfx, play } from "./audio";
 import type { Game } from "./game";
+const WEB = import.meta.env.VITE_TARGET === "web";
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
@@ -769,6 +770,7 @@ ${rows}
 
   /** The steps of the first-run guide. The leaderboard steps are only there when there is a leaderboard; naming yourself only once you are signed in. */
   private onbSteps(): string[] {
+    if (WEB) return ["welcome", "overlay", "board", ...(backend.user() ? ["name"] : []), "done"];
     const lb = LEADERBOARD_ON && backend.available;
     return ["welcome", "autostart", "fullscreen", ...(lb ? ["board", ...(backend.user() ? ["name"] : [])] : []), "done"];
   }
@@ -781,7 +783,9 @@ ${rows}
     const user = backend.user();
     let body = "";
     if (id === "welcome") {
-      body = `<h3>Welcome to Hoops</h3><p>A tiny basketball that lives at the bottom of your screen.</p><ul class="how"><li>Drag the ball and let go to shoot</li><li>Sink it for points and confetti</li><li>Hold Shift and drag to move the ball</li><li>Right-click the ball for the menu</li></ul>`;
+      body = `<h3>Welcome to Hoops</h3><p>${WEB ? "A tiny pixel-art basketball game." : "A tiny basketball that lives at the bottom of your screen."}</p><ul class="how"><li>Drag the ball and let go to shoot</li><li>Sink it for points and confetti</li><li>Hold Shift and drag to move the ball</li><li>Right-click the ball for the menu</li></ul>`;
+    } else if (id === "overlay") {
+      body = `<h3>Desktop app</h3><p>The overlay effect, where the ball and courts live on top of your other programs and your whole screen, only works in the downloaded version of Hoops.</p><p><a class="lk" href="../#download" target="_blank" rel="noopener">Download Hoops for Mac or Windows</a></p>`;
     } else if (id === "autostart") {
       body = `<h3>Start automatically?</h3><p>Hoops starts quietly in the background when you log in.</p><div class="tiles">${this.tile("autostart", 1, "Yes, start it for me", "Ready right after login")}${this.tile("autostart", 0, "No, I will start it", "Open Hoops whenever you want")}</div>`;
     } else if (id === "fullscreen") {
@@ -789,7 +793,7 @@ ${rows}
     } else if (id === "board") {
       body = user
         ? `<h3>You are on the board</h3><p>Signed in as <b>${user.nickname}</b>. Next you can pick your own name.</p>`
-        : `<h3>Join the leaderboard?</h3><p>Sign in with Google to get a rank and see how you do against other players. It is optional: Hoops works fully without it, and you can do this later from the menu.</p>
+        : `<h3>Join the leaderboard?</h3><p>Sign in with Google to save your points and get a rank against other players. It is optional: Hoops works fully without it, and you can do this later from the menu.</p>
 <button class="pb full gold lbsign" data-a="obsign"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".11111.", "1111111", "11.....", "11.1111", "11...11", "1111111", ".11111."], ["#1c1c22"], 2)}${this.lbSigning ? "Signing in…" : "Sign in with Google"}</button>${this.lbError ? `<div class="err">${this.lbError}</div>` : ""}`;
     } else if (id === "name") {
       const cur = this.nickDraft || user?.nickname || "";
