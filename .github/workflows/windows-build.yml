@@ -34,6 +34,10 @@ jobs:
 
       - name: Build Windows installer
         run: npm run tauri build
+        env:
+          # Public values (no secrets): they switch the leaderboard on and say where the server is.
+          VITE_LEADERBOARD: "1"
+          VITE_LEADERBOARD_URL: https://hoops-leaderboard.hoopsgame.workers.dev
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
