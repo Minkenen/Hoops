@@ -150,3 +150,49 @@
 #ui .st-fade{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
 #ui .st-fade canvas{width:80px;height:auto;image-rendering:pixelated}
 @media(max-width:560px){#ui .st{flex-direction:column}#ui .st-nav{width:auto;flex-direction:row;overflow:auto}#ui .st-nav button{width:auto}#ui .st-tiles.four{flex-wrap:wrap}#ui .st-tiles.four .st-tile{flex:1 1 40%}}
+
+/* online multiplayer (mock) */
+#ui .mp-modes{display:flex;gap:6px;margin:4px 0 6px}
+#ui .mp-mode{flex:1;min-width:0;background:var(--btn);padding:8px 4px;text-align:center;
+  box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-mode:hover{background:var(--trk)}#ui .mp-mode.on{background:var(--acc);color:#1c1c22}
+#ui .mp-mode .ic{height:26px;display:flex;align-items:center;justify-content:center;gap:3px;font-size:20px;font-weight:500;line-height:1}
+#ui .mp-mode b{display:block;font-weight:500;margin-top:2px}#ui .mp-mode small{display:block;font-size:11px;opacity:.85}
+#ui .mp-rule{font-size:13px;margin:6px 2px;padding:8px 10px;background:var(--btn);
+  box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-big{display:flex;align-items:center;gap:12px;padding:12px;margin:6px 2px;width:calc(100% - 4px);text-align:left}
+#ui .mp-big b{display:block;font-weight:500;font-size:16px}#ui .mp-big small{color:var(--mut);font-size:12px}
+#ui .mp-big.pri small{color:#3a2a1c}
+#ui .mp canvas{image-rendering:pixelated;flex:none}
+#ui .mp-note{font-size:12px;color:var(--mut);margin:8px 2px 0;text-align:center}
+#ui .mp-c{text-align:center}
+#ui .mp-pill{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;font-size:12px;background:var(--btn);margin:2px 4px;
+  box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-pill i{width:8px;height:8px;display:inline-block;background:#3ab36a}
+#ui .mp-pill.warn i{background:#ffc83a}#ui .mp-pill.bad i{background:#e8392b}
+#ui .mp-code{display:flex;gap:6px;justify-content:center;margin:10px 0}
+#ui .mp-code span{width:34px;height:42px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:500;background:var(--btn);
+  box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-code span.d{background:none;box-shadow:none;width:14px}
+#ui .mp-in{font-family:inherit;font-size:20px;letter-spacing:4px;text-transform:uppercase;text-align:center;width:calc(100% - 4px);margin:2px;padding:8px;
+  background:var(--btn);color:var(--text);border:0;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-search{display:flex;justify-content:center;gap:10px;height:56px;align-items:flex-end;margin:10px 0}
+#ui .mp-search canvas{animation:mphop .7s ease-in-out infinite}
+#ui .mp-search canvas:nth-child(2){animation-delay:.12s}#ui .mp-search canvas:nth-child(3){animation-delay:.24s}
+@keyframes mphop{0%,100%{transform:translateY(0)}50%{transform:translateY(-22px)}}
+#ui .mp-vs{display:flex;align-items:stretch;gap:8px;margin:8px 0}
+#ui .mp-pl{flex:1;min-width:0;padding:10px 6px;text-align:center;background:var(--btn);
+  box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-pl canvas{display:block;margin:0 auto 6px}#ui .mp-pl b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis}
+#ui .mp-pl.ready{background:#2f4a36}#ui .mp-vsx{align-self:center;font-weight:500;color:var(--acc)}
+#ui .mp-score{display:flex;justify-content:center;gap:4px;margin-top:6px;font-weight:500}
+#ui .mp-score .l{width:20px;height:24px;display:inline-flex;align-items:center;justify-content:center;background:var(--panel);opacity:.5;
+  box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-turn{font-size:12px;color:var(--acc);margin-top:4px;min-height:16px}
+#ui .mp-seg{display:flex;flex-wrap:wrap}
+#ui .mp-cd{font-size:56px;text-align:center;color:var(--acc);font-weight:500;line-height:1;margin:14px 0}
+#ui .mp-banner{margin:6px 2px;padding:8px 10px;font-size:13px;background:#4a3f1a;
+  box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-banner.bad{background:#4a1f1f}
+#ui .mp-sim{margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:2px}
+#ui .pb[disabled]{opacity:.6;cursor:default}

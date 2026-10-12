@@ -5,6 +5,7 @@ const WEB = import.meta.env.VITE_TARGET === "web";
 const TOUCH = WEB && window.matchMedia("(pointer: coarse)").matches;
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
+import { MULTIPLAYER_MOCK, MultiplayerMock } from "./multiplayerMock";
 import { drawSettingsArt } from "./settingsArt";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
@@ -16,7 +17,7 @@ import type { UpdateInfo } from "./update";
 import { backend, cleanNickname, LEADERBOARD_ON, type LbBoard, type LbEntry, type LbProviderId, type LbTab } from "./leaderboard";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
-type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "leaderboard" | "onboarding";
+type View = "none" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "leaderboard" | "onboarding" | "online";
 type DonateVariant = "button" | "footer";
 
 const DONATE_URL = "https://ko-fi.com/hoopsgame";
@@ -118,6 +119,15 @@ export class UI {
   private lbTab: LbTab = "global";
   private lbBoards: Partial<Record<LbTab, LbBoard>> = {};
   private lbBusy = false;
+  /** Online multiplayer, mocked UI only (VITE_MULTIPLAYER_MOCK=1). */
+  private mp = new MultiplayerMock({
+    render: () => this.render(),
+    isOpen: () => this.view === "online",
+    close: () => this.close(),
+    openMenu: () => this.openMenu(),
+    toast: (m, ms) => this.toast(m, ms),
+    nickname: () => backend.user()?.nickname ?? "You",
+  });
   private setTab: "game" | "sound" | "look" | "system" = "game";
   private lbSigning = false;
   private lbDelete = false;
@@ -137,6 +147,7 @@ export class UI {
       const el = e.target as HTMLElement;
       if (e.key === "Enter" && el.id === "lic") void this.activate();
       else if (e.key === "Enter" && el.id === "nick") void this.saveNick();
+      else if (e.key === "Enter" && el.id === "mpcode") this.mp.click("join");
       else if (e.key === "Backspace" && el.tagName !== "INPUT" && el.tagName !== "TEXTAREA" && this.view !== "none" && this.view !== "menu") {
         e.preventDefault();
         this.back();
@@ -244,6 +255,7 @@ export class UI {
       this.render();
       return;
     }
+    if (this.view === "online" && this.mp.back()) return;
     const prev = this.stack.pop();
     if (prev) {
       this.view = prev;
@@ -253,7 +265,7 @@ export class UI {
 
   /** Backspace goes back, from anywhere while a window is open (but not while you are typing a license key). */
   private syncBackKey(): void {
-    const want = (this.view === "settings" || this.view === "sound" || this.view === "cosmetics" || this.view === "achievements" || this.view === "leaderboard") && !this.licenseStep;
+    const want = (this.view === "settings" || this.view === "sound" || this.view === "cosmetics" || this.view === "achievements" || this.view === "leaderboard" || (this.view === "online" && this.mp.screen !== "join" && this.mp.screen !== "notfound")) && !this.licenseStep;
     if (want === this.backKeyOn) return;
     this.backKeyOn = want;
     if (want) {
@@ -384,6 +396,7 @@ ${login}
 
   close(): void {
     this.stack = [];
+    this.mp.stop();
     this.view = "none";
     this.resetDialog = false;
     this.closePremium();
@@ -531,6 +544,7 @@ ${this.row("Sound", this.tog("sound"))}
 <div class="hr"></div>
 <button class="pb full" data-a="cos">Appearance…</button>
 <button class="pb full" data-a="ach">Achievements…</button>
+${MULTIPLAYER_MOCK ? `<button class="pb pri full" data-a="online">Play online</button>` : ""}
 ${LEADERBOARD_ON ? `<button class="pb full lbl" data-a="lb"><span>Leaderboard…</span>${this.lbBoards.global?.you ? `<small>#${this.lbBoards.global.you.rank}</small>` : ""}</button>` : ""}
 <button class="pb full" data-a="inst">Settings…</button>
 ${this.donateHtml()}
@@ -874,8 +888,9 @@ ${rows}
     else if (this.view === "sound") html = this.soundHtml();
     else if (this.view === "achievements") html = this.achievementsHtml();
     else if (this.view === "leaderboard") html = this.leaderboardHtml();
+    else if (this.view === "online") html = this.mp.html();
     else if (this.view === "onboarding") html = this.onboardingHtml();
-    if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements" || this.view === "leaderboard") {
+    if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements" || this.view === "leaderboard" || this.view === "online") {
       html = `<div class="catch" data-hit data-a="dismiss"></div>${html}`;
     }
     if (this.resetDialog) html += this.resetDialogHtml();
@@ -890,6 +905,11 @@ ${rows}
 
   private onInput(e: Event): void {
     const t = e.target as HTMLInputElement;
+    if (t.id === "mpcode") {
+      this.mp.setJoinCode(t.value);
+      t.value = this.mp.joinCode;
+      return;
+    }
     if (t.id === "lic") {
       this.licenseDraft = t.value;
       return;
@@ -913,7 +933,15 @@ ${rows}
     const k = t.dataset.k as keyof Settings | undefined;
     const v = t.dataset.v;
     if (a !== "dismiss") play("ui");
+    if (a?.startsWith("mp:")) {
+      this.mp.click(a.slice(3), v);
+      return;
+    }
     switch (a) {
+      case "online":
+        this.mp.open();
+        this.go("online");
+        break;
       case "dismiss":
         if (this.resetDialog || this.premiumDialog) {
           this.resetDialog = false;

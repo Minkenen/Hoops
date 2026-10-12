@@ -113,6 +113,20 @@ function fade(cv: HTMLCanvasElement): void {
   c.globalAlpha = 1;
 }
 
+const MP_BALLS: Record<"you" | "opp" | "gold", [string, string]> = { you: ["#e8731f", "#ff9a45"], opp: ["#3a8bd9", "#7ab8f0"], gold: ["#ffc83a", "#fff0a0"] };
+
+/** A small pixel ball in a player colour (the avatars in the online screens). */
+function mpBall(cv: HTMLCanvasElement, kind: "you" | "opp" | "gold"): void {
+  const c = cv.getContext("2d")!;
+  c.imageSmoothingEnabled = false;
+  c.clearRect(0, 0, cv.width, cv.height);
+  const rows = ["..1111..", ".122221.", "12233221", "12222221", "12222221", "12222221", ".122221.", "..1111.."];
+  const [a, b] = MP_BALLS[kind];
+  const col: Record<string, string> = { "1": "#0d0e12", "2": a, "3": b };
+  const k = cv.width / 8;
+  rows.forEach((r, y) => [...r].forEach((ch, x) => ch !== "." && ((c.fillStyle = col[ch]), c.fillRect(x * k, y * k, k, k))));
+}
+
 /** Draws every picture in the window that asks for one (data-art="crowd-row", "fire-pop", "aim-dots", "fade", ...). */
 export function drawSettingsArt(host: HTMLElement): void {
   host.querySelectorAll<HTMLCanvasElement>("canvas[data-art]").forEach((cv) => {
@@ -121,5 +135,6 @@ export function drawSettingsArt(host: HTMLElement): void {
     else if (kind === "fire") fire(cv, v as "pop" | "shatter");
     else if (kind === "aim") aim(cv, v as "arrow" | "dots");
     else if (kind === "fade") fade(cv);
+    else if (kind === "ball") mpBall(cv, v as "you" | "opp" | "gold");
   });
 }
