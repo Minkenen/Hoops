@@ -128,3 +128,25 @@
 #ui .pb.gold{background:#ffc83a;color:#1c1c22}
 #ui .lbsign{display:flex !important;align-items:center;gap:8px}
 .ob .lk{color:#ff9a4a;text-decoration:underline;pointer-events:auto}
+
+#ui .st{display:flex;height:min(440px,calc(94vh - 40px))}
+#ui .st-nav{width:136px;flex:none;padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--btn)}
+#ui .st-nav button{display:flex;align-items:center;gap:8px;padding:8px;text-align:left;width:100%;font-weight:500}
+#ui .st-nav button i{width:12px;height:12px;background:var(--mut);display:inline-block}
+#ui .st-nav button.on{background:var(--acc);color:#1c1c22}
+#ui .st-nav button.on i{background:#1c1c22}
+#ui .st-nav button:not(.on):hover{background:var(--trk)}
+#ui .st-pane{flex:1;min-width:0;padding:4px 16px 14px;overflow:auto}
+#ui .st-tiles{display:flex;gap:8px;margin:8px 0}
+#ui .st-tiles.two .st-tile{max-width:130px}
+#ui .st-tile{flex:1;min-width:0;background:var(--btn);padding:6px;text-align:center;
+  box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .st-tile:hover{background:var(--trk)}
+#ui .st-tile.on{background:var(--acc);color:#1c1c22}
+#ui .st-tile canvas{display:block;margin:0 auto 4px;image-rendering:pixelated;width:100%;height:auto}
+#ui .st-tile canvas[width="34"]{width:34px}
+#ui .st-tile b{display:block;font-weight:500}
+#ui .st-tile small{display:block;font-size:12px;opacity:.8}
+#ui .st-fade{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+#ui .st-fade canvas{width:80px;height:auto;image-rendering:pixelated}
+@media(max-width:560px){#ui .st{flex-direction:column}#ui .st-nav{width:auto;flex-direction:row;overflow:auto}#ui .st-nav button{width:auto}#ui .st-tiles.four{flex-wrap:wrap}#ui .st-tiles.four .st-tile{flex:1 1 40%}}

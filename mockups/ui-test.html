@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>ui test</title>
+<style>html,body{margin:0;height:100%;background:#23262d}#ui{position:fixed;inset:0}</style>
+<div id="ui"></div>
+<script type="module">
+import "@fontsource/pixelify-sans/400.css";import "@fontsource/pixelify-sans/500.css";
+import "../src/ui.css";
+import { UI } from "../src/ui";
+const ui = new UI(document.getElementById('ui'));
+ui.attach({ ballCss:()=>({x:560,y:400,r:30}), viewport:()=>({w:innerWidth,h:innerHeight}), floorCss:()=>40, previewAchievement(){}, previewFire(){}, previewMilestone(){}, syncHit(){}, applyCosmetics(){} });
+const v=new URLSearchParams(location.search).get('v')||'menu';
+if(v==='ob')ui.openOnboarding(); else if(v==='menu')ui.openMenu(); else if(v==='set'){ui.openMenu(); ui.openSettings();} else {ui.openMenu(); ui.openLeaderboard();}
+window.ui=ui; window.done=true;
+</script>

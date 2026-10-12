@@ -5,6 +5,7 @@ const WEB = import.meta.env.VITE_TARGET === "web";
 const TOUCH = WEB && window.matchMedia("(pointer: coarse)").matches;
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
+import { drawSettingsArt } from "./settingsArt";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
 import { Preview, setPreviewOverride } from "./preview";
@@ -117,6 +118,7 @@ export class UI {
   private lbTab: LbTab = "global";
   private lbBoards: Partial<Record<LbTab, LbBoard>> = {};
   private lbBusy = false;
+  private setTab: "game" | "sound" | "look" | "system" = "game";
   private lbSigning = false;
   private lbDelete = false;
   private lbError = "";
@@ -535,34 +537,56 @@ ${this.donateHtml()}
 ${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}</div>`;
   }
 
+  /** A picture tile for a choice: a small drawing above its name. */
+  private pic(k: string, v: string | number, art: string, name: string, hint = "", on = settings[k as keyof Settings] === v, action = "set"): string {
+    const size = art.startsWith("crowd") ? 'width="64" height="40"' : 'width="34" height="34"';
+    return `<button class="st-tile${on ? " on" : ""}" data-a="${action}" data-k="${k}" data-v="${v}" aria-pressed="${on}"><canvas data-art="${art}" ${size}></canvas><b>${name}</b>${hint ? `<small>${hint}</small>` : ""}</button>`;
+  }
+
   private settingsHtml(): string {
-    return `<div class="px win" data-hit style="width:min(470px,92vw)">
-<div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Settings</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
-<div class="wb">
-<div class="h4">Game</div>
-${this.row("Keep the court open", this.tog("stayOpen"), "Click outside the ball or press Esc to close")}
-${this.row("Ball on fire", this.seg("fireStyle", [["pop", "Fireball"], ["shatter", "Shatter"]]), "How the ball lights up after three goals in a row")}
-${this.row("Line while aiming", this.seg("arrow", [["arrow", "Arrow"], ["dots", "Dotted"]]))}
-${this.row("Confetti", this.sld("confetti", 0, 300, 10))}
+    const tabs: [string, string][] = [["game", "Game"], ["sound", "Sound"], ["look", "Look"], ["system", "System"]];
+    const nav = tabs.map(([id, name]) => `<button class="${this.setTab === id ? "on" : ""}" data-a="settab" data-v="${id}"><i></i>${name}</button>`).join("");
+    const t = this.setTab;
+    let pane = "";
+    if (t === "game") {
+      pane = `<div class="h4">Shooting</div>
+<div class="st-set"><div class="lb">Line while aiming</div><div class="hn">What you see while you pull the ball back</div>
+<div class="st-tiles two">${this.pic("arrow", "arrow", "aim-arrow", "Arrow")}${this.pic("arrow", "dots", "aim-dots", "Dotted")}</div></div>
+<div class="h4">After three in a row</div>
+<div class="st-set"><div class="lb">Ball on fire</div><div class="hn">How the ball lights up</div>
+<div class="st-tiles two">${this.pic("fireStyle", "pop", "fire-pop", "Fireball")}${this.pic("fireStyle", "shatter", "fire-shatter", "Shatter")}</div></div>
+<div class="h4">Extras</div>
+${this.row("Confetti", this.sld("confetti", 0, 300, 10), "How much when you score")}
 ${this.row("Score bubble", this.sld("bubble", 1, 5, 0.5), "How long it stays")}
-${this.row("Sound", this.tog("sound"))}
-${this.row("Volume", this.sld("volume", 0, 1, 0.05))}
+${this.row("Keep the court open", this.tog("stayOpen"), "Click outside the ball or press Esc to close")}
+<button class="pb full" data-a="firetest" style="margin-top:6px">Light or put out the ball</button>
+${import.meta.env.DEV ? `<button class="pb full" data-a="resetpremium">Lock premium again (dev)</button>` : ""}`;
+    } else if (t === "sound") {
+      pane = `${this.row("Sound", this.tog("sound"))}
+${this.row("Volume", this.sld("volume", 0, 1, 0.05), "Master level")}
 <button class="pb full" data-a="snd" style="margin-top:6px">Advanced sound…</button>
+<div class="h4">Try it</div>
 <button class="pb full" data-a="mile">Play a milestone</button>
-<button class="pb full" data-a="achtest">Play an achievement</button>
-<button class="pb full" data-a="firetest">Light or put out the ball</button>
-${import.meta.env.DEV ? `<button class="pb full" data-a="resetpremium">Lock premium again (dev)</button>` : ""}
-<div class="h4">Appearance</div>
-${this.row("Ball see-through at rest", this.sld("ballFade", 0, 0.8, 0.05), "So you can see what is behind it")}
+<button class="pb full" data-a="achtest">Play an achievement</button>`;
+    } else if (t === "look") {
+      const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
+      const crowds = ([["off", "Off", "No crowd"], ["row", "Row", "Front row only"], ["half", "Half", "Usual height"], ["full", "Full", "Whole screen"]] as const)
+        .map(([id, name, hint]) => this.pic("crowd", id, `crowd-${id}`, name, hint, cur === id, "crowdmode").replace(`data-k="crowd" `, ""))
+        .join("");
+      pane = `<div class="h4">Crowd</div><div class="st-tiles four">${crowds}</div>
 ${this.row("Basketball court", this.tog("court"), "Shown while aiming")}
-<button class="pb full" data-a="cos" style="margin-top:6px">Edit appearance…</button>
-<div class="h4">System</div>
-${this.row("Start automatically", this.tog("autostart"), "When your computer starts")}
-${this.row("Over fullscreen apps", this.tog("fullscreen"), "Games and video")}
-${this.row("Menu shortcut", SHORTCUT)}
+<div class="row"><div><div class="lb">Ball see-through at rest</div><div class="hn">So you can see what is behind it</div></div><div class="st-fade"><canvas data-art="fade" width="40" height="22"></canvas>${this.sld("ballFade", 0, 0.8, 0.05)}</div></div>
+<button class="pb full" data-a="cos" style="margin-top:6px">Edit appearance…</button>`;
+    } else {
+      pane = `${WEB ? "" : this.row("Start automatically", this.tog("autostart"), "When your computer starts")}
+${WEB ? "" : this.row("Over fullscreen apps", this.tog("fullscreen"), "Games and video")}
+${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
 ${this.donateStatsHtml()}
-<div class="acts"><button class="pb" data-a="reset">Reset score</button>${WEB ? "" : '<button class="pb danger" data-a="quit">Quit Hoops</button>'}</div>
-</div></div>`;
+<div class="acts"><button class="pb" data-a="reset">Reset score</button>${WEB ? "" : '<button class="pb danger" data-a="quit">Quit Hoops</button>'}</div>`;
+    }
+    return `<div class="px win" data-hit style="width:min(680px,94vw)">
+<div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Settings</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
+<div class="st"><div class="st-nav">${nav}</div><div class="st-pane">${pane}</div></div></div>`;
   }
 
   private closePremium(): void {
@@ -860,6 +884,7 @@ ${rows}
     this.host.innerHTML = html;
     const pv = this.host.querySelector<HTMLCanvasElement>("#prev");
     if (pv) new Preview(pv);
+    drawSettingsArt(this.host);
     this.game?.syncHit();
   }
 
@@ -901,6 +926,10 @@ ${rows}
       case "set":
         if (k) setSetting(k, (Number.isNaN(Number(v)) ? v : Number(v)) as never);
         if (k === "ballSkin" || k === "courtSkin" || k === "crowd") this.viewTheme = null;
+        this.render();
+        break;
+      case "settab":
+        this.setTab = v as typeof this.setTab;
         this.render();
         break;
       case "crowdmode": {
