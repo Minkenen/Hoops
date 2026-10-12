@@ -1032,10 +1032,10 @@ export class Game {
     next();
   }
 
-  /** The fire on the ball goes out, with smoke and a hiss. */
-  private putOutFire(x: number, y: number): void {
+  /** The fire on the ball goes out. A miss adds the hiss; hiding the scene stays quiet. */
+  private putOutFire(x: number, y: number, sound = false): void {
     this.fire.extinguish(x, y);
-    play("extinguish");
+    if (sound) play("extinguish");
   }
 
   /** The shot missed: the streak ends and the fire is put out at once. */
@@ -1048,7 +1048,7 @@ export class Game {
     if (this.burning) {
       this.burning = false;
       this.fireOn = false;
-      this.putOutFire(b.x, b.y);
+      this.putOutFire(b.x, b.y, true);
     }
   }
 
@@ -1169,7 +1169,7 @@ export class Game {
     }
     const fdt = Math.min(0.033, (now - (this.fireAt || now)) / 1000);
     this.fireAt = now;
-    // The fire goes out with the scene (smoke) and catches again when you grab the ball and the scene returns.
+    // The fire goes out quietly with the scene and catches again when you grab the ball and the scene returns.
     const sceneUp = !!this.hoop && this.hoop.phase !== "out";
     if (this.burning && sceneUp !== this.sceneWasUp) {
       if (sceneUp) {
