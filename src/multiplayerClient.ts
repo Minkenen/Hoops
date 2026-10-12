@@ -30,12 +30,17 @@ export interface MpLobbyPlayer {
 
 export class MultiplayerConnection {
   private ws: WebSocket | null = null;
+  private pc: RTCPeerConnection | null = null;
+  private dc: RTCDataChannel | null = null;
+  private role: "offerer" | "answerer" | null = null;
 
   constructor(
     private serverUrl: string,
     private onMessage: (m: MpServerMessage) => void,
     private onClose: () => void,
     private onError: (message: string) => void,
+    private onDirectOpen: () => void = () => {},
+    private onDirectMessage: (data: unknown) => void = () => {},
   ) {}
 
   close(): void {
@@ -46,11 +51,17 @@ export class MultiplayerConnection {
     } catch {
       /* ignore */
     }
+    this.closePeer();
   }
 
   send(type: string, payload: Record<string, unknown> = {}): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     this.ws.send(JSON.stringify({ type, payload }));
+  }
+
+  sendPeer(type: string, payload: Record<string, unknown> = {}): void {
+    if (!this.dc || this.dc.readyState !== "open") return;
+    this.dc.send(JSON.stringify({ type, payload }));
   }
 
   async createRoom(): Promise<{ code: string; expiresIn: number }> {
@@ -80,7 +91,8 @@ export class MultiplayerConnection {
     this.ws = ws;
     ws.onmessage = (event) => {
       try {
-        this.onMessage(JSON.parse(String(event.data)) as MpServerMessage);
+        const msg = JSON.parse(String(event.data)) as MpServerMessage;
+        void this.handleMessage(msg);
       } catch {
         this.onError("That multiplayer message was not understood.");
       }
@@ -89,6 +101,89 @@ export class MultiplayerConnection {
       if (this.ws === ws) this.onClose();
     };
     ws.onerror = () => this.onError("Could not connect to multiplayer.");
+  }
+
+  private async handleMessage(msg: MpServerMessage): Promise<void> {
+    try {
+      if (msg.type === "peer_found") {
+        this.onMessage(msg);
+        await this.startPeer(msg.payload.role);
+        return;
+      }
+      if (msg.type === "signal") {
+        await this.handleSignal(msg.payload.kind, msg.payload.data);
+        return;
+      }
+      this.onMessage(msg);
+    } catch (e) {
+      this.onError(e instanceof Error ? e.message : "Could not connect directly to the other player.");
+    }
+  }
+
+  private async startPeer(role: "offerer" | "answerer"): Promise<void> {
+    this.closePeer();
+    this.role = role;
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    this.pc = pc;
+    pc.onicecandidate = (event) => {
+      if (event.candidate) this.send("signal", { kind: "ice", data: event.candidate.toJSON() });
+    };
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "failed") this.onError("Could not connect directly to the other player.");
+    };
+    pc.ondatachannel = (event) => this.setupDataChannel(event.channel);
+    if (role === "offerer") {
+      this.setupDataChannel(pc.createDataChannel("game", { ordered: true }));
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      this.send("signal", { kind: "offer", data: offer });
+    }
+  }
+
+  private setupDataChannel(channel: RTCDataChannel): void {
+    this.dc = channel;
+    channel.onopen = () => this.onDirectOpen();
+    channel.onmessage = (event) => {
+      try {
+        this.onDirectMessage(JSON.parse(String(event.data)));
+      } catch {
+        /* A bad game packet should not break the menu. */
+      }
+    };
+  }
+
+  private async handleSignal(kind: MpSignalKind, data: unknown): Promise<void> {
+    if (!this.pc) await this.startPeer(this.role || "answerer");
+    const pc = this.pc;
+    if (!pc) return;
+    if (kind === "offer") {
+      await pc.setRemoteDescription(data as RTCSessionDescriptionInit);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      this.send("signal", { kind: "answer", data: answer });
+    } else if (kind === "answer") {
+      await pc.setRemoteDescription(data as RTCSessionDescriptionInit);
+    } else if (kind === "ice") {
+      await pc.addIceCandidate(data as RTCIceCandidateInit);
+    }
+  }
+
+  private closePeer(): void {
+    const dc = this.dc;
+    const pc = this.pc;
+    this.dc = null;
+    this.pc = null;
+    this.role = null;
+    try {
+      dc?.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      pc?.close();
+    } catch {
+      /* ignore */
+    }
   }
 
   private async token(): Promise<string> {
@@ -114,7 +209,9 @@ export function createMultiplayerConnection(
   onMessage: (m: MpServerMessage) => void,
   onClose: () => void,
   onError: (message: string) => void,
+  onDirectOpen?: () => void,
+  onDirectMessage?: (data: unknown) => void,
 ): MultiplayerConnection | null {
   const url = serverUrl.trim();
-  return url ? new MultiplayerConnection(url, onMessage, onClose, onError) : null;
+  return url ? new MultiplayerConnection(url, onMessage, onClose, onError, onDirectOpen, onDirectMessage) : null;
 }

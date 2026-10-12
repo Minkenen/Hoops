@@ -45,6 +45,7 @@ export class MultiplayerMock {
   me = false;
   opp = false;
   connected = false;
+  direct = false;
   error = "";
   peerName = "Mia";
   private players: MpLobbyPlayer[] = [];
@@ -54,6 +55,8 @@ export class MultiplayerMock {
     (m) => this.onServer(m),
     () => this.onServerClose(),
     (m) => this.fail(m),
+    () => this.onDirectOpen(),
+    (m) => this.onDirectMessage(m),
   );
 
   constructor(private host: MpHost) {}
@@ -64,12 +67,24 @@ export class MultiplayerMock {
     this.screen = "start";
     this.joinCode = "";
     this.me = this.opp = false;
+    this.direct = false;
   }
 
   stop(): void {
     this.timers.forEach((t) => window.clearTimeout(t));
     this.timers = [];
     this.conn?.close();
+  }
+
+  private connect(): MultiplayerConnection | null {
+    return createMultiplayerConnection(
+      SERVER_URL,
+      (m) => this.onServer(m),
+      () => this.onServerClose(),
+      (m) => this.fail(m),
+      () => this.onDirectOpen(),
+      (m) => this.onDirectMessage(m),
+    );
   }
 
   private later(ms: number, f: () => void): void {
@@ -99,6 +114,7 @@ export class MultiplayerMock {
         return true;
       default:
         this.me = this.opp = false;
+        this.direct = false;
         this.go("start");
         return true;
     }
@@ -170,6 +186,7 @@ export class MultiplayerMock {
       case "leave":
         this.stop();
         this.me = this.opp = false;
+        this.direct = false;
         this.go("start");
         break;
     }
@@ -180,9 +197,10 @@ export class MultiplayerMock {
     this.elapsed = 0;
     this.screen = "quick";
     this.connected = false;
+    this.direct = false;
     this.players = [];
     this.host.render();
-    this.conn = createMultiplayerConnection(SERVER_URL, (m) => this.onServer(m), () => this.onServerClose(), (m) => this.fail(m));
+    this.conn = this.connect();
     void this.conn?.connectQuick(this.game).catch((e) => this.fail(e instanceof Error ? e.message : "Could not start quick match."));
     const tick = (): void => {
       this.elapsed++;
@@ -194,7 +212,8 @@ export class MultiplayerMock {
 
   private createRoom(): void {
     this.stop();
-    this.conn = createMultiplayerConnection(SERVER_URL, (m) => this.onServer(m), () => this.onServerClose(), (m) => this.fail(m));
+    this.direct = false;
+    this.conn = this.connect();
     void (async () => {
       try {
         const room = await this.mustConn().createRoom();
@@ -215,8 +234,9 @@ export class MultiplayerMock {
     }
     this.stop();
     this.screen = "quick";
+    this.direct = false;
     this.host.render();
-    this.conn = createMultiplayerConnection(SERVER_URL, (m) => this.onServer(m), () => this.onServerClose(), (m) => this.fail(m));
+    this.conn = this.connect();
     void this.conn?.connectRoom(this.joinCode).catch((e) => this.fail(e instanceof Error ? e.message : "Could not join room."));
   }
 
@@ -310,6 +330,17 @@ export class MultiplayerMock {
     }
   }
 
+  private onDirectOpen(): void {
+    this.direct = true;
+    this.conn?.sendPeer("hello", { game: this.game, court: this.court });
+    this.host.render();
+  }
+
+  private onDirectMessage(data: unknown): void {
+    if (typeof data !== "object" || data === null) return;
+    this.direct = true;
+  }
+
   private tickCountdownTo(startsAt: number): void {
     this.stopTimersOnly();
     const tick = (): void => {
@@ -319,7 +350,7 @@ export class MultiplayerMock {
       if (left > 0) this.later(250, tick);
       else {
         this.host.close();
-        this.host.toast("Online match is ready. Gameplay sync is the next step.", 2600);
+        this.host.toast(this.direct ? "Online match is ready. Direct link is open." : "Online match is ready. Direct link is still connecting.", 2600);
       }
     };
     tick();
@@ -386,7 +417,7 @@ export class MultiplayerMock {
       case "found":
         return `<div class="mp-c" style="margin:14px 0"><span class="mp-pill"><i></i>Player found</span>
 <div class="mp-vs"><div class="mp-pl">${this.ball("you", 48)}<b>${nick}</b></div><div class="mp-vsx">VS</div><div class="mp-pl">${this.ball("opp", 48)}<b>${this.peerName}</b></div></div>
-<div class="hn">Connecting directly to ${this.peerName}…</div><div class="hn" style="margin-top:4px">${GAMES[this.game].name} · ${GAMES[this.game].tag}</div></div>
+<div class="hn">${this.direct ? `Direct link ready with ${this.peerName}` : `Connecting directly to ${this.peerName}…`}</div><div class="hn" style="margin-top:4px">${GAMES[this.game].name} · ${GAMES[this.game].tag}</div></div>
 <button class="pb pri mp-big" data-a="mp:lobby" style="justify-content:center"><span><b>Continue to lobby</b></span></button>`;
       case "friend":
         return `<button class="pb pri mp-big" data-a="mp:create">${this.ball("you", 32)}<span><b>Create a room</b><small>You get a code to share</small></span></button>
@@ -432,7 +463,7 @@ ${this.error ? `<div class="err">${this.error}</div>` : ""}
         ? `<span class="mp-pill warn"><i></i>Reconnecting</span>`
         : s === "gone" || s === "timeout"
           ? `<span class="mp-pill bad"><i></i>Offline</span>`
-          : `<span class="mp-pill"><i></i>Connected · 32 ms</span>`;
+          : `<span class="mp-pill${this.direct ? "" : " warn"}"><i></i>${this.direct ? "Direct link ready" : "Server lobby"}</span>`;
     const ready = this.me && !(s === "gone" || s === "timeout");
     const cards = `<div class="mp-vs"><div class="mp-pl${this.me ? " ready" : ""}">${this.ball("you", 48)}<b>${nick}</b><div class="hn">You</div><span class="mp-pill"><i></i>Connected</span>${this.board("me")}
 <div style="margin-top:6px"><button class="pb${ready ? " on" : ""}" data-a="mp:ready"${s === "lobby" ? "" : " disabled"}>${ready ? "Ready ✓" : "Ready"}</button></div></div>
