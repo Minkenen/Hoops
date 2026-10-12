@@ -4,7 +4,7 @@ import { play } from "./audio";
 import { BallFire } from "./fire";
 import { type Achievement, getStats, recordGoal, recordHeroDown, recordMiss, recordThrow } from "./stats";
 import { Confetti } from "./confetti";
-import { Crowd } from "./crowd";
+import { Crowd, CROWD_ROW_H } from "./crowd";
 import { clamp, layer, rnd, text, textWidth } from "./draw";
 import { type CourtSprite, makeCourtSprite } from "./court";
 import { BALL_SKINS } from "./skins";
@@ -72,8 +72,6 @@ const SUB = 4;
 const isMilestone = (n: number): boolean => n === 25 || n === 50 || (n >= 100 && n % 100 === 0);
 const TIME_SCALE = 1.25;
 const SLIDE_GRAB = 1.2;
-/** How tall the strip of crowd is when only the front row is shown (art pixels). */
-const CROWD_ROW_H = 16;
 const TOUCH_WEB = import.meta.env.VITE_TARGET === "web" && window.matchMedia("(pointer: coarse)").matches;
 /** On a touch screen the ball never rests closer to an edge than this (in art pixels), so there is room to pull it back. */
 const EDGE_ROOM = 38;
@@ -149,6 +147,11 @@ export class Game {
       const p = this.toArt(e);
       if (Math.hypot(p.x - this.ball.x, p.y - this.ball.y) <= BALL_R + 10) this.ui.toggleMenu();
     });
+  }
+
+  /** The crowd is laid out for the whole screen, except in "Row" (and Half is the lower half of that). */
+  private crowdFill(): boolean {
+    return settings.arenaFill || !settings.crowdRow;
   }
 
   private cssSize(): { w: number; h: number } {
@@ -318,7 +321,7 @@ export class Game {
   /** Ball frames lit from the key light: the highlight and shading move with the ball's position. */
   private framesFor(lit: boolean, x: number): HTMLCanvasElement[] {
     if (!lit) return this.ballFrames;
-    const step = Math.max(-4, Math.min(4, Math.round(((this.artW / 2 - x) / (this.crowd.keyH(this.floorY, settings.arenaFill) * 1.6)) * 5)));
+    const step = Math.max(-4, Math.min(4, Math.round(((this.artW / 2 - x) / (this.crowd.keyH(this.floorY, this.crowdFill()) * 1.6)) * 5)));
     let f = this.lightFrames.get(step);
     if (!f) {
       const s = BALL_SKINS.find((k) => k.id === settings.ballSkin) ?? BALL_SKINS[0];
@@ -1172,16 +1175,18 @@ export class Game {
       const courtTop = Math.round(this.floorY - cs.cy + rise);
       this.crowd.setBall(this.ball.x, this.floorY + rise, this.ball.y);
       this.crowd.setHoop(ch.x0 + ch.sprite.rimCx, ch.rimY, ch.side);
+      // Off, only the front row, half the screen, or all of it
       const row = settings.crowdRow && !settings.arenaFill && settings.crowd !== "none";
-      if (row) {
-        // Just the front row: a strip of the crowd right behind the court.
+      const half = !settings.crowdRow && !settings.arenaFill && settings.crowd !== "none";
+      const clipTop = row ? courtTop + 1 - CROWD_ROW_H : half ? Math.min(courtTop + 1, Math.round(this.artH / 2)) : 0;
+      if (row || half) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, courtTop + 1 - CROWD_ROW_H, this.artW, CROWD_ROW_H);
+        ctx.rect(0, clipTop, this.artW, courtTop + 1 - clipTop);
         ctx.clip();
       }
-      this.crowd.draw(ctx, settings.crowd, now, this.artW, courtTop + 1, settings.arenaFill);
-      if (row) ctx.restore();
+      this.crowd.draw(ctx, settings.crowd, now, this.artW, courtTop + 1, this.crowdFill());
+      if (row || half) ctx.restore();
       ctx.drawImage(cs.canvas, ch.side === "right" ? this.artW - cs.w : 0, courtTop);
       if (settings.crowd === "arena") this.crowd.arenaFloor(ctx, now, this.artW, courtTop, cs.h);
     }
@@ -1189,7 +1194,7 @@ export class Game {
     const height = clamp((this.floorY - BALL_R - b.y) / 70, 0, 1);
     // With the arena lights the key light is fixed above the middle of the screen, so the shadow falls away from it.
     const lit = !!this.hoop && settings.court && settings.crowd === "arena";
-    const tl = (b.x - this.artW / 2) / this.crowd.keyH(this.floorY, settings.arenaFill);
+    const tl = (b.x - this.artW / 2) / this.crowd.keyH(this.floorY, this.crowdFill());
     const rx = BALL_R * 0.9 * (1 - height * 0.6) + (lit ? BALL_R * Math.abs(tl) * 1.3 : 0);
     const sOff = lit ? Math.round(BALL_R * tl * 0.8 * (1 - height * 0.5)) + Math.sign(tl) * 3 : 0;
     const sy = lit ? 3 : 2.4;

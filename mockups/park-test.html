@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>park test</title><body style="margin:0;background:#222;color:#fff;font:12px monospace"><div id="o"></div>
+<script type="module">
+import { drawParkSky, heroHit } from "../src/parksky";
+const W=500,H=300;
+const ts=(new URLSearchParams(location.search).get('t')||'60000').split(',').map(Number);
+const hit=new URLSearchParams(location.search).get('hit');
+for(const t of ts){const lab=document.createElement('div');lab.textContent='t='+t;document.getElementById('o').appendChild(lab);
+ const cv=document.createElement('canvas');cv.width=W;cv.height=H;cv.style.cssText='width:1000px;display:block;image-rendering:pixelated';document.getElementById('o').appendChild(cv);
+ const ctx=cv.getContext('2d');ctx.fillStyle="#9ed0ff";ctx.fillRect(0,0,W,H);ctx.save();ctx.translate(0,200);drawParkSky(ctx,t,W,-200);ctx.restore();}
+window.done=true;
+</script>

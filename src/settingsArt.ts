@@ -18,7 +18,7 @@ function scene(cv: HTMLCanvasElement, crowd: CrowdArt): void {
   const c = cv.getContext("2d")!;
   c.imageSmoothingEnabled = false;
   const floor = H - 7;
-  const top = crowd === "full" ? 0 : crowd === "half" ? floor - 18 : crowd === "row" ? floor - 7 : floor;
+  const top = crowd === "full" ? 0 : crowd === "half" ? Math.round(H / 2) : crowd === "row" ? floor - 7 : floor;
   const g = c.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, "#1b1e33");
   g.addColorStop(1, "#2d3150");
