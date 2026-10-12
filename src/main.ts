@@ -93,7 +93,6 @@ async function main(): Promise<void> {
 
   if (web) {
     const goFull = (): void => void document.documentElement.requestFullscreen?.().catch(() => {});
-    window.addEventListener("pointerup", goFull, { once: true });
     document.addEventListener("fullscreenchange", () => window.setTimeout(() => game.rescale(), 100));
     const fs = document.createElement("button");
     fs.id = "webfs";
