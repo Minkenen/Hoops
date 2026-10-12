@@ -89,18 +89,17 @@ async function main(): Promise<void> {
   }
 
   if (web) {
-    const gate = document.createElement("div");
-    gate.id = "webgate";
-    gate.innerHTML = '<div><h1>HOOPS</h1><p>Plays in fullscreen. Press Esc to leave.</p><button>PLAY FULLSCREEN</button><a href="../#download">Get the desktop app: play over your whole desktop</a></div>';
-    document.body.appendChild(gate);
-    const sync = (): void => {
-      const full = !!document.fullscreenElement;
-      gate.style.display = full ? "none" : "flex";
-      if (full) window.setTimeout(() => game.rescale(), 100);
-    };
-    gate.querySelector("button")!.addEventListener("click", () => void document.documentElement.requestFullscreen().catch(() => {}));
-    document.addEventListener("fullscreenchange", sync);
-    sync();
+    const goFull = (): void => void document.documentElement.requestFullscreen?.().catch(() => {});
+    window.addEventListener("pointerup", goFull, { once: true });
+    document.addEventListener("fullscreenchange", () => window.setTimeout(() => game.rescale(), 100));
+    const fs = document.createElement("button");
+    fs.id = "webfs";
+    fs.textContent = "FULLSCREEN";
+    fs.addEventListener("click", () => {
+      if (document.fullscreenElement) void document.exitFullscreen();
+      else goFull();
+    });
+    document.body.appendChild(fs);
   }
   if (web) {
     const b = document.createElement("button");
