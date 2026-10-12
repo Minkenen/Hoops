@@ -1,8 +1,10 @@
 name = "hoops-leaderboard"
 main = "src/index.ts"
 compatibility_date = "2026-10-12"
+workers_dev = true
+preview_urls = false
 
 [[d1_databases]]
 binding = "DB"
 database_name = "hoops-leaderboard"
-database_id = "replace-with-cloudflare-d1-id"
+database_id = "7af35f53-0eec-465f-8332-0c53e3155a82"
