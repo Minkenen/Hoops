@@ -8,3 +8,11 @@ preview_urls = false
 binding = "DB"
 database_name = "hoops-leaderboard"
 database_id = "7af35f53-0eec-465f-8332-0c53e3155a82"
+
+[[durable_objects.bindings]]
+name = "MP"
+class_name = "MultiplayerHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MultiplayerHub"]
