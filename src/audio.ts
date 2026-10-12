@@ -141,6 +141,30 @@ const GROUP: Record<Sfx, "sfxBounce" | "sfxShoot" | "sfxGoal" | "sfxMilestone" |
   ui: "sfxUi",
 };
 
+/**
+ * Each file is louder or quieter than the others as it came, so every sound gets a trim that evens them out
+ * (measured with ffmpeg ebur128; the numbers are the loudness before the trim). Targets: footsteps of the game
+ * (bounce, shoot, swish) around -20 LUFS, the layers of a goal a bit under that so together they are the loudest moment,
+ * and the rare jingles (level up, milestone, achievements) clearly audible but not startling. Values above 1 are fine:
+ * those files are quiet and have headroom.
+ */
+const TRIM: Partial<Record<Sfx, number>> = {
+  bounce: 1, // -18.8
+  shoot: 1, // -20.9
+  swish: 1, // -20.2
+  swoosh2: 0.5, // short burst with a 0 dB peak
+  cheer: 0.32, // -9.0
+  boom: 0.28, // -10.2, peaks at 0 dB
+  crowd: 0.56, // -15.8
+  gasp: 0.8, // -21.4
+  ignite: 0.45, // -11.1
+  extinguish: 0.24, // -7.6, peaks at 0 dB
+  levelup: 0.29, // -7.3, peaks at 0 dB
+  milestone: 1.8, // -25.2, peak -16.7 dB
+  achievement: 2.7, // -28.6, peak -11.1 dB
+  achievement2: 1.26, // -21.0, peak -5.3 dB
+};
+
 const ALIAS: Partial<Record<Sfx, Sfx>> = { wall: "bounce", board: "bounce", rim: "bounce" };
 const VARY = new Set<Sfx>(["bounce", "wall", "board", "rim"]);
 let lastRate = 1;
@@ -166,7 +190,7 @@ export function play(name: Sfx, intensity = 1): void {
     if (!buf || !c) return;
     if (stalled(c)) c = rebuildCtx();
     if (!c) return;
-    const vol = Math.max(0, Math.min(1, settings.volume * intensity));
+    const vol = Math.max(0, Math.min(1, settings.volume * intensity)) * (TRIM[file] ?? 1);
     const start = (cx: AudioContext): void => {
       const src = cx.createBufferSource();
       const gain = cx.createGain();
