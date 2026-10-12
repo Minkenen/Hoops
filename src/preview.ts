@@ -24,9 +24,14 @@ export type CrowdMode = "off" | "row" | "half" | "full";
 
 /** Options for a preview that shows one crowd choice, with the court sliding in and out like in the game. */
 export interface PreviewOptions {
-  mode: CrowdMode;
+  /** Show this crowd choice (taller picture, like a real screen). Left out: the crowd mode in the settings. */
+  mode?: CrowdMode;
   /** The court and crowd come in, stay, and go out again in a loop. */
   slide?: boolean;
+  /** Draw once and stop (used for the small pictures of themes). */
+  still?: boolean;
+  /** Another look than the settings (ball, court, crowd). */
+  override?: { ballSkin: string; courtSkin: string; crowd: string };
 }
 
 // the loop of a sliding preview, in ms: in 400 (like the game), stay, out 250, a pause
@@ -54,15 +59,25 @@ export class Preview {
 
   constructor(private cv: HTMLCanvasElement, private opts?: PreviewOptions) {
     // a preview of one crowd choice is taller, like a real screen, so "Half" and "Full" are what they say
-    if (opts) {
+    if (opts?.mode) {
       this.hh = 230;
       this.fl = this.hh - 26;
     }
     this.ctx = cv.getContext("2d")!;
     this.ctx.imageSmoothingEnabled = false;
-    if (!opts) cv.addEventListener("click", () => this.crowd.cheer(performance.now()));
+    if (!opts?.mode && !opts?.still) cv.addEventListener("click", () => this.crowd.cheer(performance.now()));
     this.crowd.cheer(performance.now() + 300);
-    requestAnimationFrame((t) => this.frame(t));
+    if (!opts?.still) requestAnimationFrame((t) => this.frame(t));
+  }
+
+  /** One picture of the look as a data URL, for the theme and crowd tiles. */
+  static still(look: { ballSkin: string; courtSkin: string; crowd: string }): string {
+    const cv = document.createElement("canvas");
+    cv.width = W;
+    cv.height = H;
+    const p = new Preview(cv, { still: true, override: look });
+    p.draw(performance.now() + 2500);
+    return cv.toDataURL();
   }
 
   private frame(now: number): void {
@@ -76,12 +91,13 @@ export class Preview {
     const H = this.hh;
     const FLOOR = this.fl;
     const RIM_Y = this.fl - (FLOOR_REF - RIM_REF);
-    const ballSkin = (override?.ballSkin ?? settings.ballSkin) as typeof settings.ballSkin;
-    const courtSkin = (override?.courtSkin ?? settings.courtSkin) as typeof settings.courtSkin;
+    const ov = this.opts?.override ?? override;
+    const ballSkin = (ov?.ballSkin ?? settings.ballSkin) as typeof settings.ballSkin;
+    const courtSkin = (ov?.courtSkin ?? settings.courtSkin) as typeof settings.courtSkin;
     const mode = this.opts?.mode;
     // a preview of one choice shows it whatever the settings say; the crowd style is the one in use, or the one that was switched off
-    const base = (override?.crowd ?? (settings.crowd === "none" ? settings.crowdBack : settings.crowd)) as typeof settings.crowd;
-    const crowdStyle = (mode ? (mode === "off" ? "none" : base) : (override?.crowd ?? settings.crowd)) as typeof settings.crowd;
+    const base = (ov?.crowd ?? (settings.crowd === "none" ? settings.crowdBack : settings.crowd)) as typeof settings.crowd;
+    const crowdStyle = (mode ? (mode === "off" ? "none" : base) : (ov?.crowd ?? settings.crowd)) as typeof settings.crowd;
     const full = mode ? mode === "full" : settings.arenaFill;
     const row = mode ? mode === "row" : settings.crowdRow && !full;
     const half = mode ? mode === "half" : !full && !row;
