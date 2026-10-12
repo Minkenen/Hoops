@@ -118,6 +118,7 @@ export class UI {
   private lbBoards: Partial<Record<LbTab, LbBoard>> = {};
   private lbBusy = false;
   private lbSigning = false;
+  private lbDelete = false;
   private lbError = "";
   private lbSkip = (() => {
     try {
@@ -338,7 +339,11 @@ export class UI {
 <button class="pb full gold lbsign" data-a="signin" data-v="google"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".11111.", "1111111", "11.....", "11.1111", "11...11", "1111111", ".11111."], ["#1c1c22"], 2)}Sign in with Google</button>
 <button class="pb full" style="text-align:center" data-a="lbskip">Not now</button>${this.lbError && board ? `<div class="err">${this.lbError}</div>` : ""}</div>`
         : user
-          ? `<div class="note" style="margin-top:6px">Signed in as <b>${user.nickname}</b> · <button class="lnk" data-a="signout">Sign out</button></div>`
+          ? this.lbDelete
+            ? `<div class="px login"><b>Delete your account?</b><div class="hn" style="margin:2px 0 8px">This removes your name, your scores and your saved progress from the leaderboard server. Your game on this device is kept. It cannot be undone.</div>
+<button class="pb full danger" data-a="lbdelyes"${this.lbSigning ? " disabled" : ""}>${this.lbSigning ? "Deleting…" : "Delete my data"}</button>
+<button class="pb full" style="text-align:center" data-a="lbdelno">Cancel</button>${this.lbError ? `<div class="err">${this.lbError}</div>` : ""}</div>`
+            : `<div class="note" style="margin-top:6px">Signed in as <b>${user.nickname}</b> · <button class="lnk" data-a="signout">Sign out</button> · <button class="lnk" data-a="lbdelask">Delete my data</button></div>`
           : "";
     return `<div class="px win" data-hit style="width:min(310px,94vw)">
 <div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Leaderboard</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
@@ -1006,6 +1011,36 @@ ${rows}
         break;
       case "signin":
         void this.signInWith(v as LbProviderId);
+        break;
+      case "lbdelask":
+        this.lbDelete = true;
+        this.lbError = "";
+        this.render();
+        break;
+      case "lbdelno":
+        this.lbDelete = false;
+        this.lbError = "";
+        this.render();
+        break;
+      case "lbdelyes":
+        this.lbSigning = true;
+        this.lbError = "";
+        this.render();
+        backend
+          .deleteAccount()
+          .then(() => {
+            this.lbDelete = false;
+            this.lbBoards = {};
+            this.toast("Your data was deleted.");
+            void this.loadBoard();
+          })
+          .catch((e) => {
+            this.lbError = e instanceof Error ? e.message : "Could not delete. Try again.";
+          })
+          .finally(() => {
+            this.lbSigning = false;
+            this.render();
+          });
         break;
       case "signout":
         void backend.signOut().then(() => {

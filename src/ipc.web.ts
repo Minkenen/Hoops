@@ -92,6 +92,11 @@ export const leaderboardSubmitScore = async (u: string, score: number, bestStrea
   await api(u, "POST", "/score", { score, bestStreak, throws, goals });
 };
 export const leaderboardSetNickname = (u: string, nickname: string): Promise<LbUser> => api<LbUser>(u, "POST", "/nickname", { nickname });
+export const leaderboardDeleteAccount = async (u: string): Promise<void> => {
+  if (!getToken()) return;
+  await api(u, "DELETE", "/account");
+  setToken("");
+};
 export const profileGet = async (u: string): Promise<unknown> => (getToken() ? (await api<{ profile: unknown }>(u, "GET", "/profile")).profile : null);
 export const profilePut = async (u: string, profile: unknown): Promise<void> => {
   if (!getToken()) return;

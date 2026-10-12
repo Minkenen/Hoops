@@ -641,6 +641,26 @@ async fn leaderboard_set_nickname(server_url: String, nickname: String) -> Resul
         .map_err(|e| e.to_string())?
 }
 
+/// Deletes the account on the server (name, scores and saved profile) and forgets the session on this computer.
+#[tauri::command]
+async fn leaderboard_delete_account(server_url: String) -> Result<(), String> {
+    let Some(token) = get_leaderboard_token() else {
+        return Ok(());
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let url = leaderboard_url(&server_url, "/account")?;
+        match ureq::delete(&url).set("Authorization", &format!("Bearer {token}")).call() {
+            Ok(_) => Ok(()),
+            Err(ureq::Error::Status(_, r)) => Err(leaderboard_error_message(r)),
+            Err(_) => Err("Could not reach the leaderboard server.".into()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    clear_leaderboard_token();
+    Ok(())
+}
+
 /// The profile saved on the account: stats, best score, cosmetics and licenses. null when nothing is saved yet.
 #[tauri::command]
 async fn leaderboard_profile_get(server_url: String) -> Result<serde_json::Value, String> {
@@ -746,6 +766,7 @@ pub fn run() {
             leaderboard_load,
             leaderboard_submit_score,
             leaderboard_set_nickname,
+            leaderboard_delete_account,
             leaderboard_profile_get,
             leaderboard_profile_put,
             quit_app

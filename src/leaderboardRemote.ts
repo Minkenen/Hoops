@@ -1,6 +1,7 @@
 import { getStats } from "./stats";
 import { getBestScore } from "./settings";
 import {
+  leaderboardDeleteAccount,
   leaderboardLoad,
   leaderboardSignIn,
   leaderboardSetNickname,
@@ -45,6 +46,16 @@ export class RemoteLeaderboard implements LbBackend {
     void this.submitScore(true);
     void syncNow(this.serverUrl, me).then((changed) => changed && window.dispatchEvent(new Event("storage")));
     return this.me;
+  }
+
+  async deleteAccount(): Promise<void> {
+    await leaderboardDeleteAccount(this.serverUrl);
+    try {
+      localStorage.removeItem("hoops.sync");
+    } catch {
+      /* ignore */
+    }
+    this.me = null;
   }
 
   async signOut(): Promise<void> {

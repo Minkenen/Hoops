@@ -35,6 +35,8 @@ export interface LbBackend {
   user(): LbUser | null;
   signIn(provider: LbProviderId): Promise<LbUser>;
   signOut(): Promise<void>;
+  /** Removes the account from the server: name, scores and saved profile. Your game on this computer is kept. */
+  deleteAccount(): Promise<void>;
   /** Changes your name on the board. Names are unique (no two players can have the same, whatever the capital letters). Rejects with a message to show, such as "That name is taken." */
   setNickname(name: string): Promise<LbUser>;
   load(tab: LbTab): Promise<LbBoard>;
@@ -84,6 +86,13 @@ const mock: LbBackend = {
     }
     return { id: "mock", nickname: n };
   },
+  async deleteAccount() {
+    try {
+      localStorage.removeItem(ME);
+    } catch {
+      /* ignore */
+    }
+  },
   async signOut() {
     try {
       localStorage.removeItem(ME);
@@ -107,6 +116,7 @@ const unavailable: LbBackend = {
   user: () => null,
   signIn: () => Promise.reject(new Error("The leaderboard is not open yet.")),
   signOut: () => Promise.resolve(),
+  deleteAccount: () => Promise.resolve(),
   setNickname: () => Promise.reject(new Error("The leaderboard is not open yet.")),
   load: () => Promise.reject(new Error("The leaderboard is not open yet.")),
 };
