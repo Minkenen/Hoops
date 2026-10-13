@@ -8,6 +8,7 @@ import { BUG_ICON } from "./beetle";
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { DISCORD_URL, PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
 import { DISCORD_ICON } from "./discordIcon";
+import { menuIcon } from "./menuIcons";
 import type { MultiplayerConnection } from "./multiplayerClient";
 import { MULTIPLAYER_MOCK, MultiplayerMock } from "./multiplayerMock";
 import { HORSE, OnlineMatch, type OnlineMatchInit } from "./onlineMatch";
@@ -702,13 +703,21 @@ ${
     stats[v].views++;
     stats.next = v === "button" ? "footer" : "button";
     saveDonateStats(stats);
+    this.reportDonate(v, "view");
+  }
+
+  /** Tells the server (anonymously, just a counter) which Support format was shown or clicked, to learn which one works better. */
+  private reportDonate(variant: DonateVariant, kind: "view" | "click"): void {
+    const base = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) ?? "").trim().replace(/\/$/, "");
+    if (!base) return;
+    void fetch(`${base}/donate-event`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variant, kind }), keepalive: true }).catch(() => {});
   }
 
   private donateHtml(): string {
     if (this.donateVariant === "footer") {
       return `<button class="donate-footer" data-a="donate" data-v="footer"><span>Enjoying Hoops?</span><b>Donate a coffee</b></button>`;
     }
-    return `<button class="pb full donate-cta" data-a="donate" data-v="button">Support Hoops</button>`;
+    return `<button class="donate-link" data-a="donate" data-v="button">Support Hoops</button>`;
   }
 
   private tile(k: "autostart" | "fullscreen", v: 0 | 1, title: string, desc: string): string {
@@ -719,26 +728,31 @@ ${
   private menuHtml(): string {
     const b = this.game.ballCss();
     const vp = this.game.viewport();
-    const W = 250;
+    const W = 280;
     const right = b.x + b.r + 18 + W + 10 < vp.w;
     const left = right ? b.x + b.r + 18 : b.x - b.r - 18 - W;
     const bottom = vp.h - this.game.floorCss() + 6;
+    const done = achievementsDone();
+    const rank = this.lbBoards.global?.you?.rank;
+    const item = (action: string, icon: string, label: string, hint = "", extra = ""): string =>
+      `<button class="pb full mi${extra}" data-a="${action}">${menuIcon(icon as never)}<span>${label}</span><small>${hint}</small></button>`;
     return `<div class="px menu" data-hit style="left:${Math.max(8, left)}px;bottom:${bottom}px;width:${W}px">
-<div class="row" style="padding:2px 0"><span class="lb">Score</span><b class="score">${getScore()}</b></div><div class="hr"></div>
+<div class="row" style="padding:2px 0"><span class="lb hn">Score</span><b class="score">${getScore()}</b></div>
 ${this.update ? `<button class="pb buy full" data-a="update">Update available: v${this.update.version}</button>` : ""}
+${MULTIPLAYER_MOCK ? `<button class="pb pri full mi hero" data-a="online">${menuIcon("online")}<div><span>Play online</span><em>Speedball · HORSE · 21</em></div><small>beta ›</small></button>` : ""}
+<div class="sec">You</div>
+${LEADERBOARD_ON && backend.user() ? item("profile", "prof", "Profile", "›") : ""}
+${item("cos", "look", "Appearance", "›")}
+${item("ach", "ach", "Achievements", `${done}/${ACHIEVEMENTS.length} ›`)}
+${LEADERBOARD_ON ? item("lb", "lb", "Leaderboard", rank ? `#${rank} ›` : "›") : ""}
+<div class="sec">Quick settings</div>
 ${this.row("Aim line", this.seg("arrow", [["arrow", "Arrow"], ["dots", "Dotted"]]))}
 ${this.row("Crowd", this.crowdSeg())}
 ${this.row("Sound", this.tog("sound"))}
 <div class="hr"></div>
-<button class="pb full" data-a="cos">Appearance…</button>
-<button class="pb full" data-a="ach">Achievements…</button>
-${MULTIPLAYER_MOCK ? `<button class="pb pri full" data-a="online">Play online (beta)</button>` : ""}
-${LEADERBOARD_ON ? `<button class="pb full lbl" data-a="lb"><span>Leaderboard…</span>${this.lbBoards.global?.you ? `<small>#${this.lbBoards.global.you.rank}</small>` : ""}</button>` : ""}
-${LEADERBOARD_ON && backend.user() ? `<button class="pb full" data-a="profile">Profile…</button>` : ""}
-<button class="pb full" data-a="inst">Settings…</button>
-${this.donateHtml()}
+<div class="mrow"><button class="pb mi" data-a="inst">${menuIcon("set")}<span>Settings</span></button>${WEB ? "" : `<button class="pb mi" data-a="quit">${menuIcon("quit")}<span>Quit</span></button>`}</div>
 ${this.game?.online ? `<button class="pb full danger" data-a="leavematch">Leave online match</button>` : ""}
-${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}
+${this.donateHtml()}
 <div class="foot"><button class="bugbtn" data-a="bug" aria-label="Report a bug" title="Report a bug">${BUG_ICON}<span class="bugtip">Report a bug</span></button><span class="hn">Hoops v${__APP_VERSION__}</span><button class="dcbtn" data-a="discord" aria-label="Join our Discord" title="Join our Discord">${DISCORD_ICON}<span class="bugtip" style="left:auto;right:0">Join our Discord</span></button></div></div>`;
   }
 
@@ -1503,6 +1517,7 @@ ${rows}
         const stats = donateStats();
         stats[variant].clicks++;
         saveDonateStats(stats);
+        this.reportDonate(variant, "click");
         void openExternal(DONATE_URL).catch(() => {
           window.open(DONATE_URL, "_blank", "noopener,noreferrer");
         });

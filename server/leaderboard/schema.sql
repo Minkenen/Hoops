@@ -67,3 +67,11 @@ CREATE TABLE IF NOT EXISTS bug_reports (
   ip_hash TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS bug_reports_ip ON bug_reports (ip_hash, created_at);
+
+CREATE TABLE IF NOT EXISTS donate_events (
+  variant TEXT NOT NULL,
+  day TEXT NOT NULL,
+  views INTEGER NOT NULL DEFAULT 0,
+  clicks INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (variant, day)
+);

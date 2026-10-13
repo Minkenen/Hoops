@@ -123,6 +123,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       if (request.method === "PUT" && url.pathname === "/profile") return profilePut(request, env);
       if (request.method === "POST" && url.pathname === "/mp/rooms") return mpRoom(request, env);
       if (request.method === "GET" && url.pathname === "/mp/ws") return mpWs(request, env, url);
+      if (request.method === "POST" && url.pathname === "/donate-event") return donateEvent(request, env);
       if (request.method === "POST" && url.pathname === "/bug") return bugReport(request, env);
       if (request.method === "POST" && url.pathname === "/license/activate") return licenseActivate(request);
       if (request.method === "POST" && url.pathname === "/license/validate") return licenseValidate(request);
@@ -1017,6 +1018,17 @@ async function licenseActivate(request: Request): Promise<Response> {
   const customerEmail = String(r.meta?.customer_email || "").trim().toLowerCase();
   if (!customerEmail || customerEmail !== email) return bad("That license key belongs to a different email address.");
   return json({ instance_id: String(r.instance?.id || ""), unlock: match.unlock, theme_id: match.theme });
+}
+
+/** Counts how often each Support Hoops format is shown and clicked (no personal data: just two counters per format per day). */
+async function donateEvent(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { variant?: string; kind?: string };
+  const variant = body.variant === "footer" ? "footer" : body.variant === "button" ? "button" : "";
+  const kind = body.kind === "view" ? "views" : body.kind === "click" ? "clicks" : "";
+  if (!variant || !kind) return bad("Unknown event.");
+  const day = new Date().toISOString().slice(0, 10);
+  await env.DB.prepare(`INSERT INTO donate_events (variant, day, ${kind}) VALUES (?, ?, 1) ON CONFLICT(variant, day) DO UPDATE SET ${kind} = ${kind} + 1`).bind(variant, day).run();
+  return json({ ok: true });
 }
 
 const BUG_CATEGORIES = ["Gameplay", "Online", "Looks", "Sound", "Other"];

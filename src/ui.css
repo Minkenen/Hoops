@@ -329,3 +329,15 @@
 #ui .dcbtn:active{opacity:1;filter:brightness(1.25);transition:none}
 #ui .dcbtn svg{display:block}
 #ui .dcbtn:hover .bugtip{opacity:1}
+
+/* main menu, design B: a hero button, sections, icon rows, quick settings */
+#ui .menu .sec{margin:8px 4px 2px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+#ui .pb.mi{display:flex;align-items:center;gap:10px}
+#ui .pb.mi small{margin-left:auto;font-size:12px;color:var(--mut)}
+#ui .pb.mi.pri small{color:#3a2a1c}
+#ui .pb.mi .mic{flex:none;width:18px;height:18px}
+#ui .pb.hero{padding:12px 10px}
+#ui .pb.hero span{display:block;font-size:16px;font-weight:500}
+#ui .pb.hero em{display:block;font-style:normal;font-size:12px;color:#3a2a1c}
+#ui .menu .mrow{display:flex;gap:4px}#ui .menu .mrow .pb{flex:1}
+#ui .donate-link{display:block;margin:6px auto 0;background:none;color:#ff9a45;text-decoration:underline;font-size:13px;padding:2px 6px}
