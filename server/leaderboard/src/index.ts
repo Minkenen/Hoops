@@ -1,4 +1,4 @@
-import { MIN_CLIENT_VERSION, NICKNAME_TAKEN_ERROR, defaultNickname, nicknameDecision, nicknameLower, scoreDecision, weekKey } from "./logic.js";
+import { MIN_CLIENT_VERSION, NICKNAME_TAKEN_ERROR, defaultNickname, nicknameDecision, nicknameLower, scoreDecision, versionAtLeast, weekKey } from "./logic.js";
 import { MAX_REPLAY_BYTES, verifyReplay } from "./replay.js";
 
 interface D1Database {
@@ -268,7 +268,7 @@ async function score(request: Request, env: Env): Promise<Response> {
     await flag(env, player.id, "score_replay", "Score was not linked to a verified replay.", version);
     return json({ ok: true });
   }
-  if (version && version < MIN_CLIENT_VERSION) return json({ ok: true });
+  if (version && !versionAtLeast(version)) return json({ ok: true });
   const weekly = await env.DB.prepare("SELECT best_score, gained_score FROM weekly_scores WHERE player_id = ? AND week = ?")
     .bind(player.id, weekKey(now)).first<{ best_score: number; gained_score: number }>();
   if (weekly && Number(body?.score) - weekly.best_score > Math.max(0, 5000 - weekly.gained_score)) {
@@ -302,6 +302,9 @@ async function score(request: Request, env: Env): Promise<Response> {
 
 async function replay(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
+  const now = Date.now();
+  const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM replays WHERE player_id = ? AND created_at > ?").bind(player.id, now - 86_400_000).first<{ n: number }>();
+  if ((recent?.n || 0) >= 100) return bad("Too many replays today.", 429);
   const length = Number(request.headers.get("content-length") || 0);
   if (length > MAX_REPLAY_BYTES) return bad("Replay is too large.", 413);
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -315,7 +318,7 @@ async function replay(request: Request, env: Env): Promise<Response> {
   if (data.length > MAX_REPLAY_BYTES) return bad("Replay is too large.", 413);
   await env.DB.prepare(
     `INSERT OR IGNORE INTO replays (session_id, player_id, created_at, client_version, shots, goals, data) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(sessionId, player.id, Date.now(), typeof body?.version === "string" ? body.version.slice(0, 20) : null, decision.shots, decision.goals, data).run();
+  ).bind(sessionId, player.id, now, typeof body?.version === "string" ? body.version.slice(0, 20) : null, decision.shots, decision.goals, data).run();
   return json({ ok: true, verified: true, shots: decision.shots, goals: decision.goals });
 }
 

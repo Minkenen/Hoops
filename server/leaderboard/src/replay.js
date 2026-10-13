@@ -46,6 +46,9 @@ export function verifyReplay(input) {
     if (!Number.isFinite(shot.nx) || !Number.isFinite(shot.ny) || shot.nx < 0 || shot.nx > 1 || shot.ny < 0 || shot.ny > 1) return { ok: false, reason: "Replay coordinates are invalid." };
     if (!Number.isFinite(shot.width) || !Number.isFinite(shot.height) || shot.width < 100 || shot.height < 100 || shot.width > 10_000 || shot.height > 10_000) return { ok: false, reason: "Replay dimensions are invalid." };
     if (![shot.resultT, shot.gs, shot.hoopX, shot.hoopY, shot.hoopL, shot.hoopR].every(Number.isFinite) || shot.resultT <= shot.t || shot.hoopL >= shot.hoopR || shot.hoopX < shot.hoopL || shot.hoopX > shot.hoopR) return { ok: false, reason: "Replay hoop data is invalid." };
+    const hoopWidth = (shot.hoopR - shot.hoopL) / shot.width;
+    const hoopY = shot.hoopY / shot.height;
+    if (hoopWidth < 0.04 || hoopWidth > 0.25 || hoopY < 0.05 || hoopY > 0.9) return { ok: false, reason: "Replay hoop geometry is implausible." };
     if (shot.goal && !predictedCrossing(shot)) return { ok: false, reason: "Replay goal is not physically possible." };
     if (typeof shot.goal !== "boolean") return { ok: false, reason: "Replay result is invalid." };
     if (shot.goal) goals++;
