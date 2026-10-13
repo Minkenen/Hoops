@@ -24,7 +24,7 @@ import { themeById } from "./themes";
 import { drawTrail, trailById, trailOwned, type TrailPoint } from "./trails";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
-import { stepBall } from "./physics";
+import { collideCircle as resolveCircle, collidePolygon as resolvePolygon, stepBall } from "./physics";
 import type { UI } from "./ui";
 import type { OnlineMatch, OpponentBall } from "./onlineMatch";
 
@@ -1179,25 +1179,14 @@ export class Game {
 
   private collideCircle(cx: number, cy: number, r: number, e: number, sfx: "rim" | "board"): void {
     const b = this.ball;
-    const dx = b.x - cx;
-    const dy = b.y - cy;
-    const d = Math.hypot(dx, dy);
-    const min = BALL_R + r;
-    if (d >= min || d === 0) return;
-    const nx = dx / d;
-    const ny = dy / d;
-    b.x = cx + nx * min;
-    b.y = cy + ny * min;
-    const vn = b.vx * nx + b.vy * ny;
-    const pvx = b.vx;
-    if (vn < 0) {
-      b.vx -= (1 + e) * vn * nx;
-      b.vy -= (1 + e) * vn * ny;
-      if (-vn > 0.8) this.collisionSound(sfx, clamp(-vn / 8, 0.25, 1));
-      if (sfx === "rim" && -vn > 0.8) this.rimTouched = true;
-      if (sfx === "rim" && -vn > 0.8 && this.hoop) this.hoop.net.rimHit(pvx >= 0 ? 1 : -1, clamp(-vn / 4, 0.35, 1.9));
+    const result = resolveCircle(b, cx, cy, BALL_R + r, e);
+    if (!result.hit) return;
+    if (result.impactSpeed > 0.8) {
+      this.collisionSound(sfx, clamp(result.impactSpeed / 8, 0.25, 1));
+      if (sfx === "rim") this.rimTouched = true;
+      if (sfx === "rim" && this.hoop) this.hoop.net.rimHit(result.previousVx >= 0 ? 1 : -1, clamp(result.impactSpeed / 4, 0.35, 1.9));
       // Only a hit on the top of the rim (the ball coming down onto it) can make the crowd gasp, and only some of the time (and not twice in a row), or it wears thin.
-      if (sfx === "rim" && ny < -0.35 && -vn > 1.2 && !this.gasped && !this.gaspAt && performance.now() - this.lastGasp > 20000 && Math.random() < 0.4) {
+      if (sfx === "rim" && result.normalY < -0.35 && result.impactSpeed > 1.2 && !this.gasped && !this.gaspAt && performance.now() - this.lastGasp > 20000 && Math.random() < 0.4) {
         this.gaspAt = performance.now() + 700;
       }
     }
@@ -1205,68 +1194,11 @@ export class Game {
 
   private collidePoly(hull: [number, number][], ox: number, oy: number, e: number, shakesNet = false): void {
     const b = this.ball;
-    const n = hull.length;
-    let inside = false;
-    for (let i = 0, j = n - 1; i < n; j = i++) {
-      const ax = hull[i][0] + ox;
-      const ay = hull[i][1] + oy;
-      const bx = hull[j][0] + ox;
-      const by = hull[j][1] + oy;
-      if (ay > b.y !== by > b.y && b.x < ((bx - ax) * (b.y - ay)) / (by - ay) + ax) inside = !inside;
-    }
-    let best = Infinity;
-    let nx = 0;
-    let ny = 0;
-    let cxp = 0;
-    let cyp = 0;
-    for (let i = 0; i < n; i++) {
-      const ax = hull[i][0] + ox;
-      const ay = hull[i][1] + oy;
-      const bx = hull[(i + 1) % n][0] + ox;
-      const by = hull[(i + 1) % n][1] + oy;
-      const ex = bx - ax;
-      const ey = by - ay;
-      const len2 = ex * ex + ey * ey || 1;
-      const t = clamp(((b.x - ax) * ex + (b.y - ay) * ey) / len2, 0, 1);
-      const px = ax + ex * t;
-      const py = ay + ey * t;
-      const d = Math.hypot(b.x - px, b.y - py);
-      if (d < best) {
-        best = d;
-        cxp = px;
-        cyp = py;
-      }
-    }
-    if (!inside && best >= BALL_R) return;
-    let dx = b.x - cxp;
-    let dy = b.y - cyp;
-    let d = Math.hypot(dx, dy);
-    if (d < 1e-6) {
-      dx = 0;
-      dy = -1;
-      d = 1;
-    }
-    nx = dx / d;
-    ny = dy / d;
-    if (inside) {
-      nx = -nx;
-      ny = -ny;
-      b.x = cxp + nx * BALL_R;
-      b.y = cyp + ny * BALL_R;
-    } else {
-      b.x = cxp + nx * BALL_R;
-      b.y = cyp + ny * BALL_R;
-    }
-    const vn = b.vx * nx + b.vy * ny;
-    const pvx = b.vx;
-    if (vn < 0) {
-      b.vx -= (1 + e) * vn * nx;
-      b.vy -= (1 + e) * vn * ny;
-      if (-vn > 0.8) {
-        this.collisionSound("board", clamp(-vn / 8, 0.25, 1));
+    const result = resolvePolygon(b, hull, ox, oy, BALL_R, e);
+    if (result.hit && result.impactSpeed > 0.8) {
+        this.collisionSound("board", clamp(result.impactSpeed / 8, 0.25, 1));
         if (this.hoop && hull === this.hoop.sprite.hull) this.boardTouched = true;
-        if (shakesNet && this.hoop) this.hoop.net.rimHit(pvx >= 0 ? 1 : -1, clamp(-vn / 4, 0.35, 1.9));
-      }
+        if (shakesNet && this.hoop) this.hoop.net.rimHit(result.previousVx >= 0 ? 1 : -1, clamp(result.impactSpeed / 4, 0.35, 1.9));
     }
   }
 
