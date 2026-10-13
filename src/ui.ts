@@ -144,6 +144,8 @@ export class UI {
   private trailPopTimer = 0;
   private setTab: "game" | "sound" | "look" | "system" = "game";
   private lbSigning = false;
+  /** Set when someone who is not signed in presses Buy: they are asked to sign in first. */
+  private buyGate: { kind: "theme"; id: ThemeId } | { kind: "all" } | null = null;
   private lbDelete = false;
   private lbError = "";
   private lbSkip = (() => {
@@ -729,6 +731,57 @@ ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
 <div class="st"><div class="st-nav">${nav}</div><div class="st-pane">${pane}</div></div></div>`;
   }
 
+  /** Opens the checkout, but first asks anyone who is not signed in to sign in, so the purchase follows their account. */
+  private startBuy(what: NonNullable<UI["buyGate"]>): void {
+    if (backend.available && !backend.user()) {
+      this.buyGate = what;
+      this.lbError = "";
+      this.render();
+      return;
+    }
+    this.openCheckout(what);
+  }
+
+  private openCheckout(what: NonNullable<UI["buyGate"]>): void {
+    const url = what.kind === "theme" ? THEME_CHECKOUT_URLS[what.id] : PREMIUM_CHECKOUT_URL;
+    if (!url) return;
+    void openExternal(url).catch(() => {
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
+  }
+
+  private async buySignIn(): Promise<void> {
+    const what = this.buyGate;
+    if (!what) return;
+    this.lbSigning = true;
+    this.lbError = "";
+    this.render();
+    try {
+      await backend.signIn("google");
+      this.lbSigning = false;
+      this.buyGate = null;
+      this.render();
+      this.openCheckout(what);
+      return;
+    } catch (e) {
+      this.lbError = e instanceof Error ? e.message : "Could not sign in.";
+    }
+    this.lbSigning = false;
+    this.render();
+  }
+
+  private buyGateHtml(): string {
+    const g = this.buyGate!;
+    const name = g.kind === "theme" ? themeById(g.id).name : "All Access";
+    return `<div class="h4" style="margin-top:0">${this.lockIcon()} Sign in to buy</div>
+<div class="hn">${esc(name)} is saved to your account, so you can use it on all your computers and get it back if you reinstall.</div>
+${this.lbError ? `<div class="err">${esc(this.lbError)}</div>` : ""}
+<div class="acts" style="flex-direction:column;align-items:stretch">
+<button class="pb buy" data-a="buygogoogle" style="justify-content:center"${this.lbSigning ? " disabled" : ""}>${this.lbSigning ? "Waiting for Google…" : "Sign in with Google"}</button>
+<button class="lnk" data-a="buyno" style="align-self:center"${this.lbSigning ? " disabled" : ""}>No thanks</button>
+</div>`;
+  }
+
   private closePremium(): void {
     this.premiumDialog = false;
     this.licenseStep = false;
@@ -737,6 +790,7 @@ ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
     this.licenseDraft = "";
     this.licenseEmail = "";
     this.unlockTheme = null;
+    this.buyGate = null;
   }
 
   /** Checks the typed license key (in Rust) and unlocks All Access when it is good. */
@@ -797,7 +851,9 @@ ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
     const summary = theme
       ? `Get ${theme.name} on its own, or unlock everything with All Access. No subscription.`
       : `One payment of ${ALL_ACCESS_PRICE} unlocks every court, theme, ball and crowd. No subscription.`;
-    const body = this.licenseStep
+    const body = this.buyGate
+      ? this.buyGateHtml()
+      : this.licenseStep
       ? `<div class="hn">Paste the license key from your purchase email.</div>
 <input class="lic" id="lic" type="text" value="${esc(this.licenseDraft)}" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" autocomplete="off" spellcheck="false"${this.licenseBusy ? " disabled" : ""}>
 <input class="lic" id="lic-email" type="email" value="${esc(this.licenseEmail)}" placeholder="Email used at checkout" autocomplete="email" spellcheck="false"${this.licenseBusy ? " disabled" : ""}>
@@ -812,7 +868,7 @@ ${theme && THEME_CHECKOUT_URLS[theme.id] ? `<button class="pb buy" data-a="buyth
 </div>`;
     return `<div class="confirm-wrap" data-hit>
 <div class="px confirm">
-<div class="h4" style="margin-top:0">${this.lockIcon()} ${title}</div>
+${this.buyGate ? "" : `<div class="h4" style="margin-top:0">${this.lockIcon()} ${title}</div>`}
 ${body}
 </div>
 </div>`;
@@ -1191,19 +1247,19 @@ ${rows}
         this.premiumDialog = true;
         this.render();
         break;
-      case "buytheme": {
-        const url = THEME_CHECKOUT_URLS[v as ThemeId];
-        if (url) {
-          void openExternal(url).catch(() => {
-            window.open(url, "_blank", "noopener,noreferrer");
-          });
-        }
+      case "buytheme":
+        this.startBuy({ kind: "theme", id: v as ThemeId });
         break;
-      }
       case "buypremium":
-        void openExternal(PREMIUM_CHECKOUT_URL).catch(() => {
-          window.open(PREMIUM_CHECKOUT_URL, "_blank", "noopener,noreferrer");
-        });
+        this.startBuy({ kind: "all" });
+        break;
+      case "buygogoogle":
+        void this.buySignIn();
+        break;
+      case "buyno":
+        this.buyGate = null;
+        this.lbError = "";
+        this.render();
         break;
       case "haskey":
         this.licenseStep = true;
