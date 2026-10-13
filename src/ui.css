@@ -294,13 +294,16 @@
 #ui .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;padding:10px;font-size:15px;font-weight:500;background:#fff;color:#1f1f1f}
 #ui .gbtn:hover{background:#f1f3f6}
 
-/* the beetle that opens the bug report: dark line, lighter for a moment when pressed */
+/* the small bug icon that opens the bug report: thin grey line, brighter on hover, a flash when pressed */
 #ui .menu .foot{display:flex;align-items:center;justify-content:space-between;height:54px;margin:4px 0 -4px;padding:0 2px;position:relative;top:8px}
-#ui .menu .foot i{width:38px}
-#ui .bugbtn{background:none;padding:2px;margin:0;display:flex;cursor:pointer;color:#15171c;transition:color .35s ease-out,transform .15s}
-#ui .bugbtn:hover{transform:scale(1.12)}
-#ui .bugbtn:active{color:#8a91a1;transition:color .05s}
-#ui .bugbtn span,#ui .bug-big{display:block;width:34px;height:30px;background:currentColor;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;image-rendering:pixelated}
+#ui .menu .foot i{width:22px}
+#ui .bugbtn{background:none;padding:3px;margin:0;display:flex;cursor:pointer;position:relative;color:#7d8493;transition:color .3s ease-out}
+#ui .bugbtn:hover{color:#c9ced8}
+#ui .bugbtn:active{color:#fff;transition:color .05s}
+#ui .bugbtn svg{display:block;width:16px;height:16px}
+#ui .bugtip{position:absolute;left:0;bottom:26px;background:#0d0e12;padding:2px 6px;font-size:11px;color:#fff;white-space:nowrap;opacity:0;pointer-events:none;transition:.15s}
+#ui .bugbtn:hover .bugtip{opacity:1}
+#ui .bug-big{display:block;width:56px;height:56px;margin:0 auto;color:#8a91a1}#ui .bug-big svg{width:100%;height:100%;display:block}
 #ui .confirm.bug{width:min(360px,92vw)}
 #ui .bug-cats{display:flex;flex-wrap:wrap}
 #ui .bug-txt{width:100%;font-family:inherit;font-size:14px;color:var(--text);background:var(--panel2);border:0;padding:8px;resize:none;outline:none;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
@@ -309,7 +312,7 @@
 #ui .bug-chk.on i{background:var(--acc)}
 #ui .bug-cats .pb.on{background:var(--acc);color:#1c1c22}
 #ui .bug-thanks{text-align:center;padding:10px 0}#ui .bug-thanks b{display:block;font-size:20px;font-weight:500;margin-top:8px}
-#ui .bug-thanks .bug-big{width:56px;height:48px;margin:0 auto;color:#8a91a1;transform:scaleY(.6)}
+#ui .bug-thanks .bug-big{transform:scaleY(.7)}
 
 /* profile window */
 #ui .pf-name{display:flex;align-items:center;justify-content:center;gap:8px}#ui .pf-name b{font-size:20px;font-weight:500}

@@ -4,7 +4,7 @@ import type { Game } from "./game";
 const WEB = import.meta.env.VITE_TARGET === "web";
 const TOUCH = WEB && window.matchMedia("(pointer: coarse)").matches;
 const esc = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-import { BEETLE_MASK } from "./beetle";
+import { BUG_ICON } from "./beetle";
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
 import type { MultiplayerConnection } from "./multiplayerClient";
@@ -738,7 +738,7 @@ ${LEADERBOARD_ON && backend.user() ? `<button class="pb full" data-a="profile">P
 ${this.donateHtml()}
 ${this.game?.online ? `<button class="pb full danger" data-a="leavematch">Leave online match</button>` : ""}
 ${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}
-<div class="foot"><button class="bugbtn" data-a="bug" aria-label="Report a bug" title="Report a bug"><span style="-webkit-mask-image:${BEETLE_MASK};mask-image:${BEETLE_MASK}"></span></button><span class="hn">Hoops v${__APP_VERSION__}</span><i></i></div></div>`;
+<div class="foot"><button class="bugbtn" data-a="bug" aria-label="Report a bug" title="Report a bug">${BUG_ICON}<span class="bugtip">Report a bug</span></button><span class="hn">Hoops v${__APP_VERSION__}</span><i></i></div></div>`;
   }
 
   /** A picture tile for a choice: a small drawing above its name. */
@@ -944,7 +944,7 @@ ${body}
     if (this.bugStep === "sent") {
       return `<div class="confirm-wrap" data-hit>
 <div class="px confirm bug"><div class="h4" style="margin-top:0">Report a bug</div>
-<div class="bug-thanks"><span class="bug-big" style="-webkit-mask-image:${BEETLE_MASK};mask-image:${BEETLE_MASK}"></span><b>Thanks, bug caught!</b><div class="hn">We will look into it.</div></div>
+<div class="bug-thanks"><span class="bug-big">${BUG_ICON}</span><b>Thanks, bug caught!</b><div class="hn">We will look into it.</div></div>
 <div class="acts"><button class="pb buy" data-a="bugclose" style="flex:1;justify-content:center">Done</button></div></div></div>`;
     }
     const cats = ["Gameplay", "Online", "Looks", "Sound", "Other"].map((c) => `<button class="pb${this.bugCat === c ? " on" : ""}" data-a="bugcat" data-v="${c}">${c}</button>`).join("");
