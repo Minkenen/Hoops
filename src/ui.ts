@@ -773,12 +773,16 @@ ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
   private buyGateHtml(): string {
     const g = this.buyGate!;
     const name = g.kind === "theme" ? themeById(g.id).name : "All Access";
-    return `<div class="h4" style="margin-top:0">${this.lockIcon()} Sign in to buy</div>
-<div class="hn">${esc(name)} is saved to your account, so you can use it on all your computers and get it back if you reinstall.</div>
+    const busy = this.lbSigning ? " disabled" : "";
+    return `<div class="h4" style="margin-top:0">${this.lockIcon()} Create your Hoops account first</div>
+<div class="hn">Buying ${esc(name)}</div>
+<div class="hn" style="margin-top:8px;text-transform:uppercase;letter-spacing:.06em">Why sign in?</div>
+<ul class="buy-why"><li>Your purchase follows you to every computer</li><li>Get it back if you reinstall or lose the license key</li><li>Keep your score and achievements too</li></ul>
 ${this.lbError ? `<div class="err">${esc(this.lbError)}</div>` : ""}
 <div class="acts" style="flex-direction:column;align-items:stretch">
-<button class="pb buy" data-a="buygogoogle" style="justify-content:center"${this.lbSigning ? " disabled" : ""}>${this.lbSigning ? "Waiting for Google…" : "Sign in with Google"}</button>
-<button class="lnk" data-a="buyno" style="align-self:center"${this.lbSigning ? " disabled" : ""}>No thanks</button>
+<button class="pb buy" data-a="buygogoogle" style="justify-content:center"${busy}>${this.lbSigning ? "Waiting for Google…" : "Continue with Google"}</button>
+<div style="display:flex;gap:6px"><button class="pb" data-a="buyanon" style="flex:1"${busy}>Buy without an account</button><button class="pb" data-a="buyno" style="flex:1"${busy}>Not now</button></div>
+<div class="hn">Without an account the purchase only works on this computer.</div>
 </div>`;
   }
 
@@ -1256,6 +1260,13 @@ ${rows}
       case "buygogoogle":
         void this.buySignIn();
         break;
+      case "buyanon": {
+        const what = this.buyGate;
+        this.buyGate = null;
+        this.render();
+        if (what) this.openCheckout(what);
+        break;
+      }
       case "buyno":
         this.buyGate = null;
         this.lbError = "";
