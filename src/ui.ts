@@ -10,6 +10,7 @@ import type { MultiplayerConnection } from "./multiplayerClient";
 import { MULTIPLAYER_MOCK, MultiplayerMock } from "./multiplayerMock";
 import { HORSE, OnlineMatch, type OnlineMatchInit } from "./onlineMatch";
 import { drawSettingsArt } from "./settingsArt";
+import { TRAILS, type Trail, type TrailId, achievementsDone, startTrailPreviews, trailById, trailOwned } from "./trails";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
 import { type CrowdMode, Preview, setPreviewOverride } from "./preview";
@@ -137,6 +138,9 @@ export class UI {
   /** What the "Check for updates" button last found, in words. */
   private updateNote = "";
   private updateBusy = false;
+  /** A trail that was just earned: the box that offers to use it. */
+  private trailPop: Trail | null = null;
+  private trailPopTimer = 0;
   private setTab: "game" | "sound" | "look" | "system" = "game";
   private lbSigning = false;
   private lbDelete = false;
@@ -535,6 +539,40 @@ ${login}
     window.setTimeout(() => el.remove(), 3700);
   }
 
+  /** A new trail was earned: a box with a preview and "Use it now". */
+  showTrailUnlock(t: Trail): void {
+    this.trailPop = t;
+    window.clearTimeout(this.trailPopTimer);
+    this.trailPopTimer = window.setTimeout(() => {
+      this.trailPop = null;
+      this.render();
+    }, 15000);
+    this.render();
+  }
+
+  private trailPopHtml(): string {
+    const t = this.trailPop;
+    if (!t) return "";
+    return `<div class="px trail-pop" data-hit><canvas data-trail="${t.id}" width="60" height="34"></canvas><div><div class="k">NEW TRAIL UNLOCKED</div><div class="n">${t.name}</div><div class="hn">${t.desc}</div>
+<div style="margin-top:6px"><button class="pb pri" data-a="trailuse" data-v="${t.id}">Use it now</button><button class="pb" data-a="traillater">Later</button></div></div></div>`;
+  }
+
+  /** The road of trails at the top of the Achievements window: a new one every three achievements. */
+  private trailRoadHtml(): string {
+    const done = achievementsDone();
+    const rows = TRAILS.filter((t) => t.need > 0)
+      .map((t) => {
+        const own = trailOwned(t, done);
+        const inUse = settings.trail === t.id;
+        const pct = Math.max(0, Math.min(1, (done - (t.need - 3)) / 3));
+        const tag = own ? (inUse ? '<span class="tr-tag">In use</span>' : '<span class="tr-tag">Unlocked</span>') : `<span class="tr-tag lk">${t.need - done} to go</span>`;
+        const btn = own ? `<button class="pb${inUse ? " on" : ""}" data-a="trailuse" data-v="${inUse ? "none" : t.id}">${inUse ? "Turn off" : "Use"}</button>` : "";
+        return `<div class="tr-row"><div class="tr-step${own ? " on" : ""}">${t.need}</div><div class="tr-mid"><b>${t.name}</b> ${tag}<div class="hn">${t.desc}</div>${own ? "" : `<div class="tr-bar"><i style="width:${pct * 100}%"></i></div>`}</div><div class="tr-prev"><canvas data-trail="${t.id}"${own ? "" : ' data-locked="1"'} width="60" height="30"></canvas>${btn}</div></div>`;
+      })
+      .join("");
+    return `<div class="h4">Trail road</div><div class="hn" style="margin-bottom:6px">Every 3 achievements unlocks a new trail behind your ball.</div>${rows}`;
+  }
+
   openAchievements(): void {
     this.go("achievements");
   }
@@ -930,6 +968,8 @@ ${list}
 <div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Achievements ${done}/${ACHIEVEMENTS.length}</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
 <div class="wb">
 <div class="stats">${stat("Shots", String(s.throws))}${stat("Goals", String(s.goals))}${stat("Accuracy", acc + " %")}${stat("Best streak", String(s.bestStreak))}</div>
+${this.trailRoadHtml()}
+<div class="h4">Achievements</div>
 ${rows}
 </div></div>`;
   }
@@ -1003,12 +1043,14 @@ ${rows}
     if (this.game?.online && this.view !== "onlineend") html += this.onlineHudHtml();
     if (this.resetDialog) html += this.resetDialogHtml();
     if (this.premiumDialog) html += this.premiumDialogHtml();
+    if (this.trailPop) html += this.trailPopHtml();
     if (this.toastMsg) html += `<div class="px toast">${this.toastMsg}</div>`;
     this.host.innerHTML = html;
     const pv = this.host.querySelector<HTMLCanvasElement>("#prev");
     if (pv) new Preview(pv);
     this.host.querySelectorAll<HTMLCanvasElement>("canvas[data-prev]").forEach((cv) => new Preview(cv, { mode: cv.dataset.prev as CrowdMode, slide: true }));
     drawSettingsArt(this.host);
+    startTrailPreviews(this.host);
     this.game?.syncHit();
   }
 
@@ -1071,6 +1113,20 @@ ${rows}
         break;
       case "chkupdate":
         void this.checkUpdates();
+        break;
+      case "trailuse": {
+        const t = trailById(v ?? "none");
+        if (t.id === "none" || trailOwned(t)) {
+          setSetting("trail", t.id as TrailId);
+          this.trailPop = null;
+          this.toast(t.id === "none" ? "Trail off" : `Trail: ${t.name}`);
+        }
+        this.render();
+        break;
+      }
+      case "traillater":
+        this.trailPop = null;
+        this.render();
         break;
       case "costab":
         this.cosTab = v as typeof this.cosTab;

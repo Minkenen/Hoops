@@ -1,5 +1,6 @@
 import type { BallSkinId, CourtSkinId, CrowdStyle } from "./skins";
 import type { ThemeId } from "./themes";
+import type { TrailId } from "./trails";
 
 export interface Settings {
   arrow: "arrow" | "dots";
@@ -17,6 +18,8 @@ export interface Settings {
   baseSkin: "plate" | "round" | "concrete";
   court: boolean;
   ballSkin: BallSkinId;
+  /** The trail behind the ball (earned with achievements). */
+  trail: TrailId;
   courtSkin: CourtSkinId;
   crowd: CrowdStyle;
   arenaFill: boolean;
@@ -48,6 +51,7 @@ const DEFAULTS: Settings = {
   baseSkin: "plate",
   court: true,
   ballSkin: "classic",
+  trail: "none",
   courtSkin: "parquet",
   crowd: "stands",
   arenaFill: true,

@@ -255,3 +255,20 @@
   #ui .mp-hud .n{font-size:14px;font-weight:500;margin-top:4px}
   #ui .mp-hud .n.opp{color:#ee7a24}
 }
+
+/* trails: the road in Achievements and the "new trail" box */
+#ui .tr-row{display:grid;grid-template-columns:40px 1fr 110px;gap:10px;align-items:center;margin:8px 0}
+#ui .tr-step{width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-weight:500;background:var(--btn);color:var(--mut);
+  box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .tr-step.on{background:var(--acc);color:#1c1c22}
+#ui .tr-mid{min-width:0}#ui .tr-mid b{font-weight:500}
+#ui .tr-tag{display:inline-block;font-size:11px;padding:1px 6px;margin-left:4px;background:#1c1c22;color:#7ad89a}
+#ui .tr-tag.lk{color:#ffc83a}
+#ui .tr-bar{height:8px;margin-top:4px;background:var(--trk);box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .tr-bar i{display:block;height:100%;background:var(--acc)}
+#ui .tr-prev canvas{width:100%;height:auto;image-rendering:pixelated;display:block;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .tr-prev .pb{display:block;width:calc(100% - 4px);margin-top:6px}
+#ui .trail-pop{left:50%;bottom:28px;transform:translateX(-50%);display:flex;gap:12px;align-items:center;padding:10px 14px;z-index:8}
+#ui .trail-pop canvas{width:96px;height:auto;image-rendering:pixelated}
+#ui .trail-pop .k{font-size:11px;letter-spacing:.12em;color:#ffc83a}
+#ui .trail-pop .n{font-size:18px;font-weight:500}

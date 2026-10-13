@@ -21,6 +21,7 @@ import {
 } from "./ipc";
 import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch, setScore, setSetting, settings } from "./settings";
 import { themeById } from "./themes";
+import { achievementsDone, drawTrail, trailById, trailOwned, trailsUnlockedBetween, type TrailPoint } from "./trails";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
 import type { UI } from "./ui";
@@ -140,6 +141,8 @@ export class Game {
   private sharedBallTarget: { x: number; y: number; ang: number; until: number } | null = null;
   private sharedSamples: { t: number; x: number; y: number; ang: number }[] = [];
   private ballSentAt = 0;
+  /** Where the ball has been lately, for the trail behind it. */
+  private trailHist: TrailPoint[] = [];
   /** When the hoop moves to a new place after a goal or a miss in an online match (0 = not planned). */
   private hoopSwapAt = 0;
   /** The court stays fully up while a new hoop slides in. */
@@ -882,6 +885,7 @@ export class Game {
 
   private needsLoop(now: number): boolean {
     return (
+      this.trailHist.length > 0 ||
       this.ghost !== null ||
       this.sharedBallTarget !== null ||
       this.nudgeX !== null ||
@@ -1429,6 +1433,15 @@ export class Game {
 
   /** Shows newly unlocked achievements one after another. */
   private announce(list: Achievement[]): void {
+    if (list.length) {
+      // a new trail when the count of achievements passes a step (after the achievement cards)
+      const after = achievementsDone();
+      const fresh = trailsUnlockedBetween(after - list.length, after);
+      if (fresh.length) {
+        const t = fresh[fresh.length - 1];
+        window.setTimeout(() => this.ui.showTrailUnlock(t), (this.achQueue.length + list.length) * 3600 + 400);
+      }
+    }
     this.achQueue.push(...list);
     if (this.achBusy) return;
     const next = (): void => {
@@ -1632,6 +1645,16 @@ export class Game {
     this.sceneWasUp = sceneUp;
     this.fire.update(fdt, { x: b.x, y: b.y, vx: b.vx * 60, vy: b.vy * 60 }, this.floorY, this.burning && this.fireOn);
     this.fire.drawBack(ctx);
+
+    // the trail: where the ball has been while it flies (it fades away when the ball rests)
+    const tr = trailById(settings.trail);
+    if (b.moving && tr.id !== "none" && trailOwned(tr)) {
+      this.trailHist.push({ x: b.x, y: b.y });
+      if (this.trailHist.length > 30) this.trailHist.shift();
+    } else if (this.trailHist.length) {
+      this.trailHist.splice(0, 3);
+    }
+    if (this.trailHist.length > 1 && !this.sharedBallAway()) drawTrail(ctx, tr.id, this.trailHist, now, 1);
 
     const turns = ((b.ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
     const bs = BALL_SPRITE_SIZE * this.fire.scale();
