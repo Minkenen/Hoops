@@ -310,3 +310,12 @@
 #ui .bug-cats .pb.on{background:var(--acc);color:#1c1c22}
 #ui .bug-thanks{text-align:center;padding:10px 0}#ui .bug-thanks b{display:block;font-size:20px;font-weight:500;margin-top:8px}
 #ui .bug-thanks .bug-big{width:56px;height:48px;margin:0 auto;color:#8a91a1;transform:scaleY(.6)}
+
+/* profile window */
+#ui .pf-name{display:flex;align-items:center;justify-content:center;gap:8px}#ui .pf-name b{font-size:20px;font-weight:500}
+#ui .pf-stats{display:flex;gap:8px;margin:12px 0}
+#ui .pf-stats>div{flex:1;background:var(--panel2);padding:8px 4px;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .pf-stats b{display:block;font-size:18px;font-weight:500;color:var(--acc)}#ui .pf-stats small{font-size:11px;color:var(--mut)}
+#ui .pf-sws{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+#ui .pf-sw{width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center;background:var(--btn);box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .pf-sw:hover{background:var(--trk)}#ui .pf-sw.on{background:var(--acc)}

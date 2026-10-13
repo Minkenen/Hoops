@@ -117,6 +117,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       if (request.method === "POST" && url.pathname === "/replay/session") return replaySession(request, env);
       if (request.method === "POST" && url.pathname === "/replay") return replay(request, env);
       if (request.method === "POST" && url.pathname === "/nickname") return nickname(request, env);
+      if (request.method === "POST" && url.pathname === "/color") return setColor(request, env);
       if (request.method === "DELETE" && url.pathname === "/account") return deleteAccount(request, env);
       if (request.method === "GET" && url.pathname === "/profile") return profileGet(request, env);
       if (request.method === "PUT" && url.pathname === "/profile") return profilePut(request, env);
@@ -177,7 +178,7 @@ async function googleSub(env: Env, origin: string, code: string): Promise<string
 
 async function me(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
-  return json({ token: bearer(request), user: { id: player.id, nickname: player.nickname } });
+  return json({ token: bearer(request), user: { id: player.id, nickname: player.nickname, color: player.color ?? null } });
 }
 
 async function entitlements(request: Request, env: Env): Promise<Response> {
@@ -236,9 +237,9 @@ async function leaderboard(request: Request, env: Env, url: URL): Promise<Respon
   const where = tab === "weekly" ? "WHERE week = ?" : "";
   const params = tab === "weekly" ? [week] : [];
   const topRows = await env.DB.prepare(
-    `SELECT p.id, p.nickname, s.best_score FROM ${table} s JOIN players p ON p.id = s.player_id ${where ? `${where} AND` : "WHERE"} p.hidden = 0 ORDER BY s.best_score DESC, p.created_at ASC LIMIT 5`,
-  ).bind(...params).all<{ id: string; nickname: string; best_score: number }>();
-  const top = topRows.results.map((r, i) => ({ rank: i + 1, name: r.nickname, score: r.best_score, icon: iconFor(r.id) }));
+    `SELECT p.id, p.nickname, p.color, s.best_score FROM ${table} s JOIN players p ON p.id = s.player_id ${where ? `${where} AND` : "WHERE"} p.hidden = 0 ORDER BY s.best_score DESC, p.created_at ASC LIMIT 5`,
+  ).bind(...params).all<{ id: string; nickname: string; color: number | null; best_score: number }>();
+  const top = topRows.results.map((r, i) => ({ rank: i + 1, name: r.nickname, score: r.best_score, icon: iconFor(r.id, r.color) }));
   const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} s JOIN players p ON p.id = s.player_id ${where ? `${where} AND` : "WHERE"} p.hidden = 0`).bind(...params).first<{ n: number }>();
   let you = null;
   if (player) {
@@ -249,7 +250,7 @@ async function leaderboard(request: Request, env: Env, url: URL): Promise<Respon
       const higher = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE best_score > ? ${tab === "weekly" ? "AND week = ?" : ""}`)
         .bind(...(tab === "weekly" ? [mine.best_score, week] : [mine.best_score]))
         .first<{ n: number }>();
-      you = { rank: (higher?.n || 0) + 1, name: `You (${player.nickname})`, score: mine.best_score, icon: iconFor(player.id) };
+      you = { rank: (higher?.n || 0) + 1, name: `You (${player.nickname})`, score: mine.best_score, icon: iconFor(player.id, player.color) };
     }
   }
   return json({ top, you, players: count?.n || 0, updatedAt: Date.now() });
@@ -373,7 +374,17 @@ async function nickname(request: Request, env: Env): Promise<Response> {
     if (isUniqueConstraint(error)) return bad(NICKNAME_TAKEN_ERROR, 409);
     throw error;
   }
-  return json({ id: player.id, nickname });
+  return json({ id: player.id, nickname, color: player.color ?? null });
+}
+
+/** Which of the seven ball colours is yours (0 to 6): shown next to your name on the board. */
+async function setColor(request: Request, env: Env): Promise<Response> {
+  const player = await requirePlayer(request, env);
+  const body = (await request.json().catch(() => ({}))) as { color?: number };
+  const color = Number(body.color);
+  if (!Number.isInteger(color) || color < 0 || color > 6) return bad("Pick one of the colours.");
+  await env.DB.prepare("UPDATE players SET color = ? WHERE id = ?").bind(color, player.id).run();
+  return json({ id: player.id, nickname: player.nickname, color });
 }
 
 async function deleteAccount(request: Request, env: Env): Promise<Response> {
@@ -405,15 +416,17 @@ async function upsertPlayer(env: Env, provider: Provider, providerUserId: string
   throw new Error("Could not create nickname.");
 }
 
-async function optionalPlayer(request: Request, env: Env, tokenOverride?: string): Promise<{ id: string; nickname: string } | null> {
+type Player = { id: string; nickname: string; color?: number | null };
+
+async function optionalPlayer(request: Request, env: Env, tokenOverride?: string): Promise<Player | null> {
   const token = tokenOverride || bearer(request);
   if (!token) return null;
   const claims = await verifyJwt<{ playerId: string; exp: number }>(env, token);
   if (!claims || claims.exp < Math.floor(Date.now() / 1000)) return null;
-  return env.DB.prepare("SELECT id, nickname FROM players WHERE id = ?").bind(claims.playerId).first<{ id: string; nickname: string }>();
+  return env.DB.prepare("SELECT id, nickname, color FROM players WHERE id = ?").bind(claims.playerId).first<Player>();
 }
 
-async function requirePlayer(request: Request, env: Env, tokenOverride?: string): Promise<{ id: string; nickname: string }> {
+async function requirePlayer(request: Request, env: Env, tokenOverride?: string): Promise<Player> {
   const player = await optionalPlayer(request, env, tokenOverride);
   if (!player) throw new Error("Sign in first.");
   return player;
@@ -469,7 +482,8 @@ function atobUrl(value: string): string {
   return atob(padded);
 }
 
-function iconFor(id: string): number {
+function iconFor(id: string, color?: number | null): number {
+  if (typeof color === "number" && color >= 0 && color <= 6) return color;
   let n = 0;
   for (let i = 0; i < id.length; i++) n = (n + id.charCodeAt(i)) % 7;
   return n;

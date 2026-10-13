@@ -93,6 +93,7 @@ export const leaderboardSubmitScore = async (u: string, score: number, bestStrea
   if (!getToken()) return;
   await api(u, "POST", "/score", { score, bestStreak, throws, goals, version: __APP_VERSION__, ...(replaySessionId ? { replaySessionId } : {}) });
 };
+export const leaderboardSetColor = (u: string, color: number): Promise<LbUser> => api<LbUser>(u, "POST", "/color", { color });
 export const leaderboardSetNickname = (u: string, nickname: string): Promise<LbUser> => api<LbUser>(u, "POST", "/nickname", { nickname });
 export const leaderboardDeleteAccount = async (u: string): Promise<void> => {
   if (!getToken()) return;

@@ -58,6 +58,7 @@ export const leaderboardSubmitScore = (serverUrl: string, score: number, bestStr
   invoke("leaderboard_submit_score", { serverUrl, score, bestStreak, throws, goals, version: __APP_VERSION__, replaySessionId });
 export const leaderboardSetNickname = (serverUrl: string, nickname: string): Promise<LbUser> =>
   invoke<LbUser>("leaderboard_set_nickname", { serverUrl, nickname });
+export const leaderboardSetColor = (serverUrl: string, color: number): Promise<LbUser> => invoke<LbUser>("leaderboard_set_color", { serverUrl, color });
 export const leaderboardDeleteAccount = (serverUrl: string): Promise<void> => invoke("leaderboard_delete_account", { serverUrl });
 /** The profile kept on the account (stats, best score, cosmetics, licenses), or null when none is saved yet. */
 export const profileGet = (serverUrl: string): Promise<unknown> => invoke("leaderboard_profile_get", { serverUrl });

@@ -22,7 +22,7 @@ import { type UpdateInfo, checkForUpdateDetailed } from "./update";
 import { backend, cleanNickname, LEADERBOARD_ON, type LbBoard, type LbEntry, type LbProviderId, type LbTab } from "./leaderboard";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
-type View = "none" | "onlineend" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "leaderboard" | "onboarding" | "online";
+type View = "none" | "onlineend" | "menu" | "settings" | "cosmetics" | "sound" | "achievements" | "leaderboard" | "onboarding" | "online" | "profile";
 type DonateVariant = "button" | "footer";
 
 const DONATE_URL = "https://ko-fi.com/hoopsgame";
@@ -129,6 +129,11 @@ export class UI {
   private nickDraft = "";
   private nickError = "";
   private nickBusy = false;
+  /** The profile window: false while looking, true while editing the name and the colour. */
+  private profEdit = false;
+  private profColor = 0;
+  private profError = "";
+  private profBusy = false;
   private lbTab: LbTab = "global";
   private lbBoards: Partial<Record<LbTab, LbBoard>> = {};
   private lbBusy = false;
@@ -431,9 +436,9 @@ ${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>`
     this.render();
   }
 
-  private lbBall(i: number): string {
+  private lbBall(i: number, sz = 2): string {
     const pal = [["#e8731f", "#ff9a45"], ["#ffc83a", "#fff0a0"], ["#3a8bd9", "#7ab8f0"], ["#3ab36a", "#7ad89a"], ["#a24ad9", "#cf8af0"], ["#e8392b", "#ff8a7a"], ["#8a8e96", "#c4c8d0"]][i % 7];
-    return this.pixIcon(["..1111..", ".122221.", "12233221", "12222221", "12222221", "12222221", ".122221.", "..1111.."], ["#0d0e12", pal[0], pal[1]], 2);
+    return this.pixIcon(["..1111..", ".122221.", "12233221", "12222221", "12222221", "12222221", ".122221.", "..1111.."], ["#0d0e12", pal[0], pal[1]], sz);
   }
 
   private lbRow(e: LbEntry, me = false): string {
@@ -470,7 +475,7 @@ ${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>`
             ? `<div class="px login"><b>Delete your account?</b><div class="hn" style="margin:2px 0 8px">This removes your name, your scores and your saved progress from the leaderboard server. Your game on this device is kept. It cannot be undone.</div>
 <button class="pb full danger" data-a="lbdelyes"${this.lbSigning ? " disabled" : ""}>${this.lbSigning ? "Deleting…" : "Delete my data"}</button>
 <button class="pb full" style="text-align:center" data-a="lbdelno">Cancel</button>${this.lbError ? `<div class="err">${this.lbError}</div>` : ""}</div>`
-            : `<div class="note" style="margin-top:6px">Signed in as <b>${user.nickname}</b> · <button class="lnk" data-a="signout">Sign out</button> · <button class="lnk" data-a="lbdelask">Delete my data</button></div>`
+            : `<div class="note" style="margin-top:6px">Signed in as <b>${esc(user.nickname)}</b> · <button class="lnk" data-a="profile">Profile</button> · <button class="lnk" data-a="signout">Sign out</button> · <button class="lnk" data-a="lbdelask">Delete my data</button></div>`
           : "";
     return `<div class="px win" data-hit style="width:min(310px,94vw)">
 <div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Leaderboard</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
@@ -480,6 +485,65 @@ ${body}
 <div class="lbstat"><div><small>Best score</small><b>${getBestScore()}</b></div><div><small>Best streak</small><b>${s.bestStreak}</b></div><div><small>Accuracy</small><b>${acc}%</b></div></div>
 ${login}
 </div></div>`;
+  }
+
+  private profileHtml(): string {
+    const user = backend.user();
+    const s = getStats();
+    const color = user?.color ?? this.lbBoards.global?.you?.icon ?? 0;
+    const rank = this.lbBoards.global?.you?.rank;
+    const shown = this.profEdit ? this.profColor : color;
+    const name = this.profEdit ? this.nickDraft || user?.nickname || "" : user?.nickname ?? "";
+    const swatches = Array.from({ length: 7 }, (_, i) => `<button class="pf-sw${this.profColor === i ? " on" : ""}" data-a="profcolor" data-v="${i}" aria-label="Colour ${i + 1}">${this.lbBall(i, 3)}</button>`).join("");
+    const head = this.profEdit
+      ? `<input class="lic" id="profname" type="text" maxlength="18" value="${esc(name)}" autocomplete="off" spellcheck="false"${this.profBusy ? " disabled" : ""}>
+<div class="hn" style="margin-top:4px">3 to 18 letters, numbers, spaces, - or _.</div>${this.profError ? `<div class="err">${esc(this.profError)}</div>` : ""}`
+      : `<div class="pf-name"><b>${esc(name)}</b><button class="pb" data-a="profedit" aria-label="Edit profile">✎</button></div>`;
+    const dirty = this.profEdit && (this.profColor !== color || (this.nickDraft && this.nickDraft !== (user?.nickname ?? "")));
+    return `<div class="px win" data-hit style="width:min(330px,94vw)">
+<div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Profile</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
+<div class="wb" style="text-align:center">
+<div style="display:flex;justify-content:center;margin-bottom:6px">${this.lbBall(shown, 8)}</div>
+${head}
+<div class="hn" style="margin-top:4px">${rank ? `Rank #${rank} · ` : ""}Signed in with Google</div>
+<div class="pf-stats"><div><b>${getBestScore()}</b><small>Best score</small></div><div><b>${achievementsDone()}</b><small>Achievements</small></div><div><b>${s.bestStreak}</b><small>Best streak</small></div></div>
+${
+  this.profEdit
+    ? `<div class="h4" style="text-align:left">Ball colour</div><div class="pf-sws">${swatches}</div>
+<div class="acts" style="margin-top:12px"><button class="pb" data-a="profcancel"${this.profBusy ? " disabled" : ""}>Cancel</button><button class="pb buy" data-a="profsave" style="flex:1;justify-content:center"${dirty && !this.profBusy ? "" : " disabled"}>${this.profBusy ? "Saving…" : "Save"}</button></div>`
+    : `<button class="pb full" style="text-align:center;margin-top:12px" data-a="profedit">Edit profile</button><div style="margin-top:6px"><button class="lnk" data-a="signout">Sign out</button></div>`
+}
+</div></div>`;
+  }
+
+  private async saveProfile(): Promise<void> {
+    const user = backend.user();
+    if (!user) return;
+    const typed = this.nickDraft || user.nickname;
+    const n = typed === user.nickname ? user.nickname : cleanNickname(typed);
+    if (!n) {
+      this.profError = "Use 3 to 18 letters, numbers, spaces, - or _.";
+      this.render();
+      return;
+    }
+    this.profBusy = true;
+    this.profError = "";
+    this.render();
+    try {
+      if (n !== user.nickname) await backend.setNickname(n);
+      if (this.profColor !== (backend.user()?.color ?? this.lbBoards.global?.you?.icon ?? 0)) await backend.setColor(this.profColor);
+      this.lbBoards = {};
+      this.profEdit = false;
+      this.nickDraft = "";
+      this.profBusy = false;
+      this.toast("Profile saved", 1600);
+      void this.loadBoard();
+      return;
+    } catch (e) {
+      this.profError = e instanceof Error ? e.message : "Could not save. Try again.";
+    }
+    this.profBusy = false;
+    this.render();
   }
 
   openSound(): void {
@@ -669,6 +733,7 @@ ${this.row("Sound", this.tog("sound"))}
 <button class="pb full" data-a="ach">Achievements…</button>
 ${MULTIPLAYER_MOCK ? `<button class="pb pri full" data-a="online">Play online (beta)</button>` : ""}
 ${LEADERBOARD_ON ? `<button class="pb full lbl" data-a="lb"><span>Leaderboard…</span>${this.lbBoards.global?.you ? `<small>#${this.lbBoards.global.you.rank}</small>` : ""}</button>` : ""}
+${LEADERBOARD_ON && backend.user() ? `<button class="pb full" data-a="profile">Profile…</button>` : ""}
 <button class="pb full" data-a="inst">Settings…</button>
 ${this.donateHtml()}
 ${this.game?.online ? `<button class="pb full danger" data-a="leavematch">Leave online match</button>` : ""}
@@ -1152,10 +1217,11 @@ ${rows}
     else if (this.view === "sound") html = this.soundHtml();
     else if (this.view === "achievements") html = this.achievementsHtml();
     else if (this.view === "leaderboard") html = this.leaderboardHtml();
+    else if (this.view === "profile") html = this.profileHtml();
     else if (this.view === "online") html = this.mp.html();
     else if (this.view === "onlineend") html = this.onlineEndHtml();
     else if (this.view === "onboarding") html = this.onboardingHtml();
-    if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements" || this.view === "leaderboard") {
+    if (this.view === "menu" || this.view === "settings" || this.view === "cosmetics" || this.view === "sound" || this.view === "achievements" || this.view === "leaderboard" || this.view === "profile") {
       // (the online window has no catcher: it stays open until you close it, so you can switch to another app to send the code)
       html = `<div class="catch" data-hit data-a="dismiss"></div>${html}`;
     }
@@ -1179,6 +1245,13 @@ ${rows}
     if (t.id === "mpcode") {
       this.mp.setJoinCode(t.value);
       t.value = this.mp.joinCode;
+      return;
+    }
+    if (t.id === "profname") {
+      this.nickDraft = t.value;
+      const b = this.host.querySelector<HTMLButtonElement>('[data-a="profsave"]');
+      const cur = backend.user()?.nickname ?? "";
+      if (b) b.disabled = this.profBusy || (t.value === cur && this.profColor === (backend.user()?.color ?? this.lbBoards.global?.you?.icon ?? 0));
       return;
     }
     if (t.id === "bugtxt") {
@@ -1469,6 +1542,33 @@ ${rows}
             this.lbSigning = false;
             this.render();
           });
+        break;
+      case "profile":
+        this.profEdit = false;
+        this.profError = "";
+        this.go("profile");
+        void this.loadBoard();
+        break;
+      case "profedit":
+        this.profEdit = true;
+        this.profError = "";
+        this.nickDraft = "";
+        this.profColor = backend.user()?.color ?? this.lbBoards.global?.you?.icon ?? 0;
+        this.render();
+        this.host.querySelector<HTMLInputElement>("#profname")?.focus();
+        break;
+      case "profcancel":
+        this.profEdit = false;
+        this.profError = "";
+        this.nickDraft = "";
+        this.render();
+        break;
+      case "profcolor":
+        this.profColor = Number(v) || 0;
+        this.render();
+        break;
+      case "profsave":
+        void this.saveProfile();
         break;
       case "signout":
         void backend.signOut().then(() => {

@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS players (
   nickname TEXT NOT NULL,
   nickname_lower TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL,
-  hidden INTEGER NOT NULL DEFAULT 0
+  hidden INTEGER NOT NULL DEFAULT 0,
+  color INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS scores (

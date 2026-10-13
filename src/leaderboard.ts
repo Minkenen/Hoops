@@ -26,6 +26,8 @@ export interface LbBoard {
 export interface LbUser {
   id: string;
   nickname: string;
+  /** Which of the seven ball colours you picked (0 to 6), or null: then the colour comes from your id. */
+  color?: number | null;
 }
 
 export interface LbBackend {
@@ -39,6 +41,8 @@ export interface LbBackend {
   deleteAccount(): Promise<void>;
   /** Changes your name on the board. Names are unique (no two players can have the same, whatever the capital letters). Rejects with a message to show, such as "That name is taken." */
   setNickname(name: string): Promise<LbUser>;
+  /** Picks your ball colour (0 to 6). */
+  setColor(color: number): Promise<LbUser>;
   load(tab: LbTab): Promise<LbBoard>;
 }
 
@@ -86,6 +90,9 @@ const mock: LbBackend = {
     }
     return { id: "mock", nickname: n };
   },
+  async setColor(color) {
+    return { id: "mock", nickname: localStorage.getItem(ME) ?? "HoopsFan", color };
+  },
   async deleteAccount() {
     try {
       localStorage.removeItem(ME);
@@ -118,6 +125,7 @@ const unavailable: LbBackend = {
   signOut: () => Promise.resolve(),
   deleteAccount: () => Promise.resolve(),
   setNickname: () => Promise.reject(new Error("The leaderboard is not open yet.")),
+  setColor: () => Promise.reject(new Error("The leaderboard is not open yet.")),
   load: () => Promise.reject(new Error("The leaderboard is not open yet.")),
 };
 

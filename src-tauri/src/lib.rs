@@ -451,6 +451,8 @@ const LEADERBOARD_ACCOUNT: &str = "leaderboard-session";
 struct LbUser {
     id: String,
     nickname: String,
+    #[serde(default)]
+    color: Option<u8>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -497,6 +499,11 @@ struct LbEntitlements {
 #[derive(Serialize)]
 struct LbNickname {
     nickname: String,
+}
+
+#[derive(Serialize)]
+struct LbColor {
+    color: u8,
 }
 
 fn leaderboard_keyring() -> Result<keyring::Entry, String> {
@@ -692,6 +699,17 @@ async fn leaderboard_set_nickname(server_url: String, nickname: String) -> Resul
         .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn leaderboard_set_color(server_url: String, color: u8) -> Result<LbUser, String> {
+    let Some(token) = get_leaderboard_token() else {
+        return Err("Sign in first.".into());
+    };
+    let body = LbColor { color };
+    tauri::async_runtime::spawn_blocking(move || leaderboard_post(&server_url, "/color", Some(&token), &body))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Deletes the account on the server (name, scores and saved profile) and forgets the session on this computer.
 #[tauri::command]
 async fn leaderboard_delete_account(server_url: String) -> Result<(), String> {
@@ -819,6 +837,7 @@ pub fn run() {
             leaderboard_entitlements,
             leaderboard_submit_score,
             leaderboard_set_nickname,
+            leaderboard_set_color,
             leaderboard_delete_account,
             leaderboard_profile_get,
             leaderboard_profile_put,

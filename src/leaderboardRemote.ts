@@ -5,6 +5,7 @@ import {
   leaderboardLoad,
   leaderboardSignIn,
   leaderboardSetNickname,
+  leaderboardSetColor,
   leaderboardSignOut,
   leaderboardSubmitScore,
   leaderboardUser,
@@ -67,6 +68,11 @@ export class RemoteLeaderboard implements LbBackend {
 
   async setNickname(name: string): Promise<LbUser> {
     this.me = await leaderboardSetNickname(this.serverUrl, name);
+    return this.me;
+  }
+
+  async setColor(color: number): Promise<LbUser> {
+    this.me = await leaderboardSetColor(this.serverUrl, color);
     return this.me;
   }
 
