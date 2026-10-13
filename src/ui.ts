@@ -107,6 +107,7 @@ export class UI {
   private licenseBusy = false;
   private licenseError = "";
   private licenseDraft = "";
+  private licenseEmail = "";
   private unlockTheme: ThemeId | null = null;
   private toastMsg = "";
   private viewTheme: ThemeId | null = null;
@@ -734,15 +735,22 @@ ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
     this.licenseBusy = false;
     this.licenseError = "";
     this.licenseDraft = "";
+    this.licenseEmail = "";
     this.unlockTheme = null;
   }
 
   /** Checks the typed license key (in Rust) and unlocks All Access when it is good. */
   private async activate(): Promise<void> {
     const key = this.licenseDraft.trim();
+    const email = this.licenseEmail.trim();
     if (this.licenseBusy) return;
     if (!key) {
       this.licenseError = "Enter your license key.";
+      this.render();
+      return;
+    }
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      this.licenseError = "Enter the email address used for the purchase.";
       this.render();
       return;
     }
@@ -750,7 +758,7 @@ ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
     this.licenseError = "";
     this.render();
     try {
-      const result = await activateLicense(key);
+      const result = await activateLicense(key, email);
       addLicense({ key, unlock: result.unlock, theme: result.theme_id });
       if (result.unlock === "all") {
         setPremiumUnlocked(true);
@@ -792,6 +800,7 @@ ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
     const body = this.licenseStep
       ? `<div class="hn">Paste the license key from your purchase email.</div>
 <input class="lic" id="lic" type="text" value="${esc(this.licenseDraft)}" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" autocomplete="off" spellcheck="false"${this.licenseBusy ? " disabled" : ""}>
+<input class="lic" id="lic-email" type="email" value="${esc(this.licenseEmail)}" placeholder="Email used at checkout" autocomplete="email" spellcheck="false"${this.licenseBusy ? " disabled" : ""}>
 ${this.licenseError ? `<div class="err">${esc(this.licenseError)}</div>` : ""}
 <div class="acts"><button class="pb buy" data-a="activate"${this.licenseBusy ? " disabled" : ""}>${this.licenseBusy ? "Activating…" : "Activate"}</button><button class="pb" data-a="licback"${this.licenseBusy ? " disabled" : ""}>Cancel</button></div>`
       : `<div class="hn">${summary}</div>
@@ -1067,6 +1076,10 @@ ${rows}
     }
     if (t.id === "lic") {
       this.licenseDraft = t.value;
+      return;
+    }
+    if (t.id === "lic-email") {
+      this.licenseEmail = t.value;
       return;
     }
     if (t.id === "nick") {

@@ -64,7 +64,7 @@ async function api<T>(base: string, method: string, path: string, body?: unknown
   return data as T;
 }
 
-export const activateLicense = (key: string): Promise<LicenseActivation> => api<LicenseActivation>("", "POST", "/license/activate", { key });
+export const activateLicense = (key: string, email: string): Promise<LicenseActivation> => api<LicenseActivation>("", "POST", "/license/activate", { key, email });
 export const validateLicense = async (key: string): Promise<boolean> => (await api<{ valid: boolean }>("", "POST", "/license/validate", { key })).valid;
 export const leaderboardUser = async (u: string): Promise<LbUser | null> => {
   if (!getToken()) return null;

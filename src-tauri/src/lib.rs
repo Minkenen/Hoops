@@ -357,7 +357,7 @@ fn licensed_products() -> Vec<LicensedProduct> {
     .collect()
 }
 
-fn lemon_activate(key: &str, store_id: u64, products: &[LicensedProduct]) -> Result<LicenseActivation, String> {
+fn lemon_activate(key: &str, email: &str, store_id: u64, products: &[LicensedProduct]) -> Result<LicenseActivation, String> {
     let name = format!("Hoops on {}", std::env::consts::OS);
     let body: serde_json::Value = match ureq::post("https://api.lemonsqueezy.com/v1/licenses/activate")
         .set("Accept", "application/json")
@@ -380,6 +380,10 @@ fn lemon_activate(key: &str, store_id: u64, products: &[LicensedProduct]) -> Res
     if meta["store_id"].as_u64() != Some(store_id) {
         return Err("That license key is for a different product.".into());
     }
+    let customer_email = meta["customer_email"].as_str().unwrap_or("").trim().to_ascii_lowercase();
+    if customer_email.is_empty() || customer_email != email.trim().to_ascii_lowercase() {
+        return Err("That license key belongs to a different email address.".into());
+    }
     let instance_id = body["instance"]["id"].as_str().unwrap_or_default().to_string();
     Ok(LicenseActivation {
         instance_id,
@@ -390,10 +394,14 @@ fn lemon_activate(key: &str, store_id: u64, products: &[LicensedProduct]) -> Res
 
 /// Activates a Hoops license key. The page only ever sees success or an error message.
 #[tauri::command]
-async fn activate_license(key: String) -> Result<LicenseActivation, String> {
+async fn activate_license(key: String, email: String) -> Result<LicenseActivation, String> {
     let key = key.trim().to_string();
+    let email = email.trim().to_string();
     if key.is_empty() {
         return Err("Enter your license key.".into());
+    }
+    if !email.contains('@') {
+        return Err("Enter the email address used for the purchase.".into());
     }
     let store_id = ls_id(option_env!("HOOPS_LS_STORE_ID"), 495291);
     let products = licensed_products();
@@ -408,7 +416,7 @@ async fn activate_license(key: String) -> Result<LicenseActivation, String> {
         }
         return Err("Licensing is not set up in this build yet.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || lemon_activate(&key, store_id, &products))
+    tauri::async_runtime::spawn_blocking(move || lemon_activate(&key, &email, store_id, &products))
         .await
         .map_err(|e| e.to_string())?
 }

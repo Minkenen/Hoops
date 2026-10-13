@@ -44,7 +44,7 @@ export interface LicenseActivation {
   theme_id: string;
 }
 /** Checks a Lemon Squeezy license key with the license server (done in Rust, never from the page). Rejects with a message to show. */
-export const activateLicense = (key: string): Promise<LicenseActivation> => invoke<LicenseActivation>("activate_license", { key });
+export const activateLicense = (key: string, email: string): Promise<LicenseActivation> => invoke<LicenseActivation>("activate_license", { key, email });
 /** Asks the license server if a key is still good. Resolves false when it is not; rejects when the server cannot be reached. */
 export const validateLicense = (key: string): Promise<boolean> => invoke<boolean>("validate_license", { key });
 export const leaderboardUser = (serverUrl: string): Promise<LbUser | null> => invoke<LbUser | null>("leaderboard_user", { serverUrl });

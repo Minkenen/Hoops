@@ -796,13 +796,17 @@ function licenseMatch(meta: Record<string, any> | undefined): { unlock: "all" | 
 }
 
 async function licenseActivate(request: Request): Promise<Response> {
-  const body = (await request.json().catch(() => ({}))) as { key?: string };
+  const body = (await request.json().catch(() => ({}))) as { key?: string; email?: string };
   const key = String(body.key || "").trim();
+  const email = String(body.email || "").trim().toLowerCase();
   if (!key) return bad("Enter your license key.");
+  if (!email || !/^\S+@\S+\.\S+$/.test(email)) return bad("Enter the email address used for the purchase.");
   const r = await lemon("activate", { license_key: key, instance_name: "Hoops in the browser" });
   if (r.activated !== true) return bad(String(r.error || "That license key was not accepted."), 400);
   const match = licenseMatch(r.meta);
   if (!match) return bad("That license key is for a different product.");
+  const customerEmail = String(r.meta?.customer_email || "").trim().toLowerCase();
+  if (!customerEmail || customerEmail !== email) return bad("That license key belongs to a different email address.");
   return json({ instance_id: String(r.instance?.id || ""), unlock: match.unlock, theme_id: match.theme });
 }
 
