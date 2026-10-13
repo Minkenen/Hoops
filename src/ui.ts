@@ -646,16 +646,6 @@ ${login}
     return `<button class="pb full donate-cta" data-a="donate" data-v="button">Support Hoops</button>`;
   }
 
-  private donateStatsHtml(): string {
-    const s = donateStats();
-    const b = s.button;
-    const f = s.footer;
-    return `<div class="h4">Donate test</div>
-${this.row("Orange button", `<span class="val">${b.clicks}/${b.views}</span>`, rate(b.views, b.clicks))}
-${this.row("Footer panel", `<span class="val">${f.clicks}/${f.views}</span>`, rate(f.views, f.clicks))}
-<button class="pb full" data-a="donatestats">Show donate test stats</button>`;
-  }
-
   private tile(k: "autostart" | "fullscreen", v: 0 | 1, title: string, desc: string): string {
     const on = !!settings[k] === (v === 1);
     return `<button class="tile${on ? " on" : ""}" data-a="opt" data-k="${k}" data-v="${v}"><b>${title}</b><span>${desc}</span></button>`;
@@ -731,7 +721,6 @@ ${this.row("Basketball court", this.tog("court"), "Shown while aiming")}
 ${WEB ? "" : this.row("Start automatically", this.tog("autostart"), "When your computer starts")}
 ${WEB ? "" : this.row("Over fullscreen apps", this.tog("fullscreen"), "Games and video")}
 ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
-${this.donateStatsHtml()}
 <div class="acts"><button class="pb" data-a="reset">Reset score</button>${WEB ? "" : '<button class="pb danger" data-a="quit">Quit Hoops</button>'}</div>`;
     }
     return `<div class="px win" data-hit style="width:min(680px,94vw)">
