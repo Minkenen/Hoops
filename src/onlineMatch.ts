@@ -32,6 +32,11 @@ export interface OnlineMatchHost {
   peerSound?(name: "bounce" | "wall" | "board" | "rim", intensity: number): void;
 }
 
+export interface OnlineShot {
+  x: number; y: number; vx: number; vy: number; width: number; height: number; floorY: number; gs: number;
+  hoopX: number; hoopY: number; hoopL: number; hoopR: number;
+}
+
 /**
  * Where the other player's ball is. "free" uses normalized court coordinates so phones and desktop screens with
  * different aspect ratios still show the ball in the same relative place.
@@ -81,6 +86,7 @@ export class OnlineMatch {
   private peerShotId = -1;
   private peerResultId = -1;
   private serverSeq = 0;
+  private shotStartedAt = 0;
   private busyTimer = 0;
   private beat = 0;
 
@@ -124,10 +130,11 @@ export class OnlineMatch {
   }
 
   /** Called when the player lets go of the ball. */
-  localShot(): void {
+  localShot(shot: OnlineShot): void {
     this.inFlight = true;
+    this.shotStartedAt = performance.now();
     const shotId = this.localShotId++;
-    this.sendMatchEvent({ type: "shot", shotId });
+    this.sendMatchEvent({ type: "shot", shotId, ...shot });
     this.host.changed();
   }
 
@@ -138,7 +145,7 @@ export class OnlineMatch {
     this.awaitingRest = this.game !== "speed";
     this.apply("me", goal, far);
     // with the totals as they stand now: the other player takes our own score from us, so the two screens cannot drift apart
-    this.sendMatchEvent({ type: "result", shotId: this.localShotId - 1, goal, far, score: this.scoreMe, letters: this.lettersMe });
+    this.sendMatchEvent({ type: "result", shotId: this.localShotId - 1, resultT: Math.round(performance.now() - this.shotStartedAt), goal, far, score: this.scoreMe, letters: this.lettersMe });
     this.host.changed();
   }
 

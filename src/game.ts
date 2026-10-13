@@ -768,7 +768,11 @@ export class Game {
         this.clearRemoteBallVisuals();
         this.sharedBallTarget = null;
       }
-      this.onlineMatch?.localShot();
+      if (this.onlineMatch && this.hoop) {
+        const fx = this.hoop.x0 + this.hoop.sprite.frontX;
+        const bx = this.hoop.x0 + this.hoop.sprite.backX;
+        this.onlineMatch.localShot({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, width: this.artW, height: this.artH, floorY: this.floorY, gs: b.gs, hoopX: this.hoop.x0 + this.hoop.sprite.rimCx, hoopY: this.hoop.rimY, hoopL: Math.min(fx, bx), hoopR: Math.max(fx, bx) });
+      }
       this.crowd.shotStart(performance.now());
       play("shoot", clamp(d.power, 0.3, 1));
     } else if (this.hoop && !this.onlineMatch) {
