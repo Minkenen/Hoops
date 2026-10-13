@@ -24,6 +24,7 @@ import { themeById } from "./themes";
 import { drawTrail, trailById, trailOwned, type TrailPoint } from "./trails";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
+import { replayResult, replayShot } from "./replay";
 import { collideCircle as resolveCircle, collidePolygon as resolvePolygon, floorCollision, hoopCrossing, stepBall } from "./physics";
 import type { UI } from "./ui";
 import type { OnlineMatch, OpponentBall } from "./onlineMatch";
@@ -735,6 +736,7 @@ export class Game {
     if (l > 3) {
       b.vx = (-d.lx / l) * d.power * this.vmax;
       b.vy = (-d.ly / l) * d.power * this.vmax;
+      if (!this.onlineMatch) replayShot(b.x, b.y, b.vx, b.vy);
       b.gs = Math.abs(d.ly / l);
       b.t = 0;
       b.scored = false;
@@ -1406,6 +1408,7 @@ export class Game {
     this.shotResolved = true;
     const b = this.ball;
     recordMiss();
+    if (!this.onlineMatch) replayResult(false);
     pushLast10(false);
     if (this.burning) {
       this.burning = false;
@@ -1439,6 +1442,7 @@ export class Game {
         far: this.shotFar,
       }),
     );
+    if (!this.onlineMatch) replayResult(true);
     // The ball catches fire on the third goal in a row.
     if (!this.onlineMatch && getStats().streak === 3) {
       this.burning = true;

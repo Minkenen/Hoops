@@ -10,6 +10,8 @@ import {
   leaderboardUser,
 } from "./ipc";
 import { syncNow } from "./profileSync";
+import { leaderboardSessionToken } from "./ipc";
+import { replayPayload } from "./replay";
 import type { LbBackend, LbBoard, LbProviderId, LbTab, LbUser } from "./leaderboard";
 
 const SYNC_MS = 30_000;
@@ -80,12 +82,20 @@ export class RemoteLeaderboard implements LbBackend {
     this.syncing = true;
     const stats = getStats();
     void leaderboardSubmitScore(this.serverUrl, getBestScore(), stats.bestStreak, stats.throws, stats.goals)
+      .then(() => this.submitReplay())
       .catch(() => {
         /* offline play should never care */
       })
       .finally(() => {
         this.syncing = false;
       });
+  }
+
+  private async submitReplay(): Promise<void> {
+    const payload = replayPayload(__APP_VERSION__);
+    const token = await leaderboardSessionToken();
+    if (!payload || !token) return;
+    await fetch(`${this.serverUrl}/replay`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
   }
 }
 
