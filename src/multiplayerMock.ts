@@ -10,6 +10,8 @@
 
 import { createMultiplayerConnection, type MpLobbyPlayer, type MpServerMessage, type MultiplayerConnection } from "./multiplayerClient";
 
+const esc = (t: string): string => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+
 export const MULTIPLAYER_MOCK: boolean = import.meta.env.VITE_MULTIPLAYER === "1" || import.meta.env.VITE_MULTIPLAYER_MOCK === "1";
 const SERVER_URL = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) || "").trim();
 
@@ -428,12 +430,6 @@ export class MultiplayerMock {
     return t[this.screen] ?? "Online match";
   }
 
-  private board(who: "me" | "opp"): string {
-    if (this.game === "horse") return `<div class="mp-score">${[..."HORSE"].map((c) => `<span class="l">${c}</span>`).join("")}</div>`;
-    const goal = this.game === "speed" ? 10 : 21;
-    return `<div class="mp-score"><span class="mp-pill">0 / ${goal}</span></div><div class="mp-turn">${this.game === "speed" ? "Own ball" : who === "me" ? "Shoots first (coin flip)" : ""}</div>`;
-  }
-
   private body(): string {
     const nick = this.host.nickname();
     switch (this.screen) {
@@ -483,49 +479,48 @@ ${this.error ? `<div class="err">${this.error}</div>` : ""}
   private lobby(): string {
     const s = this.screen;
     const nick = this.host.nickname();
-    const banner =
-      s === "reconnect"
-        ? `<div class="mp-banner warn">${this.peerName} lost connection. Reconnecting… <b>0:${String(this.reconnectLeft).padStart(2, "0")}</b></div>`
-        : s === "gone"
-          ? `<div class="mp-banner bad">${this.peerName} left the match.</div>`
-          : s === "timeout"
-            ? `<div class="mp-banner bad">Connection lost. Could not reconnect to ${this.peerName}.</div>`
-            : "";
+    const gone = s === "gone" || s === "timeout";
+    const g = GAMES[this.game];
+    let status: { t: string; k: string };
+    if (s === "countdown") status = { t: this.countdown > 0 ? `Starting in ${this.countdown}…` : "GO!", k: "ok" };
+    else if (s === "reconnect") status = { t: `${this.peerName} lost connection. Reconnecting… 0:${String(this.reconnectLeft).padStart(2, "0")}`, k: "warn" };
+    else if (s === "gone") status = { t: `${this.peerName} left the match.`, k: "bad" };
+    else if (s === "timeout") status = { t: `Connection lost. Could not reconnect to ${this.peerName}.`, k: "bad" };
+    else if (this.me && !this.opp) status = { t: `You are ready. Waiting for ${this.peerName}…`, k: "ok" };
+    else if (!this.me && this.opp) status = { t: `${this.peerName} is ready. Your turn to press Ready.`, k: "warn" };
+    else status = { t: "Press Ready when you want to play.", k: "" };
     const oppPill =
       s === "reconnect"
         ? `<span class="mp-pill warn"><i></i>Reconnecting</span>`
-        : s === "gone" || s === "timeout"
-          ? `<span class="mp-pill bad"><i></i>Offline</span>`
-          : `<span class="mp-pill${this.direct ? "" : " warn"}"><i></i>${this.direct ? "Direct link ready" : "Server lobby"}</span>`;
-    const ready = this.me && !(s === "gone" || s === "timeout");
-    const cards = `<div class="mp-vs"><div class="mp-pl${this.me ? " ready" : ""}">${this.ball("you", 48)}<b>${nick}</b><div class="hn">You</div><span class="mp-pill"><i></i>Connected</span>${this.board("me")}
-<div style="margin-top:6px"><button class="pb${ready ? " on" : ""}" data-a="mp:ready"${s === "lobby" ? "" : " disabled"}>${ready ? "Ready ✓" : "Ready"}</button></div></div>
-<div class="mp-vsx">VS</div>
-<div class="mp-pl${this.opp ? " ready" : ""}">${this.ball("opp", 48)}<b>${this.peerName}</b><div class="hn">Opponent</div>${oppPill}${this.board("opp")}
-<div style="margin-top:6px"><span class="mp-pill${this.opp ? "" : " warn"}"><i></i>${this.opp ? "Ready" : "Not ready"}</span></div></div></div>`;
-    if (s === "countdown") {
-      return `${cards}<div class="mp-c hn">${GAMES[this.game].name} · ${GAMES[this.game].tag}</div><div class="mp-cd">${this.countdown > 0 ? this.countdown : "GO!"}</div>`;
-    }
-    const settings = `<div class="h4">Game <span class="hn">${this.isHost ? "(you pick)" : "(the host picks)"}</span></div>${this.modes(this.isHost)}${this.rule()}
-<div class="h4">Court</div><div class="mp-seg">${(["Street", "Gym", "Arena"] as const)
-      .map((c) => `<button class="pb${this.court === c ? " on" : ""}"${this.isHost ? ` data-a="mp:court" data-v="${c}"` : " disabled"}>${c}</button>`)
-      .join("")}</div><div class="hn" style="margin-top:6px">Both players see the same court and hoop.</div>`;
-    let actions: string;
-    if (s === "lobby") actions = `<button class="pb full" data-a="mp:leave" style="text-align:center;margin-top:10px">Leave</button>`;
-    else if (s === "reconnect")
-      actions = `<button class="pb full" data-a="mp:sim" data-v="reconnect" style="text-align:center;margin-top:10px">Keep waiting</button><button class="pb full" data-a="mp:leave" style="text-align:center">Leave</button>`;
-    else
-      actions = `<button class="pb pri mp-big" data-a="mp:menu" style="justify-content:center;margin-top:10px"><span><b>Back to menu</b></span></button><button class="pb full" data-a="mp:quick" style="text-align:center">Find another player</button>`;
-    const sim =
-      `<div class="mp-sim hn">Test states: <button class="pb" data-a="mp:sim" data-v="reconnect">Lose connection</button><button class="pb" data-a="mp:sim" data-v="gone">Opponent leaves</button>` +
-      (s === "lobby" ? "" : `<button class="pb" data-a="mp:sim" data-v="restore">Reset</button>`) +
-      `</div>`;
-    return `${banner}${cards}${settings}${actions}${sim}`;
+        : gone
+          ? `<span class="mp-pill bad"><i></i>${s === "gone" ? "Left" : "Offline"}</span>`
+          : `<span class="mp-pill${this.opp ? "" : " warn"}"><i></i>${this.opp ? "Ready" : "Not ready"}</span>`;
+    const mine = this.me && !gone;
+    const players = `<div class="h4" style="margin-top:0">Players</div>
+<div class="mp-pc${mine ? " rd" : ""}">${this.ball("you", 32)}<div><b>${esc(nick)}</b><div class="hn">You${this.isHost ? " · host" : ""}</div></div><span class="mp-pill${mine ? "" : " warn"}"><i></i>${mine ? "Ready" : "Not ready"}</span></div>
+<div class="mp-pc${this.opp ? " rd" : ""}">${this.ball("opp", 32)}<div><b>${esc(this.peerName)}</b><div class="hn">Opponent</div></div>${oppPill}</div>
+<button class="mp-ready${mine ? " done" : ""}" data-a="mp:ready"${s === "lobby" ? "" : " disabled"}>${s === "countdown" ? (this.countdown > 0 ? this.countdown : "GO!") : gone ? "Match ended" : mine ? "Ready ✓" : "READY"}</button>
+${gone ? `<button class="pb full" data-a="mp:menu" style="text-align:center;margin-top:8px">Back to menu</button><button class="pb full" data-a="mp:quick" style="text-align:center">Find another player</button>` : `<a class="mp-link" data-a="mp:leave">Leave</a>`}`;
+    const modes = (Object.keys(GAMES) as GameId[])
+      .map((id) => `<button class="mp-gm${this.game === id ? " on" : ""}"${this.isHost && s === "lobby" ? ` data-a="mp:game" data-v="${id}"` : " disabled"}><b>${GAMES[id].name}</b><div class="hn">${GAMES[id].tag}</div></button>`)
+      .join("");
+    const courts = (["Street", "Gym", "Arena"] as const)
+      .map((c) => `<button class="mp-ct${this.court === c ? " on" : ""}"${this.isHost && s === "lobby" ? ` data-a="mp:court" data-v="${c}"` : " disabled"}><canvas data-art="court-${c}" width="48" height="28"></canvas><b>${c}</b></button>`)
+      .join("");
+    const settings = `<div class="h4" style="margin-top:0">Game <span class="hn">${this.isHost ? "(you pick)" : "(the host picks)"}</span></div><div class="mp-gms">${modes}</div><div class="hn" style="margin:6px 2px 0">${g.rule}</div>
+<div class="h4">Court</div><div class="mp-cts">${courts}</div>`;
+    const wait = s === "reconnect" ? `<button class="pb full" data-a="mp:sim" data-v="reconnect" style="text-align:center;margin-top:8px">Keep waiting</button>` : "";
+    return `<div class="mp-banner${status.k ? " " + status.k : ""}" style="margin:0 0 10px">${status.t}</div>
+<div class="mp-two"><div>${players}${wait}</div><div>${settings}</div></div>`;
+  }
+
+  private wide(): boolean {
+    return ["lobby", "countdown", "reconnect", "gone", "timeout"].includes(this.screen);
   }
 
   /** The whole window. The first screen steps back through ui.back(); the others through back(). */
   html(): string {
-    return `<div class="px win" data-hit style="width:min(430px,94vw)">
+    return `<div class="px win" data-hit style="width:min(${this.wide() ? 600 : 430}px,94vw)">
 <div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>${this.title()}${this.screen === "quick" || this.screen === "found" || this.screen === "created" ? "" : ""}</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
 <div class="wb mp">${this.body()}</div></div>`;
   }

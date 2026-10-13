@@ -194,6 +194,23 @@
 #ui .mp-banner{margin:6px 2px;padding:8px 10px;font-size:13px;background:#4a3f1a;
   box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
 #ui .mp-banner.bad{background:#4a1f1f}
+#ui .mp-banner.ok{background:#2f4a36}
+#ui .mp-two{display:grid;grid-template-columns:1fr 1.25fr;gap:14px}
+#ui .mp-two>div{min-width:0}
+#ui .mp-pc{display:flex;align-items:center;gap:10px;padding:8px;margin:6px 2px;background:var(--panel2);box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-pc>div{flex:1;min-width:0}#ui .mp-pc b{font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ui .mp-pc.rd{background:#2f4a36}
+#ui .mp-ready{display:flex;align-items:center;justify-content:center;width:calc(100% - 4px);margin:8px 2px 2px;padding:12px;font-size:18px;font-weight:500;background:var(--acc);color:#1c1c22;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-ready.done{background:#3ab36a}#ui .mp-ready[disabled]{opacity:.6;cursor:default}
+#ui .mp-link{display:block;text-align:center;margin-top:8px;font-size:13px;color:var(--mut);text-decoration:underline;cursor:pointer}
+#ui .mp-gms{display:flex;flex-direction:column;gap:6px}
+#ui .mp-gm{padding:8px 10px;background:var(--btn);text-align:left;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-gm b{font-weight:500}#ui .mp-gm.on{background:var(--acc);color:#1c1c22}#ui .mp-gm.on .hn{color:#3a2a1c}
+#ui .mp-cts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+#ui .mp-ct{background:var(--btn);padding:5px;text-align:center;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
+#ui .mp-ct canvas{width:100%;height:auto;display:block;margin-bottom:3px}#ui .mp-ct.on{background:var(--acc);color:#1c1c22}
+#ui .mp-gm[disabled],#ui .mp-ct[disabled]{opacity:.6;cursor:default}
+@media(max-width:560px){#ui .mp-two{grid-template-columns:1fr}}
 #ui .mp-sim{margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:2px}
 #ui .pb[disabled]{opacity:.6;cursor:default}
 

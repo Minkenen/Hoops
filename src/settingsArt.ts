@@ -127,6 +127,39 @@ function mpBall(cv: HTMLCanvasElement, kind: "you" | "opp" | "gold"): void {
   rows.forEach((r, y) => [...r].forEach((ch, x) => ch !== "." && ((c.fillStyle = col[ch]), c.fillRect(x * k, y * k, k, k))));
 }
 
+/** A tiny picture of a court for the lobby (Street, Gym, Arena). */
+function courtThumb(cv: HTMLCanvasElement, name: string): void {
+  const x = cv.getContext("2d")!;
+  x.clearRect(0, 0, cv.width, cv.height);
+  x.fillStyle = name === "Street" ? "#a8503a" : name === "Gym" ? "#2a4a9a" : "#10122a";
+  x.fillRect(0, 0, 48, 18);
+  if (name === "Street") {
+    for (let y = 0; y < 18; y += 4)
+      for (let i = 0; i < 48; i += 8) {
+        x.fillStyle = "#b86a4a";
+        x.fillRect(i + ((y / 4) % 2 ? 4 : 0), y, 7, 3);
+      }
+  } else if (name === "Gym") {
+    for (let i = 0; i < 48; i += 3) {
+      x.fillStyle = ["#e8731f", "#3a6fd9", "#f2f4f7", "#8a8e96"][(i / 3) % 4 | 0];
+      x.fillRect(i, 6 + ((i / 3) % 2) * 4, 2, 3);
+    }
+  } else {
+    x.fillStyle = "rgba(207,224,255,.3)";
+    for (const [a, b, c] of [[10, 2, 18], [36, 28, 44]]) {
+      x.beginPath();
+      x.moveTo(a, 0);
+      x.lineTo(b, 18);
+      x.lineTo(c, 18);
+      x.fill();
+    }
+  }
+  x.fillStyle = name === "Street" ? "#6a6a78" : name === "Gym" ? "#e8a050" : "#2a2a50";
+  x.fillRect(0, 18, 48, 10);
+  x.fillStyle = "rgba(255,255,255,.5)";
+  x.fillRect(0, 22, 48, 1);
+}
+
 /** Draws every picture in the window that asks for one (data-art="crowd-row", "fire-pop", "aim-dots", "fade", ...). */
 export function drawSettingsArt(host: HTMLElement): void {
   host.querySelectorAll<HTMLCanvasElement>("canvas[data-art]").forEach((cv) => {
@@ -135,6 +168,7 @@ export function drawSettingsArt(host: HTMLElement): void {
     else if (kind === "fire") fire(cv, v as "pop" | "shatter");
     else if (kind === "aim") aim(cv, v as "arrow" | "dots");
     else if (kind === "fade") fade(cv);
+    else if (kind === "court") courtThumb(cv, v);
     else if (kind === "ball") mpBall(cv, v as "you" | "opp" | "gold");
   });
 }
