@@ -14,6 +14,7 @@ export function simulateReplayShot(shot) {
   let vx = shot.vx;
   let vy = shot.vy;
   let previousY = y;
+  let bounces = 0;
   let elapsed = 0;
   while (elapsed < flight) {
     const dt = Math.min(1, flight - elapsed);
@@ -21,6 +22,18 @@ export function simulateReplayShot(shot) {
     vy += G * (shot.gs + (1 - shot.gs) * Math.max(0, Math.min(1, elapsed / 40))) * dt;
     x += vx * dt;
     y += vy * dt;
+    if (x < 0 || x > shot.width) {
+      x = Math.max(0, Math.min(shot.width, x));
+      vx = -vx * 0.8;
+      bounces++;
+    }
+    if (y > shot.floorY) {
+      y = shot.floorY;
+      vy = -Math.abs(vy) * 0.65;
+      vx *= 0.88;
+      bounces++;
+    }
+    if (bounces > 12) return { crossed: false, flight };
     if (previousY < shot.hoopY && y >= shot.hoopY && vy > 0 && x > shot.hoopL && x < shot.hoopR) return { crossed: true, flight };
     previousY = y;
   }

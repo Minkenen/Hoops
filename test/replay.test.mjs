@@ -37,3 +37,9 @@ test("simulates free flight with replay timing", () => {
   assert.equal(result.flight, 1200);
   assert.equal(typeof result.crossed, "boolean");
 });
+
+test("keeps the replay simulation bounded after floor and wall bounces", () => {
+  const result = simulateReplayShot({ ...shot(0, 0), x: 790, y: 290, vx: 40, vy: 20, resultT: 1200 });
+  assert.equal(result.flight, 1200);
+  assert.equal(typeof result.crossed, "boolean");
+});
