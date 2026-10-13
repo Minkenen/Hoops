@@ -439,7 +439,7 @@ function drawLayer(t: number, L: (typeof LAY)[number], cfg: Layer, antennas = fa
         if (Math.floor(t / (700 + hs(b.x, 92) * 400) + hs(b.x, 93) * 7) % 3 !== 0) r(ax, top - ah - 2, 2, 2, "#ff3b3b");
       }
       for (let wy = cfg.base - h + 4; wy < cfg.base - 4; wy += 5) {
-        for (let wx = x + 2; wx < x + b.w - 2; wx += 4) if (hs(wx - x + b.w, wy) > cfg.dens && Math.floor(t / 1700 + hs(wx, wy) * 9) % 11 !== 0) r(wx, wy, 2, 2, cfg.win);
+        for (let wx = x + 2; wx < x + b.w - 2; wx += 4) if (hs(wx - x + b.w, wy) > cfg.dens) r(wx, wy, 2, 2, cfg.win);
       }
     }
   }
@@ -453,7 +453,7 @@ function landmark(t: number, cfg: Layer, Tmid: number, xmid: number, w: number, 
   r(x, top, w, 2, "#1a2040");
   r(x - 2, top - 3, w + 4, 3, "#161b36");
   for (let wy = top + 8; wy < cfg.base - 4; wy += 6) {
-    for (let wx = x + 3; wx < x + w - 3; wx += 5) if (hs(wx - x, wy) > 0.5 && Math.floor(t / 1500 + hs(wx, wy) * 9) % 11 !== 0) r(wx, wy, 2, 3, cfg.win);
+    for (let wx = x + 3; wx < x + w - 3; wx += 5) if (hs(wx - x, wy) > 0.5) r(wx, wy, 2, 3, cfg.win);
   }
   if (withRoof) {
     r(x, top - 6, 3, 6, "#161b36");
