@@ -66,6 +66,8 @@ export class OnlineMatch {
   lettersOpp = 0;
   streakMe = 0;
   streakOpp = 0;
+  /** Shared completed-shot number. Both clients advance it from the same result message. */
+  round = 0;
   private awaitingRest = false;
   /** Whose shot it is. In Speedball both shoot at once. */
   turn: "me" | "opp" | "both";
@@ -155,6 +157,7 @@ export class OnlineMatch {
 
   private apply(who: "me" | "opp", goal: boolean, far: boolean): void {
     const me = who === "me";
+    this.round++;
     if (me) this.streakMe = goal ? this.streakMe + 1 : 0;
     else this.streakOpp = goal ? this.streakOpp + 1 : 0;
     if (this.game === "speed") {

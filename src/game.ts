@@ -145,8 +145,6 @@ export class Game {
   private trailHist: TrailPoint[] = [];
   /** When the hoop moves to a new place after a goal or a miss in an online match (0 = not planned). */
   private hoopSwapAt = 0;
-  /** Shared online turn-game hoop sequence. Both clients derive the same side and height from the match seed. */
-  private onlineHoopRound = 0;
   /** The court stays fully up while a new hoop slides in. */
   private keepCourt = false;
   /** Your own look, put back after an online match that used the court you both picked. */
@@ -503,7 +501,6 @@ export class Game {
     this.sharedSamples.length = 0;
     this.nudgeX = null;
     this.hoopSwapAt = 0;
-    this.onlineHoopRound = 0;
     this.burning = false;
     this.fireOn = false;
     this.fire = new BallFire();
@@ -842,7 +839,7 @@ export class Game {
     const okRight = b.x < this.artW - this.refR.w - gap;
     const okLeft = b.x > this.refL.w + gap;
     const onlineTurnGame = this.onlineMatch && this.onlineMatch.game !== "speed";
-    const round = this.onlineHoopRound++;
+    const round = onlineTurnGame ? this.onlineMatch!.round : 0;
     let side: "left" | "right";
     if (forceSide) side = forceSide;
     else if (onlineTurnGame) side = this.onlineHash(`${this.onlineMatch!.seed}:${round}:side`) % 2 ? "right" : "left";
