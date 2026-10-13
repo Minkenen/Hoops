@@ -296,11 +296,11 @@
 
 /* the beetle that opens the bug report: dark line, lighter for a moment when pressed */
 #ui .menu .foot{display:flex;align-items:center;justify-content:space-between;height:54px;margin:4px 0 -4px;padding:0 2px;position:relative;top:8px}
-#ui .menu .foot i{width:30px}
+#ui .menu .foot i{width:38px}
 #ui .bugbtn{background:none;padding:2px;margin:0;display:flex;cursor:pointer;color:#15171c;transition:color .35s ease-out,transform .15s}
 #ui .bugbtn:hover{transform:scale(1.12)}
 #ui .bugbtn:active{color:#8a91a1;transition:color .05s}
-#ui .bugbtn span,#ui .bug-big{display:block;width:28px;height:24px;background:currentColor;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;image-rendering:pixelated}
+#ui .bugbtn span,#ui .bug-big{display:block;width:34px;height:30px;background:currentColor;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;image-rendering:pixelated}
 #ui .confirm.bug{width:min(360px,92vw)}
 #ui .bug-cats{display:flex;flex-wrap:wrap}
 #ui .bug-txt{width:100%;font-family:inherit;font-size:14px;color:var(--text);background:var(--panel2);border:0;padding:8px;resize:none;outline:none;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
