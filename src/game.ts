@@ -138,6 +138,7 @@ export class Game {
   /** The positions the other player's ball has been reported at, with the time they arrived: the ghost is drawn a moment in the past, between two of them, so it moves smoothly. */
   private ghostBuf: { t: number; x: number; y: number; ang: number }[] = [];
   private sharedBallTarget: { x: number; y: number; ang: number; until: number } | null = null;
+  private sharedSamples: { t: number; x: number; y: number; ang: number }[] = [];
   private ballSentAt = 0;
   /** When the hoop moves to a new place after a goal or a miss in an online match (0 = not planned). */
   private hoopSwapAt = 0;
@@ -329,6 +330,8 @@ export class Game {
           ang: p.ang,
           until: performance.now() + 900,
         };
+        this.sharedSamples.push({ t: performance.now(), ...this.sharedBallTarget });
+        if (this.sharedSamples.length > 32) this.sharedSamples.shift();
         this.start();
         return;
       }
@@ -388,6 +391,11 @@ export class Game {
     if (this.onlineMatch?.game !== "speed") {
       this.clearRemoteBallVisuals();
       this.sharedBallTarget = null;
+      this.sharedSamples.length = 0;
+      this.ball.moving = false;
+      this.ball.vx = this.ball.vy = 0;
+      this.shot = false;
+      this.nudgeX = null;
     }
     play("shoot", 0.55);
     this.start();
@@ -398,8 +406,10 @@ export class Game {
     if (goal) {
       play("swish", 0.75);
       play("swoosh2", 0.45);
+      play("cheer", 0.9);
     }
     if (this.onlineMatch?.game === "speed") return;
+    if (!goal && this.burning) play("extinguish");
     this.ghostUntil = performance.now() + 600;
     this.hideAt = performance.now() + 1500;
     this.start();
@@ -407,6 +417,21 @@ export class Game {
 
   /** Redraws now (the online scoreboard changed). */
   refresh(): void {
+    const m = this.onlineMatch;
+    if (m && m.game !== "speed") {
+      const lit = (m.turn === "me" ? m.streakMe : m.streakOpp) >= 3;
+      if (lit !== this.burning) {
+        this.burning = lit;
+        this.fireOn = lit;
+        this.fire = new BallFire();
+        this.fire.mode = settings.fireStyle;
+        if (lit) {
+          this.fire.relight();
+          const streak = m.turn === "me" ? m.streakMe : m.streakOpp;
+          if (streak === 3 && (this.shot || m.waitingForPeer)) play("ignite");
+        }
+      }
+    }
     this.start();
   }
 
@@ -416,6 +441,10 @@ export class Game {
     this.onlineMatch = null;
     this.clearRemoteBallVisuals();
     this.sharedBallTarget = null;
+    this.sharedSamples.length = 0;
+    this.burning = getStats().streak >= 3;
+    this.fireOn = false;
+    this.fire = new BallFire();
     this.restoreLook();
     this.ui.close(true);
     this.start();
@@ -466,6 +495,12 @@ export class Game {
     this.clearRemoteBallVisuals();
     this.ghost = match.game === "speed" ? { x: this.artW * 0.7, y: this.floorY - BALL_R, ang: 0 } : null;
     this.sharedBallTarget = null;
+    this.sharedSamples.length = 0;
+    this.nudgeX = null;
+    this.hoopSwapAt = 0;
+    this.burning = false;
+    this.fireOn = false;
+    this.fire = new BallFire();
     this.ghostUntil = Infinity;
     this.showHoop();
     this.start();
@@ -879,6 +914,9 @@ export class Game {
     b.moving = false;
     this.clearRemoteBallVisuals();
     this.sharedBallTarget = null;
+    this.sharedSamples.length = 0;
+    this.shot = false;
+    this.nudgeX = null;
     // their ball has stopped: now the hoop can move
     this.hoopSwapAt = performance.now() + 300;
     this.start();
@@ -964,13 +1002,17 @@ export class Game {
     if (sharedTarget) {
       if (now > sharedTarget.until || !this.sharedBallAway()) {
         this.sharedBallTarget = null;
+        this.sharedSamples.length = 0;
       } else {
-        const dx = sharedTarget.x - b.x;
-        const dy = sharedTarget.y - b.y;
-        const k = Math.hypot(dx, dy) > 80 ? 0.9 : 0.62;
-        b.x += dx * k;
-        b.y += dy * k;
-        b.ang += (sharedTarget.ang - b.ang) * k;
+        const samples = this.sharedSamples;
+        const at = now - 80;
+        while (samples.length > 2 && samples[1].t <= at) samples.shift();
+        const a = samples[0] ?? sharedTarget;
+        const c = samples[1] ?? a;
+        const k = "t" in a && "t" in c ? clamp((at - a.t) / Math.max(1, c.t - a.t), 0, 1) : 1;
+        b.x = a.x + (c.x - a.x) * k;
+        b.y = a.y + (c.y - a.y) * k;
+        b.ang = a.ang + (c.ang - a.ang) * k;
       }
     }
     if (this.onlineMatch && !this.onlineMatch.over) {
@@ -1062,7 +1104,7 @@ export class Game {
 
   private rest(now: number): void {
     const b = this.ball;
-    if (TOUCH_WEB) {
+    if (TOUCH_WEB && (!this.onlineMatch || this.onlineMatch.game === "speed")) {
       const lo = EDGE_ROOM;
       const hi = this.artW - EDGE_ROOM;
       if (b.x < lo || b.x > hi) this.nudgeX = clamp(b.x, lo, hi);
@@ -1136,7 +1178,7 @@ export class Game {
     if (vn < 0) {
       b.vx -= (1 + e) * vn * nx;
       b.vy -= (1 + e) * vn * ny;
-      if (-vn > 0.8) play(sfx, clamp(-vn / 8, 0.25, 1));
+      if (-vn > 0.8) this.collisionSound(sfx, clamp(-vn / 8, 0.25, 1));
       if (sfx === "rim" && -vn > 0.8) this.rimTouched = true;
       if (sfx === "rim" && -vn > 0.8 && this.hoop) this.hoop.net.rimHit(pvx >= 0 ? 1 : -1, clamp(-vn / 4, 0.35, 1.9));
       // Only a hit on the top of the rim (the ball coming down onto it) can make the crowd gasp, and only some of the time (and not twice in a row), or it wears thin.
@@ -1206,7 +1248,7 @@ export class Game {
       b.vx -= (1 + e) * vn * nx;
       b.vy -= (1 + e) * vn * ny;
       if (-vn > 0.8) {
-        play("board", clamp(-vn / 8, 0.25, 1));
+        this.collisionSound("board", clamp(-vn / 8, 0.25, 1));
         if (this.hoop && hull === this.hoop.sprite.hull) this.boardTouched = true;
         if (shakesNet && this.hoop) this.hoop.net.rimHit(pvx >= 0 ? 1 : -1, clamp(-vn / 4, 0.35, 1.9));
       }
@@ -1274,7 +1316,7 @@ export class Game {
       b.noScore = false;
       if (b.vy > 1.2) {
         if (!b.scored) this.markMiss();
-        play("bounce", clamp(b.vy / 9, 0.2, 1));
+        this.collisionSound("bounce", clamp(b.vy / 9, 0.2, 1));
         if (this.burning) this.fire.bounce(b.x, b.y);
         // First bounces as before, then they die out faster so hard shots do not make you wait.
         const e = this.bounces < 2 ? 0.74 : Math.max(0.35, 0.62 - (this.bounces - 2) * 0.1);
@@ -1305,7 +1347,7 @@ export class Game {
       } else {
         b.x = BALL_R;
         if (b.vx < 0) {
-          if (-b.vx > 1) play("wall", clamp(-b.vx / 8, 0.2, 1));
+          if (-b.vx > 1) this.collisionSound("wall", clamp(-b.vx / 8, 0.2, 1));
           b.vx *= -0.65;
         }
       }
@@ -1319,7 +1361,7 @@ export class Game {
       } else {
         b.x = this.artW - BALL_R;
         if (b.vx > 0) {
-          if (b.vx > 1) play("wall", clamp(b.vx / 8, 0.2, 1));
+          if (b.vx > 1) this.collisionSound("wall", clamp(b.vx / 8, 0.2, 1));
           b.vx *= -0.65;
         }
       }
@@ -1410,6 +1452,11 @@ export class Game {
     if (sound) play("extinguish");
   }
 
+  private collisionSound(name: "bounce" | "wall" | "board" | "rim", intensity: number): void {
+    play(name, intensity);
+    if (this.shot) this.onlineMatch?.sendSound(name, intensity);
+  }
+
   /** The shot missed: the streak ends and the fire is put out at once. */
   private markMiss(): void {
     if (!this.shot || this.shotResolved) return;
@@ -1421,6 +1468,7 @@ export class Game {
       this.burning = false;
       this.fireOn = false;
       this.putOutFire(b.x, b.y, true);
+      if (this.onlineMatch && this.onlineMatch.game !== "speed") this.fire = new BallFire();
     }
     if (this.onlineMatch) {
       this.onlineMatch.localResult(false);
@@ -1449,7 +1497,7 @@ export class Game {
       }),
     );
     // The ball catches fire on the third goal in a row.
-    if (getStats().streak === 3) {
+    if (!this.onlineMatch && getStats().streak === 3) {
       this.burning = true;
       this.fireOn = true;
       this.fire.mode = settings.fireStyle;

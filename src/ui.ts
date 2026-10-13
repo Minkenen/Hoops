@@ -209,6 +209,7 @@ export class UI {
       peerShotStarted: () => this.game.opponentShotStart(),
       peerShotEnded: (goal) => this.game.opponentShotEnd(goal),
       peerRest: (nx) => this.game.takeBallAt(nx),
+      peerSound: (name, intensity) => play(name, intensity),
     });
     this.close(true);
     this.game.startOnlineMatch(match);

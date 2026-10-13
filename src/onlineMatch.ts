@@ -29,6 +29,7 @@ export interface OnlineMatchHost {
   peerShotStarted(): void;
   /** The other player's shot is over. */
   peerShotEnded(goal: boolean): void;
+  peerSound?(name: "bounce" | "wall" | "board" | "rim", intensity: number): void;
 }
 
 /**
@@ -62,6 +63,9 @@ export class OnlineMatch {
   scoreOpp = 0;
   lettersMe = 0;
   lettersOpp = 0;
+  streakMe = 0;
+  streakOpp = 0;
+  private awaitingRest = false;
   /** Whose shot it is. In Speedball both shoot at once. */
   turn: "me" | "opp" | "both";
   over: OnlineResult | null = null;
@@ -108,7 +112,7 @@ export class OnlineMatch {
 
   /** Can the player start a shot now? */
   canShoot(): boolean {
-    return !this.over && !this.inFlight && !this.peerBusy && (this.turn === "both" || this.turn === "me");
+    return !this.over && !this.inFlight && !this.awaitingRest && !this.peerBusy && (this.turn === "both" || this.turn === "me");
   }
 
   /** Called when the player lets go of the ball. */
@@ -122,6 +126,7 @@ export class OnlineMatch {
   localResult(goal: boolean, far = false): void {
     if (!this.inFlight || this.over) return;
     this.inFlight = false;
+    this.awaitingRest = this.game !== "speed";
     this.apply("me", goal, far);
     // with the totals as they stand now: the other player takes our own score from us, so the two screens cannot drift apart
     this.conn?.sendPeer("result", { goal, far, score: this.scoreMe, letters: this.lettersMe });
@@ -130,7 +135,15 @@ export class OnlineMatch {
 
   /** HORSE and 21: the player's ball has stopped; the other player continues with it from here. */
   sendRest(nx: number): void {
+    if (this.game === "speed" || !this.awaitingRest) return;
+    this.awaitingRest = false;
+    if (!this.over) this.turn = "opp";
     this.conn?.sendPeer("rest", { nx });
+    this.host.changed();
+  }
+
+  sendSound(name: "bounce" | "wall" | "board" | "rim", intensity: number): void {
+    this.conn?.sendPeer("sound", { name, intensity });
   }
 
   /** While the player's own shot is in flight (HORSE and 21): tells the other player where the ball is. */
@@ -140,6 +153,8 @@ export class OnlineMatch {
 
   private apply(who: "me" | "opp", goal: boolean, far: boolean): void {
     const me = who === "me";
+    if (me) this.streakMe = goal ? this.streakMe + 1 : 0;
+    else this.streakOpp = goal ? this.streakOpp + 1 : 0;
     if (this.game === "speed") {
       if (goal) {
         if (me) this.scoreMe++;
@@ -160,7 +175,6 @@ export class OnlineMatch {
       else this.scoreOpp += pts;
       if ((me ? this.scoreMe : this.scoreOpp) >= T21_GOAL) this.finish(me, me ? "You got to 21 first" : `${this.opponent} got to 21 first`);
     }
-    if (!this.over) this.turn = me ? "opp" : "me";
   }
 
   /** Looks again at who has got there, after a total was taken from the other player. */
@@ -179,6 +193,7 @@ export class OnlineMatch {
     if (typeof d !== "object" || d === null) return;
     const m = d as { type?: string; payload?: { goal?: unknown; far?: unknown; nx?: unknown; score?: unknown; letters?: unknown } & Record<string, unknown> };
     if (m.type === "result" && !this.over) {
+      if (this.game !== "speed" && (this.turn !== "opp" || this.peerBusy)) return;
       const goal = m.payload?.goal === true;
       this.apply("opp", goal, m.payload?.far === true);
       // the other player's own score is what they say it is
@@ -188,19 +203,16 @@ export class OnlineMatch {
       if (this.game !== "speed") {
         this.peerBusy = true;
         window.clearTimeout(this.busyTimer);
-        // if the "stopped" message never comes, do not block the game for ever
-        this.busyTimer = window.setTimeout(() => {
-          this.peerBusy = false;
-          this.host.changed();
-        }, 7000);
       }
       this.host.toast(goal ? `${this.opponent} scored` : `${this.opponent} missed`);
       this.host.peerShotEnded(goal);
       this.host.changed();
     } else if (m.type === "shot" && !this.over) {
+      if (this.game !== "speed" && this.turn !== "opp") return;
       this.host.peerShotStarted();
       this.host.changed();
     } else if (m.type === "ball" && !this.over && m.payload) {
+      if (this.game !== "speed" && this.turn !== "opp") return;
       const p = m.payload as Record<string, unknown>;
       const ang = typeof p.ang === "number" ? p.ang : 0;
       if (p.kind === "free" && typeof p.nx === "number" && (typeof p.ny === "number" || typeof p.h === "number")) {
@@ -215,10 +227,18 @@ export class OnlineMatch {
         this.host.ball({ kind: "arc", dx: p.dx, dy: p.dy, side: p.side, rimH: p.rimH, ang });
       }
     } else if (m.type === "rest" && m.payload && typeof m.payload.nx === "number") {
+      if (this.game === "speed" || this.turn !== "opp" || !this.peerBusy) return;
       window.clearTimeout(this.busyTimer);
       this.peerBusy = false;
+      if (!this.over) this.turn = "me";
       this.host.peerRest(m.payload.nx);
       this.host.changed();
+    } else if (m.type === "sound" && !this.over && m.payload) {
+      const { name, intensity } = m.payload;
+      if (this.game !== "speed" && this.turn !== "opp") return;
+      if ((name === "bounce" || name === "wall" || name === "board" || name === "rim") && typeof intensity === "number" && Number.isFinite(intensity)) {
+        this.host.peerSound?.(name, Math.max(0, Math.min(1, intensity)));
+      }
     } else if (m.type === "leave" && !this.over) {
       this.finish(true, `${this.opponent} left the match`);
       this.host.changed();

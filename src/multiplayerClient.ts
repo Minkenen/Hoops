@@ -73,6 +73,8 @@ export class MultiplayerConnection {
 
   sendPeer(type: string, payload: Record<string, unknown> = {}): void {
     if (!this.dc || this.dc.readyState !== "open") return;
+    // Skip obsolete positions under congestion so control messages are not buried behind them.
+    if (type === "ball" && this.dc.bufferedAmount > 4096) return;
     this.dc.send(JSON.stringify({ type, payload }));
   }
 
