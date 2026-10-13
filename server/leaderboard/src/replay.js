@@ -3,6 +3,28 @@ const MAX_REPLAY_BYTES = 64_000;
 const MIN_SHOT_GAP_MS = 700;
 const MAX_SHOT_GAP_MS = 120_000;
 const MAX_SPEED = 2400;
+const G = 0.16;
+
+function predictedCrossing(shot) {
+  const flight = shot.resultT - shot.t;
+  if (!Number.isFinite(flight) || flight < 250 || flight > 30_000) return false;
+  let x = shot.x;
+  let y = shot.y;
+  let vx = shot.vx;
+  let vy = shot.vy;
+  let previousY = y;
+  let elapsed = 0;
+  while (elapsed < flight) {
+    const dt = Math.min(1, flight - elapsed);
+    elapsed += dt;
+    vy += G * (shot.gs + (1 - shot.gs) * Math.max(0, Math.min(1, elapsed / 40))) * dt;
+    x += vx * dt;
+    y += vy * dt;
+    if (previousY < shot.hoopY && y >= shot.hoopY && vy > 0 && x > shot.hoopL && x < shot.hoopR) return true;
+    previousY = y;
+  }
+  return false;
+}
 
 export function verifyReplay(input) {
   if (!input || typeof input !== "object") return { ok: false, reason: "Invalid replay." };
@@ -22,6 +44,9 @@ export function verifyReplay(input) {
     const speed = Math.hypot(shot.vx, shot.vy);
     if (speed > MAX_SPEED) return { ok: false, reason: "Replay shot speed is impossible." };
     if (!Number.isFinite(shot.nx) || !Number.isFinite(shot.ny) || shot.nx < 0 || shot.nx > 1 || shot.ny < 0 || shot.ny > 1) return { ok: false, reason: "Replay coordinates are invalid." };
+    if (!Number.isFinite(shot.width) || !Number.isFinite(shot.height) || shot.width < 100 || shot.height < 100 || shot.width > 10_000 || shot.height > 10_000) return { ok: false, reason: "Replay dimensions are invalid." };
+    if (![shot.resultT, shot.gs, shot.hoopX, shot.hoopY, shot.hoopL, shot.hoopR].every(Number.isFinite) || shot.resultT <= shot.t || shot.hoopL >= shot.hoopR || shot.hoopX < shot.hoopL || shot.hoopX > shot.hoopR) return { ok: false, reason: "Replay hoop data is invalid." };
+    if (shot.goal && !predictedCrossing(shot)) return { ok: false, reason: "Replay goal is not physically possible." };
     if (typeof shot.goal !== "boolean") return { ok: false, reason: "Replay result is invalid." };
     if (shot.goal) goals++;
   }
