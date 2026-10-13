@@ -478,6 +478,7 @@ interface MpPlayer {
   role: MpRole;
   socket?: WebSocket;
   reconnectUntil?: number;
+  matchSeq: number;
 }
 
 interface MpRoom {
@@ -628,6 +629,17 @@ export class MultiplayerHub {
         if (peer?.socket && peer.connected) send(peer.socket, "signal", { from: player.id, kind, data: payload.data ?? {} });
         break;
       }
+      case "match_event": {
+        const event = payload.event;
+        const seq = Number(payload.seq);
+        if (!event || typeof event !== "object" || !Number.isInteger(seq) || seq <= player.matchSeq || seq > player.matchSeq + 1) return sendError(ws, msg, "bad_match_event", "Match event was out of order.");
+        const kind = String((event as Record<string, unknown>).type || "");
+        if (kind !== "shot" && kind !== "result" && kind !== "rest") return sendError(ws, msg, "bad_match_event", "Match event was invalid.");
+        player.matchSeq = seq;
+        const peer = peerOf(room, player.id);
+        if (peer?.socket && peer.connected) send(peer.socket, "match_event", { seq, event });
+        break;
+      }
       case "leave": {
         this.leave(room, player.id);
         break;
@@ -653,7 +665,7 @@ export class MultiplayerHub {
     if (waiting && waiting.player.id !== player.id && waiting.socket.readyState === 1) {
       this.quickWaiting.delete(game);
       const room = waiting.room;
-      room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "answerer", socket });
+      room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "answerer", socket, matchSeq: -1 });
       this.rooms.set(room.id, room);
       sendPeerFound(room);
       broadcastLobby(room);
@@ -666,7 +678,7 @@ export class MultiplayerHub {
       game,
       court: "Street",
       hostId: player.id,
-      players: new Map([[player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "offerer", socket }]]),
+      players: new Map([[player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "offerer", socket, matchSeq: -1 }]]),
       createdAt: now,
       expiresAt: now + MP_ROOM_TTL_MS,
     };
@@ -694,7 +706,7 @@ export class MultiplayerHub {
     }
     if (room.players.size >= 2) return send(socket, "error", { code: "room_full", message: "Two players are already in the room." });
     const role: MpRole = room.players.size === 0 ? "offerer" : "answerer";
-    room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role, socket });
+    room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role, socket, matchSeq: -1 });
     if (room.players.size === 1) {
       room.hostId = player.id;
       send(socket, "room_created", { roomId: room.id, code: room.code, expiresAt: room.expiresAt });

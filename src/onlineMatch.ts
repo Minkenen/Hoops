@@ -80,6 +80,7 @@ export class OnlineMatch {
   private localShotId = 0;
   private peerShotId = -1;
   private peerResultId = -1;
+  private serverSeq = 0;
   private busyTimer = 0;
   private beat = 0;
 
@@ -126,7 +127,7 @@ export class OnlineMatch {
   localShot(): void {
     this.inFlight = true;
     const shotId = this.localShotId++;
-    this.conn?.sendPeer("shot", { shotId });
+    this.sendMatchEvent({ type: "shot", shotId });
     this.host.changed();
   }
 
@@ -137,7 +138,7 @@ export class OnlineMatch {
     this.awaitingRest = this.game !== "speed";
     this.apply("me", goal, far);
     // with the totals as they stand now: the other player takes our own score from us, so the two screens cannot drift apart
-    this.conn?.sendPeer("result", { shotId: this.localShotId - 1, goal, far, score: this.scoreMe, letters: this.lettersMe });
+    this.sendMatchEvent({ type: "result", shotId: this.localShotId - 1, goal, far, score: this.scoreMe, letters: this.lettersMe });
     this.host.changed();
   }
 
@@ -146,7 +147,7 @@ export class OnlineMatch {
     if (this.game === "speed" || !this.awaitingRest) return;
     this.awaitingRest = false;
     if (!this.over) this.turn = "opp";
-    this.conn?.sendPeer("rest", { nx });
+    this.sendMatchEvent({ type: "rest", nx });
     this.host.changed();
   }
 
@@ -157,6 +158,10 @@ export class OnlineMatch {
   /** While the player's own shot is in flight (HORSE and 21): tells the other player where the ball is. */
   sendBall(p: OpponentBall): void {
     this.conn?.sendPeer("ball", p as unknown as Record<string, unknown>);
+  }
+
+  private sendMatchEvent(event: Record<string, unknown>): void {
+    this.conn?.send("match_event", { seq: this.serverSeq++, event });
   }
 
   private apply(who: "me" | "opp", goal: boolean, far: boolean): void {
@@ -261,7 +266,9 @@ export class OnlineMatch {
   }
 
   private onServer(m: MpServerMessage): void {
-    if (m.type === "peer_disconnected") {
+    if (m.type === "match_event") {
+      this.onPeer(m.payload.event);
+    } else if (m.type === "peer_disconnected") {
       this.peerAway = true;
       this.host.changed();
     } else if (m.type === "peer_reconnected") {

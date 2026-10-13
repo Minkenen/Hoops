@@ -9,6 +9,7 @@ export type MpServerMessage =
   | { type: "lobby_state"; payload: { roomId: string; game: GameId; court: "Street" | "Gym" | "Arena"; players: MpLobbyPlayer[] } }
   | { type: "start_countdown"; payload: { startsAt: number; seed: string; countdownSeconds: number; game?: GameId; court?: "Street" | "Gym" | "Arena" } }
   | { type: "signal"; payload: { from: string; kind: MpSignalKind; data: unknown } }
+  | { type: "match_event"; payload: { seq: number; event: Record<string, unknown> } }
   | { type: "peer_disconnected"; payload: { playerId: string; reconnectUntil: number } }
   | { type: "peer_reconnected"; payload: { playerId: string } }
   | { type: "peer_left"; payload: { playerId: string } }
