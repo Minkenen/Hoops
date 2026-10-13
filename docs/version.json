@@ -1,6 +1,6 @@
 {
   "version": "0.1.23",
-  "url": "https://minkenen.github.io/Hoops-site/#download",
-  "mac": "https://github.com/Minkenen/Hoops-site/releases/latest/download/Hoops-macOS.dmg",
-  "windows": "https://github.com/Minkenen/Hoops-site/releases/latest/download/Hoops-Windows-setup.exe"
+  "url": "https://minkenen.github.io/Hoops/#download",
+  "mac": "https://github.com/Minkenen/Hoops/releases/latest/download/Hoops-macOS.dmg",
+  "windows": "https://github.com/Minkenen/Hoops/releases/latest/download/Hoops-Windows-setup.exe"
 }

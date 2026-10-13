@@ -27,7 +27,7 @@ export const openExternal = async (url: string): Promise<void> => {
 };
 const SERVER = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) ?? "").trim().replace(/\/$/, "");
 const TOKEN_KEY = "hoops.lbtoken";
-export const WEB_PLAY_URL = "https://minkenen.github.io/Hoops-site/play/";
+export const WEB_PLAY_URL = "https://minkenen.github.io/Hoops/play/";
 export const RESUME_KEY = "hoops.onb.resume";
 
 export const getToken = (): string => {
