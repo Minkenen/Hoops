@@ -263,7 +263,7 @@ async function score(request: Request, env: Env): Promise<Response> {
   const now = Date.now();
   const version = typeof body?.version === "string" ? body.version.slice(0, 20) : "";
   const replaySessionId = typeof body?.replaySessionId === "string" ? body.replaySessionId : "";
-  const replay = replaySessionId ? await env.DB.prepare("SELECT player_id, goals FROM replays WHERE session_id = ?").bind(replaySessionId).first<{ player_id: string; goals: number }>() : null;
+  const replay = replaySessionId ? await env.DB.prepare("SELECT player_id, goals FROM replays WHERE session_id = ? AND used_at IS NULL").bind(replaySessionId).first<{ player_id: string; goals: number }>() : null;
   if (!replay || replay.player_id !== player.id || Number(body?.goals) < replay.goals) {
     await flag(env, player.id, "score_replay", "Score was not linked to a verified replay.", version);
     return json({ ok: true });
@@ -296,6 +296,7 @@ async function score(request: Request, env: Env): Promise<Response> {
     `INSERT INTO weekly_scores (player_id, week, best_score, gained_score) VALUES (?, ?, ?, ?)
      ON CONFLICT(player_id, week) DO UPDATE SET best_score = MAX(weekly_scores.best_score, excluded.best_score), gained_score = MIN(weekly_scores.gained_score + MAX(0, excluded.best_score - weekly_scores.best_score), 5000)`,
   ).bind(player.id, weekKey(now), decision.score, decision.score).run();
+  await env.DB.prepare("UPDATE replays SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, replaySessionId, player.id).run();
   return json({ ok: true, verified: true });
 }
 

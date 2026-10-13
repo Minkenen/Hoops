@@ -53,6 +53,7 @@ export const leaderboardSignIn = (serverUrl: string, provider: LbProviderId): Pr
   invoke<LbUser>("leaderboard_sign_in", { serverUrl, provider });
 export const leaderboardSignOut = (): Promise<void> => invoke("leaderboard_sign_out");
 export const leaderboardLoad = (serverUrl: string, tab: LbTab): Promise<LbBoard> => invoke<LbBoard>("leaderboard_load", { serverUrl, tab });
+export const leaderboardEntitlements = (serverUrl: string): Promise<{ all: boolean; themes: string[] }> => invoke("leaderboard_entitlements", { serverUrl });
 export const leaderboardSubmitScore = (serverUrl: string, score: number, bestStreak: number, throws: number, goals: number, replaySessionId?: string): Promise<void> =>
   invoke("leaderboard_submit_score", { serverUrl, score, bestStreak, throws, goals, version: __APP_VERSION__, replaySessionId });
 export const leaderboardSetNickname = (serverUrl: string, nickname: string): Promise<LbUser> =>

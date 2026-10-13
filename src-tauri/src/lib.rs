@@ -488,6 +488,12 @@ struct LbScore {
     replay_session_id: Option<String>,
 }
 
+#[derive(Deserialize, Serialize)]
+struct LbEntitlements {
+    all: bool,
+    themes: Vec<String>,
+}
+
 #[derive(Serialize)]
 struct LbNickname {
     nickname: String,
@@ -649,6 +655,14 @@ async fn leaderboard_load(server_url: String, tab: String) -> Result<LbBoard, St
 }
 
 #[tauri::command]
+async fn leaderboard_entitlements(server_url: String) -> Result<LbEntitlements, String> {
+    let token = get_leaderboard_token();
+    tauri::async_runtime::spawn_blocking(move || leaderboard_get(&server_url, "/entitlements", token.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn leaderboard_submit_score(server_url: String, score: u32, best_streak: u32, throws: u32, goals: u32, version: String, replay_session_id: Option<String>) -> Result<(), String> {
     let Some(token) = get_leaderboard_token() else {
         return Ok(());
@@ -802,6 +816,7 @@ pub fn run() {
             leaderboard_sign_in,
             leaderboard_sign_out,
             leaderboard_load,
+            leaderboard_entitlements,
             leaderboard_submit_score,
             leaderboard_set_nickname,
             leaderboard_delete_account,

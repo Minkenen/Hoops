@@ -1,12 +1,13 @@
 // Keeps your progress on your account, so it follows you between the browser and the app (and between computers).
 // What is saved: stats and achievements, best score, looks and sound settings, and license keys.
 // Not saved: things that belong to one computer (ball size, autostart, over-fullscreen, stay-open).
-import { profileGet, profilePut, validateLicense } from "./ipc";
+import { leaderboardEntitlements, profileGet, profilePut, validateLicense } from "./ipc";
 import type { LbUser } from "./leaderboard";
 import { enforceOwned, setOwnedThemes } from "./purchases";
 import { addLicense, getBestScore, getLicenses, reloadSettings, setPremiumUnlocked, setSetting, settings, type Settings, type StoredLicense } from "./settings";
 import { getStats, type Stats } from "./stats";
 import type { ThemeId } from "./themes";
+import { THEMES } from "./themes";
 
 const LOCAL_ONLY: (keyof Settings)[] = ["ballScale", "autostart", "fullscreen", "stayOpen"];
 const SYNC_KEY = "hoops.sync";
@@ -70,6 +71,14 @@ function applyLicenses(): void {
   enforceOwned();
 }
 
+async function applyServerEntitlements(serverUrl: string): Promise<void> {
+  const entitlements = await leaderboardEntitlements(serverUrl);
+  setPremiumUnlocked(entitlements.all);
+  const known = new Set(THEMES.map((theme) => theme.id));
+  setOwnedThemes(entitlements.themes.filter((theme): theme is ThemeId => known.has(theme as ThemeId)));
+  enforceOwned();
+}
+
 /** Takes what the account has and mixes it with this computer. Returns true when something changed here. */
 async function pull(serverUrl: string, user: LbUser): Promise<boolean> {
   const remote = (await profileGet(serverUrl)) as Partial<Profile> | null;
@@ -124,6 +133,7 @@ export function startProfileSync(serverUrl: string, getUser: () => LbUser | null
     busy = true;
     try {
       if (doPull && (await pull(serverUrl, user))) onChange();
+      await applyServerEntitlements(serverUrl);
       await push(serverUrl, user);
     } catch {
       /* offline: try again next time */
