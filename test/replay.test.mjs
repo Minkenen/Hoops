@@ -24,6 +24,10 @@ test("rejects impossible timing and speed", () => {
   assert.equal(verifyReplay({ sessionId: "session_123", shots: [{ ...shot(0, 0), vx: 9999 }] }).ok, false);
 });
 
+test("rejects coordinates that disagree with normalized replay data", () => {
+  assert.equal(verifyReplay({ sessionId: "session_123", seed: "session_123", shots: [{ ...shot(0, 0), nx: 0.2 }] }).ok, false);
+});
+
 test("rejects a score that does not match the replay", () => {
   assert.equal(verifyReplay({ sessionId: "session_123", goals: 2, shots: [shot(0, 0, true)] }).ok, false);
 });
