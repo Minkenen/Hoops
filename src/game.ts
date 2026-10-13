@@ -1742,11 +1742,10 @@ export class Game {
       const hh = 11;
       const cx = clamp(Math.round(x), Math.ceil(w / 2) + 1, this.artW - Math.ceil(w / 2) - 1);
       const bx = cx - Math.floor(w / 2);
-      const by = Math.max(1, Math.round(y - BALL_R - hh - 7));
+      const by = Math.round(y - hh / 2);
       const bg = mine ? "#ee7a24" : "#3a82e0";
       layer(this.ctx, (put) => {
         for (let yy = 0; yy < hh; yy++) for (let xx = 0; xx < w; xx++) put(bx + xx, by + yy, bg);
-        for (let k = 0; k < 3; k++) for (let xx = -2 + k; xx <= 2 - k; xx++) put(Math.round(x) + xx, by + hh + k, bg);
       });
       layer(this.ctx, (put) => text(put, str, bx + 4, by + 3, 1, mine ? "#1c1c22" : "#ffffff", bg), [0]);
     };
