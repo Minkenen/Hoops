@@ -21,6 +21,7 @@ export function verifyReplay(input) {
     for (const key of ["x", "y", "vx", "vy"]) if (!Number.isFinite(shot[key]) || Math.abs(shot[key]) > MAX_SPEED * 2) return { ok: false, reason: "Replay physics are impossible." };
     const speed = Math.hypot(shot.vx, shot.vy);
     if (speed > MAX_SPEED) return { ok: false, reason: "Replay shot speed is impossible." };
+    if (!Number.isFinite(shot.nx) || !Number.isFinite(shot.ny) || shot.nx < 0 || shot.nx > 1 || shot.ny < 0 || shot.ny > 1) return { ok: false, reason: "Replay coordinates are invalid." };
     if (typeof shot.goal !== "boolean") return { ok: false, reason: "Replay result is invalid." };
     if (shot.goal) goals++;
   }

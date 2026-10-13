@@ -736,7 +736,7 @@ export class Game {
     if (l > 3) {
       b.vx = (-d.lx / l) * d.power * this.vmax;
       b.vy = (-d.ly / l) * d.power * this.vmax;
-      if (!this.onlineMatch) replayShot(b.x, b.y, b.vx, b.vy);
+      if (!this.onlineMatch) replayShot(b.x, b.y, b.vx, b.vy, this.artW, this.artH);
       b.gs = Math.abs(d.ly / l);
       b.t = 0;
       b.scored = false;
