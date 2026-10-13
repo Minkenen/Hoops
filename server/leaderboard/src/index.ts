@@ -650,6 +650,7 @@ export class MultiplayerHub {
         if (kind === "result") {
           const resultT = (event as Record<string, unknown>).resultT;
           if (typeof resultT !== "number" || !Number.isFinite(resultT) || !player.activeShot) return sendError(ws, msg, "bad_match_event", "Match result was invalid.");
+          if ((event as Record<string, unknown>).shotId !== player.activeShot.shotId) return sendError(ws, msg, "bad_match_event", "Match result did not match the active shot.");
           const expectedGoal = simulateReplayShot({ ...player.activeShot, t: 0, resultT, goal: false }).crossed;
           if ((event as Record<string, unknown>).goal !== expectedGoal) return sendError(ws, msg, "bad_match_event", "Server rejected the reported result.");
           player.activeShot = undefined;

@@ -24,26 +24,27 @@ export function simulateReplayShot(shot) {
     y += vy * dt;
     if (x < 0 || x > shot.width) {
       x = Math.max(0, Math.min(shot.width, x));
-      vx = -vx * 0.8;
+      vx = -vx * 0.65;
       bounces++;
     }
     if (Number.isFinite(shot.boardL) && Number.isFinite(shot.boardR) && Number.isFinite(shot.boardT) && Number.isFinite(shot.boardB) && x >= shot.boardL && x <= shot.boardR && y >= shot.boardT && y <= shot.boardB) {
       const fromLeft = Math.abs(x - shot.boardL) < Math.abs(x - shot.boardR);
       x = fromLeft ? shot.boardL : shot.boardR;
-      vx = -vx * 0.72;
+      vx = -vx * 0.55;
       bounces++;
     }
     if (y > shot.floorY) {
       y = shot.floorY;
-      vy = -Math.abs(vy) * 0.65;
-      vx *= 0.88;
+      const restitution = bounces < 2 ? 0.74 : Math.max(0.35, 0.62 - (bounces - 2) * 0.1);
       bounces++;
+      vy = -Math.abs(vy) * restitution;
+      vx *= bounces > 2 ? 0.85 : 0.93;
     }
-    if (bounces > 12) return { crossed: false, flight };
-    if (previousY < shot.hoopY && y >= shot.hoopY && vy > 0 && x > shot.hoopL && x < shot.hoopR) return { crossed: true, flight };
+    if (bounces > 12) return { crossed: false, flight, bounces };
+    if (previousY < shot.hoopY && y >= shot.hoopY && vy > 0 && x > shot.hoopL && x < shot.hoopR) return { crossed: true, flight, bounces };
     previousY = y;
   }
-  return { crossed: false, flight };
+  return { crossed: false, flight, bounces };
 }
 
 function expectedSide(seed, index) { return hash(`${seed}:${index}`) % 2 ? "right" : "left"; }
