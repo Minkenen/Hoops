@@ -12,10 +12,22 @@ test("scoreDecision rejects non-integers and inconsistent stats", () => {
   assert.equal(scoreDecision({ score: 3, bestStreak: 1, throws: 2, goals: 1 }, null).ok, false);
 });
 
-test("scoreDecision rate limits and ignores implausible jumps", () => {
-  const previous = { best_score: 10, updated_at: 1_000_000 };
-  assert.equal(scoreDecision({ score: 11, bestStreak: 1, throws: 20, goals: 11 }, previous, 1_010_000).ok, false);
+test("scoreDecision rate limits and checks lifetime deltas", () => {
+  const previous = { best_score: 10, best_streak: 1, throws: 10, goals: 10, updated_at: 1_000_000 };
+  assert.equal(scoreDecision({ score: 11, bestStreak: 1, throws: 11, goals: 11 }, previous, 1_010_000).ok, false);
   assert.equal(scoreDecision({ score: 500, bestStreak: 1, throws: 500, goals: 500 }, previous, 1_120_000).ok, false);
+});
+
+test("scoreDecision rejects impossible counter changes", () => {
+  const previous = { best_score: 10, best_streak: 2, throws: 10, goals: 10, updated_at: 1_000_000 };
+  assert.equal(scoreDecision({ score: 10, bestStreak: 2, throws: 9, goals: 9 }, previous, 1_100_000).ok, false);
+  assert.equal(scoreDecision({ score: 11, bestStreak: 2, throws: 10, goals: 11 }, previous, 1_100_000).ok, false);
+  assert.equal(scoreDecision({ score: 12, bestStreak: 2, throws: 11, goals: 11 }, previous, 1_100_000).ok, false);
+});
+
+test("scoreDecision caps a first submission", () => {
+  assert.equal(scoreDecision({ score: 201, bestStreak: 1, throws: 201, goals: 201 }, null, 1_000_000).ok, false);
+  assert.equal(scoreDecision({ score: 20, bestStreak: 3, throws: 20, goals: 20 }, null, 1_000_000).ok, true);
 });
 
 test("cleanNickname filters bad or empty names", () => {

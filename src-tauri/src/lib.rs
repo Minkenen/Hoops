@@ -482,6 +482,7 @@ struct LbScore {
     best_streak: u32,
     throws: u32,
     goals: u32,
+    version: String,
 }
 
 #[derive(Serialize)]
@@ -645,7 +646,7 @@ async fn leaderboard_load(server_url: String, tab: String) -> Result<LbBoard, St
 }
 
 #[tauri::command]
-async fn leaderboard_submit_score(server_url: String, score: u32, best_streak: u32, throws: u32, goals: u32) -> Result<(), String> {
+async fn leaderboard_submit_score(server_url: String, score: u32, best_streak: u32, throws: u32, goals: u32, version: String) -> Result<(), String> {
     let Some(token) = get_leaderboard_token() else {
         return Ok(());
     };
@@ -654,6 +655,7 @@ async fn leaderboard_submit_score(server_url: String, score: u32, best_streak: u
         best_streak,
         throws,
         goals,
+        version,
     };
     tauri::async_runtime::spawn_blocking(move || leaderboard_post::<_, serde_json::Value>(&server_url, "/score", Some(&token), &body))
         .await

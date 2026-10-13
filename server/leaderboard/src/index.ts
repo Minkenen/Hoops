@@ -1,4 +1,4 @@
-import { NICKNAME_TAKEN_ERROR, defaultNickname, nicknameDecision, nicknameLower, scoreDecision, weekKey } from "./logic.js";
+import { MIN_CLIENT_VERSION, NICKNAME_TAKEN_ERROR, defaultNickname, nicknameDecision, nicknameLower, scoreDecision, weekKey } from "./logic.js";
 
 interface D1Database {
   prepare(query: string): D1PreparedStatement;
@@ -33,6 +33,7 @@ interface Env {
   GOOGLE_CLIENT_SECRET: string;
   SESSION_SECRET: string;
   HASH_PEPPER: string;
+  ADMIN_TOKEN?: string;
 }
 
 type Provider = "google";
@@ -105,6 +106,9 @@ async function route(request: Request, env: Env): Promise<Response> {
     try {
       if (request.method === "GET" && url.pathname === "/leaderboard") return leaderboard(request, env, url);
       if (request.method === "GET" && url.pathname === "/me") return me(request, env);
+      if (request.method === "GET" && url.pathname === "/entitlements") return entitlements(request, env);
+      if (request.method === "GET" && url.pathname === "/admin/flags") return adminFlags(request, env);
+      if (request.method === "POST" && url.pathname === "/admin/player") return adminPlayer(request, env);
       if (request.method === "GET" && url.pathname === "/auth/start") return authStart(env, url);
       if (request.method === "GET" && url.pathname === "/auth/callback") return authCallback(env, url);
       if (request.method === "POST" && url.pathname === "/score") return score(request, env);
@@ -172,6 +176,42 @@ async function me(request: Request, env: Env): Promise<Response> {
   return json({ token: bearer(request), user: { id: player.id, nickname: player.nickname } });
 }
 
+async function entitlements(request: Request, env: Env): Promise<Response> {
+  const player = await requirePlayer(request, env);
+  const row = await env.DB.prepare("SELECT data FROM profiles WHERE player_id = ?").bind(player.id).first<{ data: string }>();
+  let licenses: unknown[] = [];
+  try {
+    const profile = row ? JSON.parse(row.data) as { licenses?: unknown[] } : null;
+    licenses = Array.isArray(profile?.licenses) ? profile.licenses : [];
+  } catch {
+    licenses = [];
+  }
+  return json({ all: licenses.some((l) => (l as { unlock?: string })?.unlock === "all"), themes: licenses.filter((l) => (l as { unlock?: string })?.unlock === "theme").map((l) => (l as { theme?: string }).theme).filter(Boolean) });
+}
+
+async function flag(env: Env, playerId: string | null, kind: string, detail: string, version: string): Promise<void> {
+  await env.DB.prepare("INSERT INTO cheat_flags (created_at, player_id, kind, detail, version) VALUES (?, ?, ?, ?, ?)")
+    .bind(Date.now(), playerId, kind, detail.slice(0, 500), version || null).run();
+}
+
+function adminAuthorized(request: Request, env: Env): boolean {
+  return Boolean(env.ADMIN_TOKEN && request.headers.get("authorization") === `Bearer ${env.ADMIN_TOKEN}`);
+}
+
+async function adminFlags(request: Request, env: Env): Promise<Response> {
+  if (!adminAuthorized(request, env)) return bad("Forbidden.", 403);
+  const rows = await env.DB.prepare("SELECT id, created_at, player_id, kind, detail, version FROM cheat_flags ORDER BY id DESC LIMIT 200").all();
+  return json({ flags: rows.results });
+}
+
+async function adminPlayer(request: Request, env: Env): Promise<Response> {
+  if (!adminAuthorized(request, env)) return bad("Forbidden.", 403);
+  const body = await request.json().catch(() => ({})) as { playerId?: string; hidden?: boolean };
+  if (!body.playerId || typeof body.hidden !== "boolean") return bad("Invalid player request.");
+  await env.DB.prepare("UPDATE players SET hidden = ? WHERE id = ?").bind(body.hidden ? 1 : 0, body.playerId).run();
+  return json({ ok: true });
+}
+
 async function leaderboard(request: Request, env: Env, url: URL): Promise<Response> {
   const tab = url.searchParams.get("tab") || "global";
   if (tab !== "global" && tab !== "weekly" && tab !== "friends") return bad("Unsupported tab.");
@@ -182,10 +222,10 @@ async function leaderboard(request: Request, env: Env, url: URL): Promise<Respon
   const where = tab === "weekly" ? "WHERE week = ?" : "";
   const params = tab === "weekly" ? [week] : [];
   const topRows = await env.DB.prepare(
-    `SELECT p.id, p.nickname, s.best_score FROM ${table} s JOIN players p ON p.id = s.player_id ${where} ORDER BY s.best_score DESC, p.created_at ASC LIMIT 5`,
+    `SELECT p.id, p.nickname, s.best_score FROM ${table} s JOIN players p ON p.id = s.player_id ${where ? `${where} AND` : "WHERE"} p.hidden = 0 ORDER BY s.best_score DESC, p.created_at ASC LIMIT 5`,
   ).bind(...params).all<{ id: string; nickname: string; best_score: number }>();
   const top = topRows.results.map((r, i) => ({ rank: i + 1, name: r.nickname, score: r.best_score, icon: iconFor(r.id) }));
-  const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} ${where}`).bind(...params).first<{ n: number }>();
+  const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} s JOIN players p ON p.id = s.player_id ${where ? `${where} AND` : "WHERE"} p.hidden = 0`).bind(...params).first<{ n: number }>();
   let you = null;
   if (player) {
     const mine = await env.DB.prepare(`SELECT best_score FROM ${table} WHERE player_id = ? ${tab === "weekly" ? "AND week = ?" : ""}`)
@@ -205,28 +245,39 @@ async function score(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
   const body = await request.json();
-  const previous = await env.DB.prepare("SELECT best_score, updated_at FROM scores WHERE player_id = ?").bind(player.id).first<{ best_score: number; updated_at: number }>();
+  const previous = await env.DB.prepare("SELECT best_score, best_streak, throws, goals, updated_at, version FROM scores WHERE player_id = ?").bind(player.id).first<{ best_score: number; best_streak: number; throws: number; goals: number; updated_at: number; version: string }>();
   const ipRate = await env.DB.prepare("SELECT updated_at FROM score_submissions WHERE key = ?").bind(`ip:${ip}`).first<{ updated_at: number }>();
   if (ipRate && Date.now() - ipRate.updated_at < 10_000) return json({ ok: true });
-  const decision = scoreDecision(body, previous, Date.now());
-  if (!decision.ok) return json({ ok: true });
   const now = Date.now();
+  const version = typeof body?.version === "string" ? body.version.slice(0, 20) : "";
+  if (version && version < MIN_CLIENT_VERSION) return json({ ok: true });
+  const weekly = await env.DB.prepare("SELECT best_score, gained_score FROM weekly_scores WHERE player_id = ? AND week = ?")
+    .bind(player.id, weekKey(now)).first<{ best_score: number; gained_score: number }>();
+  if (weekly && Number(body?.score) - weekly.best_score > Math.max(0, 5000 - weekly.gained_score)) {
+    await flag(env, player.id, "weekly_score", "Weekly score cap exceeded.", version);
+    return json({ ok: true });
+  }
+  const decision = scoreDecision(body, previous, now);
+  if (!decision.ok) {
+    if (decision.suspicious) await flag(env, player.id, "score", decision.reason, version);
+    return json({ ok: true });
+  }
   await env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`ip:${ip}`, now).run();
   await env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`player:${player.id}`, now).run();
   await env.DB.prepare(
-    `INSERT INTO scores (player_id, best_score, best_streak, throws, goals, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO scores (player_id, best_score, best_streak, throws, goals, updated_at, version)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(player_id) DO UPDATE SET
        best_score = MAX(scores.best_score, excluded.best_score),
        best_streak = MAX(scores.best_streak, excluded.best_streak),
        throws = MAX(scores.throws, excluded.throws),
        goals = MAX(scores.goals, excluded.goals),
-       updated_at = excluded.updated_at`,
-  ).bind(player.id, decision.score, decision.bestStreak, decision.throws, decision.goals, now).run();
+       updated_at = excluded.updated_at, version = excluded.version`,
+  ).bind(player.id, decision.score, decision.bestStreak, decision.throws, decision.goals, now, version).run();
   await env.DB.prepare(
-    `INSERT INTO weekly_scores (player_id, week, best_score) VALUES (?, ?, ?)
-     ON CONFLICT(player_id, week) DO UPDATE SET best_score = MAX(weekly_scores.best_score, excluded.best_score)`,
-  ).bind(player.id, weekKey(now), decision.score).run();
+    `INSERT INTO weekly_scores (player_id, week, best_score, gained_score) VALUES (?, ?, ?, ?)
+     ON CONFLICT(player_id, week) DO UPDATE SET best_score = MAX(weekly_scores.best_score, excluded.best_score), gained_score = MIN(weekly_scores.gained_score + MAX(0, excluded.best_score - weekly_scores.best_score), 5000)`,
+  ).bind(player.id, weekKey(now), decision.score, decision.score).run();
   return json({ ok: true });
 }
 
