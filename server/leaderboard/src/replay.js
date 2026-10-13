@@ -27,6 +27,12 @@ export function simulateReplayShot(shot) {
       vx = -vx * 0.8;
       bounces++;
     }
+    if (Number.isFinite(shot.boardL) && Number.isFinite(shot.boardR) && Number.isFinite(shot.boardT) && Number.isFinite(shot.boardB) && x >= shot.boardL && x <= shot.boardR && y >= shot.boardT && y <= shot.boardB) {
+      const fromLeft = Math.abs(x - shot.boardL) < Math.abs(x - shot.boardR);
+      x = fromLeft ? shot.boardL : shot.boardR;
+      vx = -vx * 0.72;
+      bounces++;
+    }
     if (y > shot.floorY) {
       y = shot.floorY;
       vy = -Math.abs(vy) * 0.65;

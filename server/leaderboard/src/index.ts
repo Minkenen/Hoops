@@ -643,7 +643,7 @@ export class MultiplayerHub {
           : (kind === "shot" ? (previous === "none" || previous === "rest") : kind === "result" ? previous === "shot" : previous === "result");
         if (!allowed) return sendError(ws, msg, "bad_match_event", "Match event was not valid for the current turn.");
         if (kind === "shot") {
-          const numeric = ["x", "y", "vx", "vy", "width", "height", "floorY", "gs", "hoopX", "hoopY", "hoopL", "hoopR"];
+          const numeric = ["x", "y", "vx", "vy", "width", "height", "floorY", "gs", "hoopX", "hoopY", "hoopL", "hoopR", "boardL", "boardR", "boardT", "boardB"];
           if (!numeric.every((key) => typeof (event as Record<string, unknown>)[key] === "number" && Number.isFinite((event as Record<string, unknown>)[key]))) return sendError(ws, msg, "bad_match_event", "Shot physics were invalid.");
           player.activeShot = event as Record<string, unknown>;
         }

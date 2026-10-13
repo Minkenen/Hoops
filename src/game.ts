@@ -769,9 +769,11 @@ export class Game {
         this.sharedBallTarget = null;
       }
       if (this.onlineMatch && this.hoop) {
-        const fx = this.hoop.x0 + this.hoop.sprite.frontX;
-        const bx = this.hoop.x0 + this.hoop.sprite.backX;
-        this.onlineMatch.localShot({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, width: this.artW, height: this.artH, floorY: this.floorY, gs: b.gs, hoopX: this.hoop.x0 + this.hoop.sprite.rimCx, hoopY: this.hoop.rimY, hoopL: Math.min(fx, bx), hoopR: Math.max(fx, bx) });
+        const h = this.hoop;
+        const fx = h.x0 + h.sprite.frontX;
+        const bx = h.x0 + h.sprite.backX;
+        const board = h.sprite.hull.map(([x, y]) => [x + h.x0, y + h.y0] as const);
+        this.onlineMatch.localShot({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, width: this.artW, height: this.artH, floorY: this.floorY, gs: b.gs, hoopX: h.x0 + h.sprite.rimCx, hoopY: h.rimY, hoopL: Math.min(fx, bx), hoopR: Math.max(fx, bx), boardL: Math.min(...board.map(([x]) => x)), boardR: Math.max(...board.map(([x]) => x)), boardT: Math.min(...board.map(([, y]) => y)), boardB: Math.max(...board.map(([, y]) => y)) });
       }
       this.crowd.shotStart(performance.now());
       play("shoot", clamp(d.power, 0.3, 1));

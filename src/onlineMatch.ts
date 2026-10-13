@@ -35,6 +35,7 @@ export interface OnlineMatchHost {
 export interface OnlineShot {
   x: number; y: number; vx: number; vy: number; width: number; height: number; floorY: number; gs: number;
   hoopX: number; hoopY: number; hoopL: number; hoopR: number;
+  boardL: number; boardR: number; boardT: number; boardB: number;
 }
 
 /**
