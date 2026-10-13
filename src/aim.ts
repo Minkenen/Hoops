@@ -1,7 +1,7 @@
 import { DARK, HALO, clamp, mix } from "./draw";
 import { BALL_R } from "./sprites";
+import { G, geff } from "./physics";
 
-export const G = 0.16;
 export const VMAX = 9;
 export const RANGE_FACTOR = 1.35;
 
@@ -12,7 +12,7 @@ export const MAXPULL = 40;
 export const MAXLEN = 70;
 export const TFADE = 40;
 
-export const geff = (gs: number, tf: number): number => G * (gs + (1 - gs) * clamp(tf / TFADE, 0, 1));
+export { geff } from "./physics";
 
 type Pt = [number, number, number];
 

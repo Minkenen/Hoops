@@ -1,4 +1,4 @@
-import { MAXPULL, drawAim, geff, maxSpeed } from "./aim";
+import { MAXPULL, drawAim, maxSpeed } from "./aim";
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { play } from "./audio";
 import { BallFire } from "./fire";
@@ -24,6 +24,7 @@ import { themeById } from "./themes";
 import { drawTrail, trailById, trailOwned, type TrailPoint } from "./trails";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
+import { stepBall } from "./physics";
 import type { UI } from "./ui";
 import type { OnlineMatch, OpponentBall } from "./onlineMatch";
 
@@ -1271,7 +1272,6 @@ export class Game {
 
   private sub(dt: number): void {
     const b = this.ball;
-    b.t += dt;
     const hp = this.hoop;
     let inNet = false;
     if (hp) {
@@ -1279,11 +1279,8 @@ export class Game {
       const r0 = hp.x0 + Math.max(hp.sprite.frontX, hp.sprite.backX);
       inNet = b.x > l0 && b.x < r0 && b.y > hp.rimY && b.y < hp.rimY + hp.sprite.netLen + BALL_R;
     }
-    b.vy += geff(b.gs, b.t) * (inNet ? 1.12 : 1) * dt;
     const py = b.y;
-    b.x += b.vx * dt;
-    b.y += b.vy * dt;
-    b.ang += (b.vx * dt) / BALL_R;
+    stepBall(b, { dt, radius: BALL_R, gravityScale: inNet ? 1.12 : 1 });
 
     const h = this.hoop;
     if (h && h.phase !== "out") {
