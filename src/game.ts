@@ -736,12 +736,12 @@ export class Game {
     if (l > 3) {
       b.vx = (-d.lx / l) * d.power * this.vmax;
       b.vy = (-d.ly / l) * d.power * this.vmax;
+      b.gs = Math.abs(d.ly / l);
       if (!this.onlineMatch && this.hoop) {
         const fx = this.hoop.x0 + this.hoop.sprite.frontX;
         const bx = this.hoop.x0 + this.hoop.sprite.backX;
           replayShot(b.x, b.y, b.vx, b.vy, this.artW, this.artH, this.floorY, b.gs, this.hoop.x0 + this.hoop.sprite.rimCx, this.hoop.rimY, Math.min(fx, bx), Math.max(fx, bx));
       }
-      b.gs = Math.abs(d.ly / l);
       b.t = 0;
       b.scored = false;
       b.noScore = false;
