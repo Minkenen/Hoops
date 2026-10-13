@@ -188,7 +188,17 @@ async function entitlements(request: Request, env: Env): Promise<Response> {
   } catch {
     licenses = [];
   }
-  return json({ all: licenses.some((l) => (l as { unlock?: string })?.unlock === "all"), themes: licenses.filter((l) => (l as { unlock?: string })?.unlock === "theme").map((l) => (l as { theme?: string }).theme).filter(Boolean) });
+  const checked = await Promise.all(licenses.map(async (license) => {
+    const key = typeof (license as { key?: unknown })?.key === "string" ? String((license as { key: string }).key).trim() : "";
+    if (!key) return null;
+    const result = await lemon("validate", { license_key: key });
+    const match = result.valid === true ? licenseMatch(result.meta) : null;
+    return match ? { unlock: match.unlock, theme: match.theme } : null;
+  }));
+  const valid = checked.filter(Boolean);
+  await env.DB.prepare("INSERT INTO entitlement_checks (player_id, checked_at, valid_count, all_access) VALUES (?, ?, ?, ?)")
+    .bind(player.id, Date.now(), valid.length, valid.some((l) => l?.unlock === "all") ? 1 : 0).run();
+  return json({ all: valid.some((l) => l?.unlock === "all"), themes: valid.filter((l) => l?.unlock === "theme").map((l) => l?.theme).filter(Boolean) });
 }
 
 async function flag(env: Env, playerId: string | null, kind: string, detail: string, version: string): Promise<void> {
