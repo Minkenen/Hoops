@@ -1,4 +1,5 @@
 import { MIN_CLIENT_VERSION, NICKNAME_TAKEN_ERROR, defaultNickname, nicknameDecision, nicknameLower, scoreDecision, weekKey } from "./logic.js";
+import { MAX_REPLAY_BYTES, verifyReplay } from "./replay.js";
 
 interface D1Database {
   prepare(query: string): D1PreparedStatement;
@@ -112,6 +113,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       if (request.method === "GET" && url.pathname === "/auth/start") return authStart(env, url);
       if (request.method === "GET" && url.pathname === "/auth/callback") return authCallback(env, url);
       if (request.method === "POST" && url.pathname === "/score") return score(request, env);
+      if (request.method === "POST" && url.pathname === "/replay") return replay(request, env);
       if (request.method === "POST" && url.pathname === "/nickname") return nickname(request, env);
       if (request.method === "DELETE" && url.pathname === "/account") return deleteAccount(request, env);
       if (request.method === "GET" && url.pathname === "/profile") return profileGet(request, env);
@@ -279,6 +281,25 @@ async function score(request: Request, env: Env): Promise<Response> {
      ON CONFLICT(player_id, week) DO UPDATE SET best_score = MAX(weekly_scores.best_score, excluded.best_score), gained_score = MIN(weekly_scores.gained_score + MAX(0, excluded.best_score - weekly_scores.best_score), 5000)`,
   ).bind(player.id, weekKey(now), decision.score, decision.score).run();
   return json({ ok: true });
+}
+
+async function replay(request: Request, env: Env): Promise<Response> {
+  const player = await requirePlayer(request, env);
+  const length = Number(request.headers.get("content-length") || 0);
+  if (length > MAX_REPLAY_BYTES) return bad("Replay is too large.", 413);
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const decision = verifyReplay(body);
+  if (!decision.ok) {
+    await flag(env, player.id, "replay", decision.reason, typeof body?.version === "string" ? body.version : "");
+    return bad("Replay rejected.", 422);
+  }
+  const sessionId = body?.sessionId as string;
+  const data = JSON.stringify(body);
+  if (data.length > MAX_REPLAY_BYTES) return bad("Replay is too large.", 413);
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO replays (session_id, player_id, created_at, client_version, shots, goals, data) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(sessionId, player.id, Date.now(), typeof body?.version === "string" ? body.version.slice(0, 20) : null, decision.shots, decision.goals, data).run();
+  return json({ ok: true, verified: true, shots: decision.shots, goals: decision.goals });
 }
 
 async function nickname(request: Request, env: Env): Promise<Response> {
