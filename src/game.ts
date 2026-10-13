@@ -145,6 +145,8 @@ export class Game {
   private trailHist: TrailPoint[] = [];
   /** When the hoop moves to a new place after a goal or a miss in an online match (0 = not planned). */
   private hoopSwapAt = 0;
+  /** Shared online turn-game hoop sequence. Both clients derive the same side and height from the match seed. */
+  private onlineHoopRound = 0;
   /** The court stays fully up while a new hoop slides in. */
   private keepCourt = false;
   /** Your own look, put back after an online match that used the court you both picked. */
@@ -838,15 +840,19 @@ export class Game {
     const gap = BALL_R + 36;
     const okRight = b.x < this.artW - this.refR.w - gap;
     const okLeft = b.x > this.refL.w + gap;
+    const onlineTurnGame = this.onlineMatch && this.onlineMatch.game !== "speed";
+    const round = this.onlineHoopRound++;
     let side: "left" | "right";
     if (forceSide) side = forceSide;
+    else if (onlineTurnGame) side = this.onlineHash(`${this.onlineMatch!.seed}:${round}:side`) % 2 ? "right" : "left";
     else if (okRight && okLeft) side = Math.random() < 0.5 ? "left" : "right";
     else if (okRight) side = "right";
     else if (okLeft) side = "left";
     else side = b.x < this.artW / 2 ? "right" : "left";
     const sp = side === "right" ? this.spR : this.spL;
     const maxH = Math.min(260, this.artH * 0.6);
-    let rimY = forceH !== undefined ? this.floorY - forceH : this.floorY - rnd(70, Math.max(80, maxH));
+    const sharedHeight = onlineTurnGame ? 70 + (this.onlineHash(`${this.onlineMatch!.seed}:${round}:height`) / 0x7fffffff) * Math.max(10, maxH - 70) : null;
+    let rimY = forceH !== undefined ? this.floorY - forceH : this.floorY - (sharedHeight ?? rnd(70, Math.max(80, maxH)));
     rimY = Math.max(rimY, 8 + sp.rimY);
     const ref = side === "right" ? this.refR : this.refL;
     const hx0 = side === "right" ? this.artW - ref.w + ref.rimCx - sp.rimCx : ref.rimCx - sp.rimCx;
@@ -873,6 +879,12 @@ export class Game {
     };
     this.hideAt = null;
     play("appear");
+  }
+
+  private onlineHash(value: string): number {
+    let h = 0;
+    for (let i = 0; i < value.length; i++) h = (Math.imul(31, h) + value.charCodeAt(i)) | 0;
+    return Math.abs(h);
   }
 
   start(): void {
@@ -976,6 +988,7 @@ export class Game {
     if (this.hoopSwapAt && now >= this.hoopSwapAt && !this.ball.moving) {
       // after a goal or a miss the hoop moves to a new place (the court stays), but only once the ball has stopped; not while a shot is being pulled
       this.hoopSwapAt = 0;
+    this.onlineHoopRound = 0;
       if ((this.onlineMatch || settings.stayOpen) && this.hoop && !this.drag) {
         // the court stays while the new hoop slides in
         this.keepCourt = true;

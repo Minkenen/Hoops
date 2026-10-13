@@ -59,6 +59,7 @@ export class OnlineMatch {
   readonly game: GameId;
   readonly court: MpCourt;
   readonly opponent: string;
+  readonly seed: string;
   scoreMe = 0;
   scoreOpp = 0;
   lettersMe = 0;
@@ -85,6 +86,7 @@ export class OnlineMatch {
     this.game = init.game;
     this.court = init.court;
     this.opponent = init.opponent;
+    this.seed = init.seed;
     if (init.game === "speed") this.turn = "both";
     else {
       // a coin flip both sides agree on: the same seed and the same two ids give the same answer
