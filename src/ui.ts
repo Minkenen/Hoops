@@ -6,7 +6,8 @@ const TOUCH = WEB && window.matchMedia("(pointer: coarse)").matches;
 const esc = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 import { BUG_ICON } from "./beetle";
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
-import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
+import { DISCORD_URL, PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
+import { DISCORD_ICON } from "./discordIcon";
 import type { MultiplayerConnection } from "./multiplayerClient";
 import { MULTIPLAYER_MOCK, MultiplayerMock } from "./multiplayerMock";
 import { HORSE, OnlineMatch, type OnlineMatchInit } from "./onlineMatch";
@@ -738,7 +739,7 @@ ${LEADERBOARD_ON && backend.user() ? `<button class="pb full" data-a="profile">P
 ${this.donateHtml()}
 ${this.game?.online ? `<button class="pb full danger" data-a="leavematch">Leave online match</button>` : ""}
 ${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}
-<div class="foot"><button class="bugbtn" data-a="bug" aria-label="Report a bug" title="Report a bug">${BUG_ICON}<span class="bugtip">Report a bug</span></button><span class="hn">Hoops v${__APP_VERSION__}</span><i></i></div></div>`;
+<div class="foot"><button class="bugbtn" data-a="bug" aria-label="Report a bug" title="Report a bug">${BUG_ICON}<span class="bugtip">Report a bug</span></button><span class="hn">Hoops v${__APP_VERSION__}</span><button class="dcbtn" data-a="discord" aria-label="Join our Discord" title="Join our Discord">${DISCORD_ICON}<span class="bugtip" style="left:auto;right:0">Join our Discord</span></button></div></div>`;
   }
 
   /** A picture tile for a choice: a small drawing above its name. */
@@ -1433,6 +1434,15 @@ ${rows}
       case "opt":
         if (k) setSetting(k, (v === "1") as never);
         this.render();
+        break;
+      case "discord":
+        if (DISCORD_URL) {
+          void openExternal(DISCORD_URL).catch(() => {
+            window.open(DISCORD_URL, "_blank", "noopener,noreferrer");
+          });
+        } else {
+          this.toast("The Hoops Discord is coming soon", 2200);
+        }
         break;
       case "bug":
         this.bugStep = "form";

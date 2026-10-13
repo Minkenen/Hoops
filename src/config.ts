@@ -2,6 +2,9 @@ import type { ThemeId } from "./themes";
 
 // Places to change before shipping.
 
+/** The invite link of the Hoops Discord server (Discord: Invite people, make it never expire). Empty until the server exists: the button then says it is coming soon. */
+export const DISCORD_URL: string = ((import.meta.env.VITE_DISCORD_URL as string | undefined) ?? "").trim();
+
 /**
  * Where "Buy All Access" sends people. Replace with the Lemon Squeezy checkout link of the product
  * (Lemon Squeezy dashboard, Products, Share), or set VITE_PREMIUM_URL when building.

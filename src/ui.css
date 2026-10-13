@@ -322,3 +322,10 @@
 #ui .pf-sws{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
 #ui .pf-sw{width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center;background:var(--btn);box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o)}
 #ui .pf-sw:hover{background:var(--trk)}#ui .pf-sw.on{background:var(--acc)}
+
+/* the Discord button: solid white pixel figure, a little dimmed until hovered */
+#ui .dcbtn{background:none;padding:2px 0 2px 2px;margin:0;display:flex;cursor:pointer;position:relative;color:#fff;opacity:.8;transition:opacity .3s ease-out}
+#ui .dcbtn:hover{opacity:1}
+#ui .dcbtn:active{opacity:1;filter:brightness(1.25);transition:none}
+#ui .dcbtn svg{display:block}
+#ui .dcbtn:hover .bugtip{opacity:1}
