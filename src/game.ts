@@ -24,7 +24,7 @@ import { themeById } from "./themes";
 import { drawTrail, trailById, trailOwned, type TrailPoint } from "./trails";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
-import { collideCircle as resolveCircle, collidePolygon as resolvePolygon, stepBall } from "./physics";
+import { collideCircle as resolveCircle, collidePolygon as resolvePolygon, floorCollision, hoopCrossing, stepBall } from "./physics";
 import type { UI } from "./ui";
 import type { OnlineMatch, OpponentBall } from "./onlineMatch";
 
@@ -1225,8 +1225,9 @@ export class Game {
       this.collideCircle(bx, h.rimY, 1.8, 0.5, "rim");
       const l = Math.min(fx, bx);
       const r = Math.max(fx, bx);
-      if (py > h.rimY && b.y <= h.rimY && b.vy < 0 && b.x > l && b.x < r) b.noScore = true;
-      if (!b.scored && !b.noScore && py < h.rimY && b.y >= h.rimY && b.vy > 0 && b.x > l + 1 && b.x < r - 1) {
+      const crossing = hoopCrossing(py, b, h.rimY, l, r, 1);
+      if (crossing.blocked) b.noScore = true;
+      if (!b.scored && !b.noScore && crossing.scored) {
         this.goal(h);
       } else if (!b.scored && b.vy > 0 && b.y > h.rimY + 30) {
         // Fell past the net without going in: that was a miss, and the fire goes out right away.
@@ -1248,14 +1249,13 @@ export class Game {
 
     const fy = this.floorY - BALL_R;
     if (b.y < fy - 3) this.airborne = true;
-    if (b.y > fy) {
+    if (floorCollision(b, fy)) {
       if (this.shot && this.airborne && !this.floorHit) {
         this.floorHit = true;
         this.syncHit();
         const t = performance.now() + 600;
         this.hideAt = this.hideAt === null ? t : Math.min(this.hideAt, t);
       }
-      b.y = fy;
       b.noScore = false;
       if (b.vy > 1.2) {
         if (!b.scored) this.markMiss();

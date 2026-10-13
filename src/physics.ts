@@ -26,6 +26,11 @@ export interface CollisionResult {
   previousVx: number;
 }
 
+export interface HoopCrossing {
+  scored: boolean;
+  blocked: boolean;
+}
+
 /** Advances only deterministic free-flight motion. Collision handling stays at the caller for now. */
 export function stepBall(state: BallPhysicsState, options: PhysicsStepOptions): void {
   const dt = Math.max(0, options.dt);
@@ -105,5 +110,19 @@ export function collidePolygon(state: BallPhysicsState, hull: [number, number][]
     state.vy -= (1 + restitution) * vn * ny;
   }
   return { hit: vn < 0, impactSpeed: Math.max(0, -vn), normalX: nx, normalY: ny, previousVx };
+}
+
+/** Detects a downward crossing of a hoop plane. Rendering and score rules remain outside the physics core. */
+export function hoopCrossing(previousY: number, state: BallPhysicsState, rimY: number, left: number, right: number, margin = 0): HoopCrossing {
+  const inWindow = state.x > left + margin && state.x < right - margin;
+  const blocked = previousY > rimY && state.y <= rimY && state.vy < 0 && state.x > left && state.x < right;
+  const scored = previousY < rimY && state.y >= rimY && state.vy > 0 && inWindow;
+  return { scored, blocked };
+}
+
+export function floorCollision(state: BallPhysicsState, floorY: number): boolean {
+  if (state.y <= floorY) return false;
+  state.y = floorY;
+  return true;
 }
 
