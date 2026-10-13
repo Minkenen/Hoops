@@ -21,7 +21,7 @@ import {
 } from "./ipc";
 import { addShot, getScore, isOnboarded, pushLast10, reloadSettings, resetMatch, setScore, setSetting, settings } from "./settings";
 import { themeById } from "./themes";
-import { achievementsDone, drawTrail, trailById, trailOwned, trailsUnlockedBetween, type TrailPoint } from "./trails";
+import { drawTrail, trailById, trailOwned, type TrailPoint } from "./trails";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
 import type { UI } from "./ui";
@@ -1443,15 +1443,6 @@ export class Game {
 
   /** Shows newly unlocked achievements one after another. */
   private announce(list: Achievement[]): void {
-    if (list.length) {
-      // a new trail when the count of achievements passes a step (after the achievement cards)
-      const after = achievementsDone();
-      const fresh = trailsUnlockedBetween(after - list.length, after);
-      if (fresh.length) {
-        const t = fresh[fresh.length - 1];
-        window.setTimeout(() => this.ui.showTrailUnlock(t), (this.achQueue.length + list.length) * 3600 + 400);
-      }
-    }
     this.achQueue.push(...list);
     if (this.achBusy) return;
     const next = (): void => {

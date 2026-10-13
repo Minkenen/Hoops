@@ -11,7 +11,7 @@ import type { MultiplayerConnection } from "./multiplayerClient";
 import { MULTIPLAYER_MOCK, MultiplayerMock } from "./multiplayerMock";
 import { HORSE, OnlineMatch, type OnlineMatchInit } from "./onlineMatch";
 import { drawSettingsArt } from "./settingsArt";
-import { TRAILS, type Trail, type TrailId, achievementsDone, startTrailPreviews, trailById, trailOwned } from "./trails";
+import { type Trail, type TrailId, startTrailPreviews, trailById, trailOwned } from "./trails";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
 import { type CrowdMode, Preview, setPreviewOverride } from "./preview";
@@ -588,22 +588,6 @@ ${login}
 <div style="margin-top:6px"><button class="pb pri" data-a="trailuse" data-v="${t.id}">Use it now</button><button class="pb" data-a="traillater">Later</button></div></div></div>`;
   }
 
-  /** The road of trails at the top of the Achievements window: a new one every three achievements. */
-  private trailRoadHtml(): string {
-    const done = achievementsDone();
-    const rows = TRAILS.filter((t) => t.need > 0)
-      .map((t) => {
-        const own = trailOwned(t, done);
-        const inUse = settings.trail === t.id;
-        const pct = Math.max(0, Math.min(1, (done - (t.need - 3)) / 3));
-        const tag = own ? (inUse ? '<span class="tr-tag">In use</span>' : '<span class="tr-tag">Unlocked</span>') : `<span class="tr-tag lk">${t.need - done} to go</span>`;
-        const btn = own ? `<button class="pb${inUse ? " on" : ""}" data-a="trailuse" data-v="${inUse ? "none" : t.id}">${inUse ? "Turn off" : "Use"}</button>` : "";
-        return `<div class="tr-row"><div class="tr-step${own ? " on" : ""}">${t.need}</div><div class="tr-mid"><b>${t.name}</b> ${tag}<div class="hn">${t.desc}</div>${own ? "" : `<div class="tr-bar"><i style="width:${pct * 100}%"></i></div>`}</div><div class="tr-prev"><canvas data-trail="${t.id}"${own ? "" : ' data-locked="1"'} width="60" height="30"></canvas>${btn}</div></div>`;
-      })
-      .join("");
-    return `<div class="h4">Trail road</div><div class="hn" style="margin-bottom:6px">Every 3 achievements unlocks a new trail behind your ball.</div>${rows}`;
-  }
-
   openAchievements(): void {
     this.go("achievements");
   }
@@ -1104,7 +1088,6 @@ ${list}
 <div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Achievements ${done}/${ACHIEVEMENTS.length}</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
 <div class="wb">
 <div class="stats">${stat("Shots", String(s.throws))}${stat("Goals", String(s.goals))}${stat("Accuracy", acc + " %")}${stat("Best streak", String(s.bestStreak))}</div>
-${this.trailRoadHtml()}
 <div class="h4">Achievements</div>
 ${rows}
 </div></div>`;
