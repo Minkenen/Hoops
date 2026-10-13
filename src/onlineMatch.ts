@@ -77,6 +77,9 @@ export class OnlineMatch {
   private inFlight = false;
   /** HORSE and 21 use one ball: the other player's shot is still rolling, so it is not yet your turn to shoot. */
   private peerBusy = false;
+  private localShotId = 0;
+  private peerShotId = -1;
+  private peerResultId = -1;
   private busyTimer = 0;
   private beat = 0;
 
@@ -122,7 +125,8 @@ export class OnlineMatch {
   /** Called when the player lets go of the ball. */
   localShot(): void {
     this.inFlight = true;
-    this.conn?.sendPeer("shot");
+    const shotId = this.localShotId++;
+    this.conn?.sendPeer("shot", { shotId });
     this.host.changed();
   }
 
@@ -133,7 +137,7 @@ export class OnlineMatch {
     this.awaitingRest = this.game !== "speed";
     this.apply("me", goal, far);
     // with the totals as they stand now: the other player takes our own score from us, so the two screens cannot drift apart
-    this.conn?.sendPeer("result", { goal, far, score: this.scoreMe, letters: this.lettersMe });
+    this.conn?.sendPeer("result", { shotId: this.localShotId - 1, goal, far, score: this.scoreMe, letters: this.lettersMe });
     this.host.changed();
   }
 
@@ -196,9 +200,12 @@ export class OnlineMatch {
 
   private onPeer(d: unknown): void {
     if (typeof d !== "object" || d === null) return;
-    const m = d as { type?: string; payload?: { goal?: unknown; far?: unknown; nx?: unknown; score?: unknown; letters?: unknown } & Record<string, unknown> };
+    const m = d as { type?: string; payload?: { shotId?: unknown; goal?: unknown; far?: unknown; nx?: unknown; score?: unknown; letters?: unknown } & Record<string, unknown> };
     if (m.type === "result" && !this.over) {
       if (this.game !== "speed" && (this.turn !== "opp" || this.peerBusy)) return;
+      const shotId = m.payload?.shotId;
+      if (typeof shotId !== "number" || !Number.isInteger(shotId) || shotId !== this.peerShotId || shotId <= this.peerResultId) return;
+      this.peerResultId = shotId;
       const goal = m.payload?.goal === true;
       this.apply("opp", goal, m.payload?.far === true);
       // the other player's own score is what they say it is
@@ -214,6 +221,9 @@ export class OnlineMatch {
       this.host.changed();
     } else if (m.type === "shot" && !this.over) {
       if (this.game !== "speed" && this.turn !== "opp") return;
+      const shotId = m.payload?.shotId;
+      if (typeof shotId !== "number" || !Number.isInteger(shotId) || shotId <= this.peerShotId) return;
+      this.peerShotId = shotId;
       this.host.peerShotStarted();
       this.host.changed();
     } else if (m.type === "ball" && !this.over && m.payload) {
