@@ -6,6 +6,15 @@ export interface NetBall {
   r: number;
 }
 
+export interface NetNode {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  offsetX: number;
+  offsetY: number;
+}
+
 import type { NetGeom } from "./sprites";
 
 export const NET_PARAMS = {
@@ -20,6 +29,23 @@ export const NET_PARAMS = {
   ballMass: 30,
   maxBallAccel: 0.35,
 };
+
+/** Pure ball-to-net interaction used by the simulation; drawing never enters this calculation. */
+export function netBallForce(node: NetNode, ball: NetBall): { nodeX: number; nodeY: number; ballX: number; ballY: number } {
+  const dx = node.x + node.offsetX - ball.x;
+  const dy = node.y + node.offsetY - ball.y;
+  const dist = Math.hypot(dx, dy);
+  const min = ball.r + 0.6;
+  if (dist <= 0.001 || dist >= min) return { nodeX: 0, nodeY: 0, ballX: 0, ballY: 0 };
+  const nx = dx / dist;
+  const ny = dy / dist;
+  const spring = NET_PARAMS.kc * (min - dist);
+  const relativeX = ball.vx - node.vx;
+  const relativeY = ball.vy - node.vy;
+  const nodeX = spring * nx + NET_PARAMS.mu * relativeX;
+  const nodeY = spring * ny + NET_PARAMS.mu * relativeY;
+  return { nodeX, nodeY, ballX: -nodeX, ballY: -nodeY };
+}
 
 const SWAY_K = 0.05;
 const SWAY_C = 0.11;
@@ -180,25 +206,11 @@ export class Net {
       for (let i = C; i < n; i++) {
         const sx = this.offX + this.sway * this.ww[i];
         const sy = -SWAY_LIFT * Math.abs(this.sway) * this.ww[i];
-        const dx = this.px[i] + sx - ball.x;
-        const dy = this.py[i] + sy - ball.y;
-        const dist = Math.hypot(dx, dy);
-        const min = ball.r + 0.6;
-        if (dist < min && dist > 0.001) {
-          const nx = dx / dist;
-          const ny = dy / dist;
-          const F = P.kc * (min - dist);
-          this.ax[i] += F * nx;
-          this.ay[i] += F * ny;
-          fbx -= F * nx;
-          fby -= F * ny;
-          const rvx = ball.vx - this.vx[i];
-          const rvy = ball.vy - this.vy[i];
-          this.ax[i] += P.mu * rvx;
-          this.ay[i] += P.mu * rvy;
-          fbx -= P.mu * rvx;
-          fby -= P.mu * rvy;
-        }
+        const force = netBallForce({ x: this.px[i], y: this.py[i], vx: this.vx[i], vy: this.vy[i], offsetX: sx, offsetY: sy }, ball);
+        this.ax[i] += force.nodeX;
+        this.ay[i] += force.nodeY;
+        fbx += force.ballX;
+        fby += force.ballY;
       }
     }
     for (let i = C; i < n; i++) {
