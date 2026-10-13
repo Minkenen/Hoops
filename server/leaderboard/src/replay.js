@@ -27,11 +27,12 @@ function predictedCrossing(shot) {
   return false;
 }
 
-function expectedSide(sessionId, index) { return hash(`${sessionId}:${index}`) % 2 ? "right" : "left"; }
+function expectedSide(seed, index) { return hash(`${seed}:${index}`) % 2 ? "right" : "left"; }
 
 export function verifyReplay(input) {
   if (!input || typeof input !== "object") return { ok: false, reason: "Invalid replay." };
   if (typeof input.sessionId !== "string" || !/^[a-zA-Z0-9_-]{8,80}$/.test(input.sessionId)) return { ok: false, reason: "Invalid replay session." };
+  if (typeof input.seed !== "string" || input.seed.length < 8 || input.seed.length > 80) return { ok: false, reason: "Invalid replay seed." };
   if (!Array.isArray(input.shots) || input.shots.length < 1 || input.shots.length > MAX_SHOTS) return { ok: false, reason: "Invalid replay shots." };
   let previousTime = -1;
   let goals = 0;
@@ -55,7 +56,7 @@ export function verifyReplay(input) {
     if (shot.goal && !predictedCrossing(shot)) return { ok: false, reason: "Replay goal is not physically possible." };
     const center = shot.hoopX / shot.width;
     const side = center < 0.5 ? "left" : "right";
-    if (side !== expectedSide(input.sessionId, shot.id)) return { ok: false, reason: "Replay hoop side does not match the session." };
+    if (side !== expectedSide(input.seed, shot.id)) return { ok: false, reason: "Replay hoop side does not match the session." };
     if (typeof shot.goal !== "boolean") return { ok: false, reason: "Replay result is invalid." };
     if (shot.goal) goals++;
   }

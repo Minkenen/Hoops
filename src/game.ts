@@ -24,7 +24,7 @@ import { themeById } from "./themes";
 import { drawTrail, trailById, trailOwned, type TrailPoint } from "./trails";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
-import { replayHoopTarget, replayResult, replayShot } from "./replay";
+import { currentReplayShotIndex, replayHoopTarget, replayResult, replayShot } from "./replay";
 import { collideCircle as resolveCircle, collidePolygon as resolvePolygon, floorCollision, hoopCrossing, stepBall } from "./physics";
 import type { UI } from "./ui";
 import type { OnlineMatch, OpponentBall } from "./onlineMatch";
@@ -850,7 +850,7 @@ export class Game {
     let side: "left" | "right";
     if (forceSide) side = forceSide;
     else if (onlineTurnGame) side = this.onlineHash(`${this.onlineMatch!.seed}:${round}:side`) % 2 ? "right" : "left";
-    else if (this.onlineMatch === null && !forceSide) side = replayHoopTarget(this.replayIndex(), this.artH).side;
+    else if (this.onlineMatch === null && !forceSide) side = replayHoopTarget(currentReplayShotIndex(), this.artH).side;
     else if (okRight && okLeft) side = Math.random() < 0.5 ? "left" : "right";
     else if (okRight) side = "right";
     else if (okLeft) side = "left";
@@ -858,7 +858,7 @@ export class Game {
     const sp = side === "right" ? this.spR : this.spL;
     const maxH = Math.min(260, this.artH * 0.6);
     const sharedHeight = onlineTurnGame ? 70 + (this.onlineHash(`${this.onlineMatch!.seed}:${round}:height`) / 0x7fffffff) * Math.max(10, maxH - 70) : null;
-    const replayHeight = this.onlineMatch === null && forceH === undefined ? replayHoopTarget(this.replayIndex(), this.artH).rimHeight : null;
+    const replayHeight = this.onlineMatch === null && forceH === undefined ? replayHoopTarget(currentReplayShotIndex(), this.artH).rimHeight : null;
     let rimY = forceH !== undefined ? this.floorY - forceH : this.floorY - (sharedHeight ?? replayHeight ?? rnd(70, Math.max(80, maxH)));
     rimY = Math.max(rimY, 8 + sp.rimY);
     const ref = side === "right" ? this.refR : this.refL;
@@ -887,8 +887,6 @@ export class Game {
     this.hideAt = null;
     play("appear");
   }
-
-  private replayIndex(): number { return getStats().throws; }
 
   private onlineHash(value: string): number {
     let h = 0;

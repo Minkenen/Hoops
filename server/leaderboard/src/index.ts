@@ -113,6 +113,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       if (request.method === "GET" && url.pathname === "/auth/start") return authStart(env, url);
       if (request.method === "GET" && url.pathname === "/auth/callback") return authCallback(env, url);
       if (request.method === "POST" && url.pathname === "/score") return score(request, env);
+      if (request.method === "POST" && url.pathname === "/replay/session") return replaySession(request, env);
       if (request.method === "POST" && url.pathname === "/replay") return replay(request, env);
       if (request.method === "POST" && url.pathname === "/nickname") return nickname(request, env);
       if (request.method === "DELETE" && url.pathname === "/account") return deleteAccount(request, env);
@@ -297,6 +298,7 @@ async function score(request: Request, env: Env): Promise<Response> {
      ON CONFLICT(player_id, week) DO UPDATE SET best_score = MAX(weekly_scores.best_score, excluded.best_score), gained_score = MIN(weekly_scores.gained_score + MAX(0, excluded.best_score - weekly_scores.best_score), 5000)`,
   ).bind(player.id, weekKey(now), decision.score, decision.score).run();
   await env.DB.prepare("UPDATE replays SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, replaySessionId, player.id).run();
+  await env.DB.prepare("UPDATE replay_sessions SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, replaySessionId, player.id).run();
   return json({ ok: true, verified: true });
 }
 
@@ -314,12 +316,27 @@ async function replay(request: Request, env: Env): Promise<Response> {
     return bad("Replay rejected.", 422);
   }
   const sessionId = body?.sessionId as string;
+  const session = await env.DB.prepare("SELECT player_id, seed, created_at, used_at FROM replay_sessions WHERE session_id = ?").bind(sessionId).first<{ player_id: string; seed: string; created_at: number; used_at: number | null }>();
+  if (!session || session.player_id !== player.id || session.used_at || now - session.created_at > 30 * 60_000 || body?.seed !== session.seed) {
+    await flag(env, player.id, "replay_session", "Replay did not use a valid server session.", typeof body?.version === "string" ? body.version : "");
+    return bad("Replay session expired.", 422);
+  }
   const data = JSON.stringify(body);
   if (data.length > MAX_REPLAY_BYTES) return bad("Replay is too large.", 413);
   await env.DB.prepare(
     `INSERT OR IGNORE INTO replays (session_id, player_id, created_at, client_version, shots, goals, data) VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ).bind(sessionId, player.id, now, typeof body?.version === "string" ? body.version.slice(0, 20) : null, decision.shots, decision.goals, data).run();
   return json({ ok: true, verified: true, shots: decision.shots, goals: decision.goals });
+}
+
+async function replaySession(request: Request, env: Env): Promise<Response> {
+  const player = await requirePlayer(request, env);
+  const now = Date.now();
+  const sessionId = crypto.randomUUID();
+  const seed = crypto.randomUUID();
+  await env.DB.prepare("INSERT INTO replay_sessions (session_id, player_id, seed, created_at) VALUES (?, ?, ?, ?)")
+    .bind(sessionId, player.id, seed, now).run();
+  return json({ sessionId, seed, expiresAt: now + 30 * 60_000 });
 }
 
 async function nickname(request: Request, env: Env): Promise<Response> {

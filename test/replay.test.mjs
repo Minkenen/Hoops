@@ -8,7 +8,7 @@ const shot = (id, t, goal = false) => {
 };
 
 test("accepts an ordered, plausible replay", () => {
-  const result = verifyReplay({ sessionId: "session_123", goals: 1, shots: [shot(0, 0), shot(1, 1200, true)] });
+  const result = verifyReplay({ sessionId: "session_123", seed: "session_123", goals: 1, shots: [shot(0, 0), shot(1, 1200, true)] });
   assert.deepEqual(result, { ok: true, shots: 2, goals: 1 });
 });
 
