@@ -4,8 +4,10 @@ import { verifyReplay } from "../server/leaderboard/src/replay.js";
 
 const shot = (id, t, goal = false) => {
   const right = id === 0;
-  return { id, t, resultT: t + 1200, width: 800, height: 600, x: right ? 700 : 100, y: 150, vx: 0, vy: -6, nx: right ? 0.875 : 0.125, ny: 0.25, gs: 1, hoopX: right ? 700 : 100, hoopY: 95, hoopL: right ? 680 : 80, hoopR: right ? 720 : 120, goal };
+  const hoopY = 300 - (70 + (hash(`session_123:${id}`) % 100000) / 100000 * 190);
+  return { id, t, resultT: t + 1200, width: 800, height: 600, floorY: 300, x: right ? 700 : 100, y: 150, vx: 0, vy: -6, nx: right ? 0.875 : 0.125, ny: 0.25, gs: 1, hoopX: right ? 700 : 100, hoopY, hoopL: right ? 680 : 80, hoopR: right ? 720 : 120, goal };
 };
+const hash = (value) => { let h = 0; for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0; return Math.abs(h); };
 
 test("accepts an ordered, plausible replay", () => {
   const result = verifyReplay({ sessionId: "session_123", seed: "session_123", goals: 1, shots: [shot(0, 0), shot(1, 1200, true)] });

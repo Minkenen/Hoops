@@ -28,6 +28,10 @@ function predictedCrossing(shot) {
 }
 
 function expectedSide(seed, index) { return hash(`${seed}:${index}`) % 2 ? "right" : "left"; }
+function expectedRimHeight(seed, index, height) {
+  const max = Math.min(260, height * 0.6);
+  return 70 + (hash(`${seed}:${index}`) % 100000) / 100000 * Math.max(10, max - 70);
+}
 
 export function verifyReplay(input) {
   if (!input || typeof input !== "object") return { ok: false, reason: "Invalid replay." };
@@ -49,6 +53,7 @@ export function verifyReplay(input) {
     if (speed > MAX_SPEED) return { ok: false, reason: "Replay shot speed is impossible." };
     if (!Number.isFinite(shot.nx) || !Number.isFinite(shot.ny) || shot.nx < 0 || shot.nx > 1 || shot.ny < 0 || shot.ny > 1) return { ok: false, reason: "Replay coordinates are invalid." };
     if (!Number.isFinite(shot.width) || !Number.isFinite(shot.height) || shot.width < 100 || shot.height < 100 || shot.width > 10_000 || shot.height > 10_000) return { ok: false, reason: "Replay dimensions are invalid." };
+    if (!Number.isFinite(shot.floorY) || shot.floorY <= shot.hoopY || shot.floorY > shot.height + 40) return { ok: false, reason: "Replay floor data is invalid." };
     if (![shot.resultT, shot.gs, shot.hoopX, shot.hoopY, shot.hoopL, shot.hoopR].every(Number.isFinite) || shot.resultT <= shot.t || shot.hoopL >= shot.hoopR || shot.hoopX < shot.hoopL || shot.hoopX > shot.hoopR) return { ok: false, reason: "Replay hoop data is invalid." };
     const hoopWidth = (shot.hoopR - shot.hoopL) / shot.width;
     const hoopY = shot.hoopY / shot.height;
@@ -57,6 +62,8 @@ export function verifyReplay(input) {
     const center = shot.hoopX / shot.width;
     const side = center < 0.5 ? "left" : "right";
     if (side !== expectedSide(input.seed, shot.id)) return { ok: false, reason: "Replay hoop side does not match the session." };
+    const expectedY = shot.floorY - expectedRimHeight(input.seed, shot.id, shot.height);
+    if (Math.abs(shot.hoopY - expectedY) > 4) return { ok: false, reason: "Replay hoop height does not match the session." };
     if (typeof shot.goal !== "boolean") return { ok: false, reason: "Replay result is invalid." };
     if (shot.goal) goals++;
   }
