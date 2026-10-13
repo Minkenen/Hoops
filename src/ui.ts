@@ -4,6 +4,7 @@ import type { Game } from "./game";
 const WEB = import.meta.env.VITE_TARGET === "web";
 const TOUCH = WEB && window.matchMedia("(pointer: coarse)").matches;
 const esc = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+import { BEETLE_MASK } from "./beetle";
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
 import { PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
 import type { MultiplayerConnection } from "./multiplayerClient";
@@ -102,6 +103,13 @@ export class UI {
   view: View = "none";
   private step = 0;
   private resetDialog = false;
+  /** The bug report window: "form" while writing, "sent" after, null when closed. */
+  private bugStep: "form" | "sent" | null = null;
+  private bugCat = "Gameplay";
+  private bugText = "";
+  private bugTech = true;
+  private bugBusy = false;
+  private bugError = "";
   private premiumDialog = false;
   private licenseStep = false;
   private licenseBusy = false;
@@ -343,6 +351,11 @@ ${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>`
 
   /** One step back: first out of a dialog, then to the window before this one. */
   back(): void {
+    if (this.bugStep) {
+      this.bugStep = null;
+      this.render();
+      return;
+    }
     if (this.resetDialog || this.premiumDialog) {
       if (this.licenseStep && !this.licenseBusy) {
         this.licenseStep = false;
@@ -676,7 +689,7 @@ ${LEADERBOARD_ON ? `<button class="pb full lbl" data-a="lb"><span>Leaderboard…
 ${this.donateHtml()}
 ${this.game?.online ? `<button class="pb full danger" data-a="leavematch">Leave online match</button>` : ""}
 ${WEB ? "" : '<button class="pb full danger" data-a="quit">Quit Hoops</button>'}
-<div class="hn" style="text-align:center;margin-top:6px">Hoops v${__APP_VERSION__}</div></div>`;
+<div class="foot"><button class="bugbtn" data-a="bug" aria-label="Report a bug" title="Report a bug"><span style="-webkit-mask-image:${BEETLE_MASK};mask-image:${BEETLE_MASK}"></span></button><span class="hn">Hoops v${__APP_VERSION__}</span><i></i></div></div>`;
   }
 
   /** A picture tile for a choice: a small drawing above its name. */
@@ -876,6 +889,56 @@ ${this.buyGate ? "" : `<div class="h4" style="margin-top:0">${this.lockIcon()} $
 ${body}
 </div>
 </div>`;
+  }
+
+  private bugDialogHtml(): string {
+    if (this.bugStep === "sent") {
+      return `<div class="confirm-wrap" data-hit>
+<div class="px confirm bug"><div class="h4" style="margin-top:0">Report a bug</div>
+<div class="bug-thanks"><span class="bug-big" style="-webkit-mask-image:${BEETLE_MASK};mask-image:${BEETLE_MASK}"></span><b>Thanks, bug caught!</b><div class="hn">We will look into it.</div></div>
+<div class="acts"><button class="pb buy" data-a="bugclose" style="flex:1;justify-content:center">Done</button></div></div></div>`;
+    }
+    const cats = ["Gameplay", "Online", "Looks", "Sound", "Other"].map((c) => `<button class="pb${this.bugCat === c ? " on" : ""}" data-a="bugcat" data-v="${c}">${c}</button>`).join("");
+    const ok = this.bugText.trim().length >= 5 && !this.bugBusy;
+    return `<div class="confirm-wrap" data-hit>
+<div class="px confirm bug"><div class="h4" style="margin-top:0">Report a bug</div>
+<div class="hn" style="margin-bottom:4px">What kind of bug?</div><div class="bug-cats">${cats}</div>
+<div class="hn" style="margin:8px 0 4px">What happened?</div>
+<textarea id="bugtxt" class="bug-txt" rows="5" maxlength="2000" placeholder="Tell us what you saw and what you expected…"${this.bugBusy ? " disabled" : ""}>${esc(this.bugText)}</textarea>
+<button class="bug-chk${this.bugTech ? " on" : ""}" data-a="bugtech"><i></i><span>Include technical info (version, system). Helps us find it faster.</span></button>
+${this.bugError ? `<div class="err">${esc(this.bugError)}</div>` : ""}
+<div class="acts"><button class="pb" data-a="bugclose">Cancel</button><button class="pb buy" data-a="bugsend" style="flex:1;justify-content:center"${ok ? "" : " disabled"}>${this.bugBusy ? "Sending…" : "Send report"}</button></div></div></div>`;
+  }
+
+  private async sendBug(): Promise<void> {
+    const base = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) ?? "").trim().replace(/\/$/, "");
+    if (!base) {
+      this.bugError = "Bug reports are not available in this build.";
+      this.render();
+      return;
+    }
+    this.bugBusy = true;
+    this.bugError = "";
+    this.render();
+    try {
+      const ua = navigator.userAgent;
+      const system = this.bugTech ? `${/Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "macOS" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : "Other"}${WEB ? " (web)" : ""}` : undefined;
+      const res = await fetch(`${base}/bug`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ category: this.bugCat, message: this.bugText.trim(), version: this.bugTech ? __APP_VERSION__ : undefined, system, nickname: this.bugTech ? backend.user()?.nickname : undefined }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "Could not send the report.");
+      }
+      this.bugText = "";
+      this.bugStep = "sent";
+    } catch (e) {
+      this.bugError = e instanceof Error && e.message !== "Load failed" && e.message !== "Failed to fetch" ? e.message : "Could not reach the server. Try again in a moment.";
+    }
+    this.bugBusy = false;
+    this.render();
   }
 
   private resetDialogHtml(): string {
@@ -1115,6 +1178,7 @@ ${rows}
     }
     if (this.game?.online && this.view !== "onlineend") html += this.onlineHudHtml();
     if (this.resetDialog) html += this.resetDialogHtml();
+    if (this.bugStep) html += this.bugDialogHtml();
     if (this.premiumDialog) html += this.premiumDialogHtml();
     if (this.trailPop) html += this.trailPopHtml();
     if (this.toastMsg) html += `<div class="px toast">${this.toastMsg}</div>`;
@@ -1132,6 +1196,12 @@ ${rows}
     if (t.id === "mpcode") {
       this.mp.setJoinCode(t.value);
       t.value = this.mp.joinCode;
+      return;
+    }
+    if (t.id === "bugtxt") {
+      this.bugText = t.value;
+      const b = this.host.querySelector<HTMLButtonElement>('[data-a="bugsend"]');
+      if (b) b.disabled = this.bugBusy || t.value.trim().length < 5;
       return;
     }
     if (t.id === "lic") {
@@ -1175,6 +1245,11 @@ ${rows}
         this.go("online");
         break;
       case "dismiss":
+        if (this.bugStep) {
+          this.bugStep = null;
+          this.render();
+          break;
+        }
         if (this.resetDialog || this.premiumDialog) {
           this.resetDialog = false;
           this.closePremium();
@@ -1302,6 +1377,30 @@ ${rows}
       case "opt":
         if (k) setSetting(k, (v === "1") as never);
         this.render();
+        break;
+      case "bug":
+        this.bugStep = "form";
+        this.bugError = "";
+        this.render();
+        void focusWindow().catch(() => {});
+        this.host.querySelector<HTMLTextAreaElement>("#bugtxt")?.focus();
+        break;
+      case "bugclose":
+        this.bugStep = null;
+        this.bugText = "";
+        this.render();
+        break;
+      case "bugcat":
+        this.bugCat = v ?? "Other";
+        this.render();
+        this.host.querySelector<HTMLTextAreaElement>("#bugtxt")?.focus();
+        break;
+      case "bugtech":
+        this.bugTech = !this.bugTech;
+        this.render();
+        break;
+      case "bugsend":
+        void this.sendBug();
         break;
       case "inst":
         this.openSettings();

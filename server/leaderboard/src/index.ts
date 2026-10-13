@@ -114,6 +114,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       if (request.method === "PUT" && url.pathname === "/profile") return profilePut(request, env);
       if (request.method === "POST" && url.pathname === "/mp/rooms") return mpRoom(request, env);
       if (request.method === "GET" && url.pathname === "/mp/ws") return mpWs(request, env, url);
+      if (request.method === "POST" && url.pathname === "/bug") return bugReport(request, env);
       if (request.method === "POST" && url.pathname === "/license/activate") return licenseActivate(request);
       if (request.method === "POST" && url.pathname === "/license/validate") return licenseValidate(request);
       return bad("Not found.", 404);
@@ -808,6 +809,25 @@ async function licenseActivate(request: Request): Promise<Response> {
   const customerEmail = String(r.meta?.customer_email || "").trim().toLowerCase();
   if (!customerEmail || customerEmail !== email) return bad("That license key belongs to a different email address.");
   return json({ instance_id: String(r.instance?.id || ""), unlock: match.unlock, theme_id: match.theme });
+}
+
+const BUG_CATEGORIES = ["Gameplay", "Online", "Looks", "Sound", "Other"];
+
+/** A bug report from the app: kept in the database, at most 5 an hour from one address. */
+async function bugReport(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { category?: string; message?: string; version?: string; system?: string; nickname?: string };
+  const message = String(body.message || "").trim();
+  const category = BUG_CATEGORIES.includes(String(body.category)) ? String(body.category) : "Other";
+  if (message.length < 5) return bad("Write a few words about what happened.");
+  if (message.length > 2000) return bad("That is a bit long. Keep it under 2000 characters.");
+  const now = Date.now();
+  const ipHash = await sha256(`bug:${request.headers.get("cf-connecting-ip") || "?"}:${env.HASH_PEPPER}`);
+  const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM bug_reports WHERE ip_hash = ? AND created_at > ?").bind(ipHash, now - 3600_000).first<{ n: number }>();
+  if ((recent?.n ?? 0) >= 5) return bad("You have sent a lot of reports. Try again in a while.", 429);
+  await env.DB.prepare("INSERT INTO bug_reports (created_at, category, message, version, system, nickname, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(now, category, message, body.version ? String(body.version).slice(0, 20) : null, body.system ? String(body.system).slice(0, 120) : null, body.nickname ? String(body.nickname).slice(0, 40) : null, ipHash)
+    .run();
+  return json({ ok: true });
 }
 
 async function licenseValidate(request: Request): Promise<Response> {
