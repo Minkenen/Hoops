@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { verifyReplay } from "../server/leaderboard/src/replay.js";
 
-const shot = (id, t, goal = false) => ({ id, t, resultT: t + 1200, width: 800, height: 600, x: 100, y: 150, vx: 0, vy: -6, nx: 0.125, ny: 0.25, gs: 1, hoopX: 100, hoopY: 95, hoopL: 80, hoopR: 120, goal });
+const shot = (id, t, goal = false) => {
+  const right = id === 0;
+  return { id, t, resultT: t + 1200, width: 800, height: 600, x: right ? 700 : 100, y: 150, vx: 0, vy: -6, nx: right ? 0.875 : 0.125, ny: 0.25, gs: 1, hoopX: right ? 700 : 100, hoopY: 95, hoopL: right ? 680 : 80, hoopR: right ? 720 : 120, goal };
+};
 
 test("accepts an ordered, plausible replay", () => {
   const result = verifyReplay({ sessionId: "session_123", goals: 1, shots: [shot(0, 0), shot(1, 1200, true)] });

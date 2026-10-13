@@ -4,6 +4,7 @@ const MIN_SHOT_GAP_MS = 700;
 const MAX_SHOT_GAP_MS = 120_000;
 const MAX_SPEED = 2400;
 const G = 0.16;
+function hash(value) { let h = 0; for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0; return Math.abs(h); }
 
 function predictedCrossing(shot) {
   const flight = shot.resultT - shot.t;
@@ -25,6 +26,8 @@ function predictedCrossing(shot) {
   }
   return false;
 }
+
+function expectedSide(sessionId, index) { return hash(`${sessionId}:${index}`) % 2 ? "right" : "left"; }
 
 export function verifyReplay(input) {
   if (!input || typeof input !== "object") return { ok: false, reason: "Invalid replay." };
@@ -50,6 +53,9 @@ export function verifyReplay(input) {
     const hoopY = shot.hoopY / shot.height;
     if (hoopWidth < 0.04 || hoopWidth > 0.25 || hoopY < 0.05 || hoopY > 0.9) return { ok: false, reason: "Replay hoop geometry is implausible." };
     if (shot.goal && !predictedCrossing(shot)) return { ok: false, reason: "Replay goal is not physically possible." };
+    const center = shot.hoopX / shot.width;
+    const side = center < 0.5 ? "left" : "right";
+    if (side !== expectedSide(input.sessionId, shot.id)) return { ok: false, reason: "Replay hoop side does not match the session." };
     if (typeof shot.goal !== "boolean") return { ok: false, reason: "Replay result is invalid." };
     if (shot.goal) goals++;
   }

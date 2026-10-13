@@ -3,6 +3,12 @@ export interface ReplayPayload { sessionId: string; version: string; goals: numb
 let sessionId = crypto.randomUUID();
 const startedAt = performance.now();
 const shots: ReplayShot[] = [];
+function hash(value: string): number { let h = 0; for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0; return Math.abs(h); }
+export function replayHoopTarget(index: number, height: number): { side: "left" | "right"; rimHeight: number } {
+  const n = hash(`${sessionId}:${index}`);
+  const max = Math.min(260, height * 0.6);
+  return { side: n % 2 ? "right" : "left", rimHeight: 70 + (n % 100000) / 100000 * Math.max(10, max - 70) };
+}
 export function replayShot(x: number, y: number, vx: number, vy: number, width: number, height: number, gs: number, hoopX: number, hoopY: number, hoopL: number, hoopR: number): void {
   if (shots.length < 200) shots.push({ id: shots.length, t: Math.round(performance.now() - startedAt), resultT: 0, width, height, x, y, vx, vy, nx: x / Math.max(1, width), ny: y / Math.max(1, height), gs, hoopX, hoopY, hoopL, hoopR, goal: false });
 }
