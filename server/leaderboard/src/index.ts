@@ -281,6 +281,14 @@ async function score(request: Request, env: Env): Promise<Response> {
     if (decision.suspicious) await flag(env, player.id, "score", decision.reason, version);
     return json({ ok: true });
   }
+  const consumed = await env.DB.batch([
+    env.DB.prepare("UPDATE replays SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, replaySessionId, player.id),
+    env.DB.prepare("UPDATE replay_sessions SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, replaySessionId, player.id),
+  ]);
+  if (consumed.some((result) => result.meta.changes !== 1)) {
+    await flag(env, player.id, "score_replay_race", "Replay session was already consumed.", version);
+    return json({ ok: true });
+  }
   await env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`ip:${ip}`, now).run();
   await env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`player:${player.id}`, now).run();
   await env.DB.prepare(
@@ -297,8 +305,6 @@ async function score(request: Request, env: Env): Promise<Response> {
     `INSERT INTO weekly_scores (player_id, week, best_score, gained_score) VALUES (?, ?, ?, ?)
      ON CONFLICT(player_id, week) DO UPDATE SET best_score = MAX(weekly_scores.best_score, excluded.best_score), gained_score = MIN(weekly_scores.gained_score + MAX(0, excluded.best_score - weekly_scores.best_score), 5000)`,
   ).bind(player.id, weekKey(now), decision.score, decision.score).run();
-  await env.DB.prepare("UPDATE replays SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, replaySessionId, player.id).run();
-  await env.DB.prepare("UPDATE replay_sessions SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, replaySessionId, player.id).run();
   return json({ ok: true, verified: true });
 }
 
