@@ -483,6 +483,9 @@ struct LbScore {
     throws: u32,
     goals: u32,
     version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "replaySessionId")]
+    replay_session_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -646,7 +649,7 @@ async fn leaderboard_load(server_url: String, tab: String) -> Result<LbBoard, St
 }
 
 #[tauri::command]
-async fn leaderboard_submit_score(server_url: String, score: u32, best_streak: u32, throws: u32, goals: u32, version: String) -> Result<(), String> {
+async fn leaderboard_submit_score(server_url: String, score: u32, best_streak: u32, throws: u32, goals: u32, version: String, replay_session_id: Option<String>) -> Result<(), String> {
     let Some(token) = get_leaderboard_token() else {
         return Ok(());
     };
@@ -656,6 +659,7 @@ async fn leaderboard_submit_score(server_url: String, score: u32, best_streak: u
         throws,
         goals,
         version,
+        replay_session_id,
     };
     tauri::async_runtime::spawn_blocking(move || leaderboard_post::<_, serde_json::Value>(&server_url, "/score", Some(&token), &body))
         .await

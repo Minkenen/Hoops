@@ -81,8 +81,8 @@ export class RemoteLeaderboard implements LbBackend {
     this.lastSync = now;
     this.syncing = true;
     const stats = getStats();
-    void leaderboardSubmitScore(this.serverUrl, getBestScore(), stats.bestStreak, stats.throws, stats.goals)
-      .then(() => this.submitReplay())
+    void this.submitReplay()
+      .then((replaySessionId) => leaderboardSubmitScore(this.serverUrl, getBestScore(), stats.bestStreak, stats.throws, stats.goals, replaySessionId ?? undefined))
       .catch(() => {
         /* offline play should never care */
       })
@@ -91,11 +91,13 @@ export class RemoteLeaderboard implements LbBackend {
       });
   }
 
-  private async submitReplay(): Promise<void> {
+  private async submitReplay(): Promise<string | null> {
     const payload = replayPayload(__APP_VERSION__);
     const token = await leaderboardSessionToken();
-    if (!payload || !token) return;
-    await fetch(`${this.serverUrl}/replay`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+    if (!payload || !token) return null;
+    const response = await fetch(`${this.serverUrl}/replay`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+    if (!response.ok) return null;
+    return payload.sessionId;
   }
 }
 

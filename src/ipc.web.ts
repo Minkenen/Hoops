@@ -88,9 +88,9 @@ export const leaderboardSignIn = (u: string, provider: LbProviderId): Promise<Lb
 };
 export const leaderboardSignOut = async (): Promise<void> => setToken("");
 export const leaderboardLoad = (u: string, t: LbTab): Promise<LbBoard> => api<LbBoard>(u, "GET", `/leaderboard?tab=${t}`);
-export const leaderboardSubmitScore = async (u: string, score: number, bestStreak: number, throws: number, goals: number): Promise<void> => {
+export const leaderboardSubmitScore = async (u: string, score: number, bestStreak: number, throws: number, goals: number, replaySessionId?: string): Promise<void> => {
   if (!getToken()) return;
-  await api(u, "POST", "/score", { score, bestStreak, throws, goals, version: __APP_VERSION__ });
+  await api(u, "POST", "/score", { score, bestStreak, throws, goals, version: __APP_VERSION__, ...(replaySessionId ? { replaySessionId } : {}) });
 };
 export const leaderboardSetNickname = (u: string, nickname: string): Promise<LbUser> => api<LbUser>(u, "POST", "/nickname", { nickname });
 export const leaderboardDeleteAccount = async (u: string): Promise<void> => {
