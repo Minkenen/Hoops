@@ -295,7 +295,7 @@
 #ui .gbtn:hover{background:#f1f3f6}
 
 /* the beetle that opens the bug report: dark line, lighter for a moment when pressed */
-#ui .menu .foot{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+#ui .menu .foot{display:flex;align-items:center;justify-content:space-between;height:54px;margin:4px 0 -4px;padding:0 2px}
 #ui .menu .foot i{width:30px}
 #ui .bugbtn{background:none;padding:2px;margin:0;display:flex;cursor:pointer;color:#15171c;transition:color .35s ease-out,transform .15s}
 #ui .bugbtn:hover{transform:scale(1.12)}
