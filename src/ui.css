@@ -235,25 +235,22 @@
 #ui .mp-code span{font-size:26px}
 #ui .mp-in{font-size:22px;letter-spacing:3px}
 
-/* whose turn it is: a banner at the top of the screen */
-#ui .mp-turnbanner{position:fixed;left:50%;top:14px;transform:translateX(-50%);padding:8px 22px;font-size:20px;font-weight:500;letter-spacing:.06em;
-  background:var(--panel);pointer-events:none;box-shadow:-2px 0 0 var(--o),2px 0 0 var(--o),0 -2px 0 var(--o),0 2px 0 var(--o),-4px 0 0 var(--h),4px 0 0 var(--h),0 -4px 0 var(--h),0 4px 0 var(--h)}
-#ui .mp-turnbanner.me{color:#7ad89a;animation:mppulse 1s ease-in-out infinite}
-#ui .mp-turnbanner.opp{color:#ee7a24}
-@keyframes mppulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.06)}}
+/* whose turn it is: a big word that flashes in the middle and fades away */
+#ui .mp-flash{position:fixed;left:0;right:0;top:34%;text-align:center;font-size:clamp(34px,10vw,96px);font-weight:500;pointer-events:none;text-shadow:5px 5px 0 var(--o);animation:mpflash 1.6s ease both}
+#ui .mp-flash.me{color:#ffa040}
+#ui .mp-flash.opp{color:#5aa0ff}
+@keyframes mpflash{0%{transform:scale(.4);opacity:0}20%{transform:scale(1.1);opacity:1}30%{transform:scale(1)}75%{opacity:1}100%{opacity:0;transform:scale(1.2)}}
 
 /* online scoreboard and turn banner: clear of the Mac notch (like the toast), and tidy on a phone */
-#ui .mp-turnbanner{top:60px}
 #ui .mp-hud{top:calc(12px + env(safe-area-inset-top,0px));left:calc(12px + env(safe-area-inset-left,0px));max-width:min(260px,calc(50vw - 20px))}
 #ui .mp-hud .r span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 @media(max-width:700px){
-  #ui .mp-turnbanner{display:none}
   #ui .mp-hud{min-width:0;padding:6px 8px;top:calc(58px + env(safe-area-inset-top,0px))}
   #ui .mp-hud .t{font-size:10px}
   #ui .mp-hud .r{gap:6px;font-size:13px}
   #ui .mp-hud .r b{font-size:16px}
   #ui .mp-hud .n{font-size:14px;font-weight:500;margin-top:4px}
-  #ui .mp-hud .n.opp{color:#ee7a24}
+  #ui .mp-hud .n.opp{color:#5aa0ff}
 }
 
 /* trails: the road in Achievements and the "new trail" box */

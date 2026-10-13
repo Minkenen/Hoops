@@ -1703,6 +1703,8 @@ export class Game {
       ctx.globalAlpha = 1;
     }
 
+    this.drawNameTags(gn);
+
     this.fire.drawFront(ctx);
     this.fire.overlay(ctx, this.artW, this.artH);
 
@@ -1728,6 +1730,33 @@ export class Game {
     }
     this.milestone.draw(ctx);
     ctx.restore();
+  }
+
+  /** Online: whose ball it is, as a small tag above it. You are orange, the other player is blue. */
+  private drawNameTags(ghost: { x: number; y: number } | null): void {
+    const m = this.onlineMatch;
+    if (!m || m.over) return;
+    const tag = (x: number, y: number, name: string, mine: boolean): void => {
+      const str = name.toUpperCase().slice(0, 8);
+      const w = textWidth(str, 1) + 8;
+      const hh = 11;
+      const cx = clamp(Math.round(x), Math.ceil(w / 2) + 1, this.artW - Math.ceil(w / 2) - 1);
+      const bx = cx - Math.floor(w / 2);
+      const by = Math.max(1, Math.round(y - BALL_R - hh - 7));
+      const bg = mine ? "#ee7a24" : "#3a82e0";
+      layer(this.ctx, (put) => {
+        for (let yy = 0; yy < hh; yy++) for (let xx = 0; xx < w; xx++) put(bx + xx, by + yy, bg);
+        for (let k = 0; k < 3; k++) for (let xx = -2 + k; xx <= 2 - k; xx++) put(Math.round(x) + xx, by + hh + k, bg);
+      });
+      layer(this.ctx, (put) => text(put, str, bx + 4, by + 3, 1, mine ? "#1c1c22" : "#ffffff", bg), [0]);
+    };
+    if (m.game === "speed") {
+      if (this.ballAlpha > 0.3) tag(this.ball.x, this.ball.y, "You", true);
+      if (ghost) tag(ghost.x, ghost.y, m.opponent, false);
+    } else if (this.ballAlpha > 0.3 && this.fire.visible()) {
+      const mine = m.turn === "me";
+      tag(this.ball.x, this.ball.y, mine ? "You" : m.opponent, mine);
+    }
   }
 
   private drawBubble(e: number, dur: number): void {

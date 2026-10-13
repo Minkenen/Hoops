@@ -220,6 +220,21 @@ export class UI {
     this.toast(`Online ${match.game === "speed" ? "Speedball" : match.game === "horse" ? "HORSE" : "21"} vs ${match.opponent}`, 2600);
   }
 
+  private flashTurn: "me" | "opp" | "both" | null = null;
+  private flashAt = 0;
+
+  /** A big word in the middle of the screen when the turn changes: it fades away by itself. */
+  private turnFlashHtml(m: NonNullable<Game["online"]>): string {
+    if (m.game === "speed" || m.over) return "";
+    if (m.turn !== this.flashTurn) {
+      this.flashTurn = m.turn;
+      this.flashAt = performance.now();
+    }
+    const el = performance.now() - this.flashAt;
+    if (el > 1600) return "";
+    return `<div class="mp-flash ${m.turn === "me" ? "me" : "opp"}" style="animation-delay:-${Math.round(el)}ms">${m.turn === "me" ? "YOUR TURN" : `${esc(m.opponent).toUpperCase()}'S TURN`}</div>`;
+  }
+
   /** The scoreboard shown over the court during an online match. */
   private onlineHudHtml(): string {
     const m = this.game?.online;
@@ -230,7 +245,7 @@ export class UI {
     return `<div class="px mp-hud"><div class="t">Online ${name} · ${m.goalText}</div>
 <div class="r"><span>You</span>${mine(m.scoreMe, m.lettersMe)}</div>
 <div class="r"><span>${esc(m.opponent)}</span>${mine(m.scoreOpp, m.lettersOpp)}</div>
-${m.game !== "speed" && !m.over ? `<div class="mp-turnbanner ${m.turn === "me" ? "me" : "opp"}">${m.turn === "me" ? "YOUR TURN" : `${esc(m.opponent).toUpperCase()}'S TURN`}</div>` : ""}
+${this.turnFlashHtml(m)}
 ${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>` : turn ? `<div class="n${m.turn === "me" ? " me" : " opp"}">${esc(turn)}</div>` : ""}</div>`;
   }
 
