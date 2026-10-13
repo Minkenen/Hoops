@@ -19,7 +19,7 @@ import type { Settings } from "./settings";
 import { type CrowdMode, Preview, setPreviewOverride } from "./preview";
 import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
 import { ALL_ACCESS_PRICE, ALL_ACCESS_VALUE, PRICE_VALUE, THEMES, type ThemeId, themeById } from "./themes";
-import { ACHIEVEMENTS, getStats } from "./stats";
+import { ACHIEVEMENTS, achievementsDone, getStats, mark, recordOnlineMatch } from "./stats";
 import { type UpdateInfo, checkForUpdateDetailed } from "./update";
 import { backend, cleanNickname, LEADERBOARD_ON, type LbBoard, type LbEntry, type LbProviderId, type LbTab } from "./leaderboard";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
@@ -217,9 +217,14 @@ export class UI {
 
   /** The countdown reached GO: the match takes over the connection and the game goes to the court. */
   private startOnlineMatch(init: OnlineMatchInit, conn: MultiplayerConnection | null): void {
+    let recorded = false;
     const match = new OnlineMatch(init, conn, {
       changed: () => {
         this.game.refresh();
+        if (match.over && !recorded) {
+          recorded = true;
+          recordOnlineMatch({ game: match.game, won: match.over.won, letters: match.lettersMe, scoreMe: match.scoreMe, scoreOpp: match.scoreOpp });
+        }
         if (match.over && this.view !== "onlineend") {
           this.stack = [];
           this.view = "onlineend";
@@ -414,6 +419,11 @@ ${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>`
     this.render();
     try {
       this.lbBoards[tab] = await backend.load(tab);
+      const you = this.lbBoards[tab]?.you;
+      if (tab === "global" && you) {
+        mark("onBoard");
+        if (you.rank <= 10) mark("rank10");
+      }
     } catch (e) {
       this.lbError = e instanceof Error ? e.message : "Could not load the board.";
     }
@@ -998,6 +1008,7 @@ ${this.bugError ? `<div class="err">${esc(this.bugError)}</div>` : ""}
       }
       this.bugText = "";
       this.bugStep = "sent";
+      mark("bugReport");
     } catch (e) {
       this.bugError = e instanceof Error && e.message !== "Load failed" && e.message !== "Failed to fetch" ? e.message : "Could not reach the server. Try again in a moment.";
     }
@@ -1159,16 +1170,19 @@ ${list}
     const acc = s.throws ? Math.round((s.goals / s.throws) * 100) : 0;
     const done = ACHIEVEMENTS.filter((a) => s.unlocked[a.id]).length;
     const stat = (label: string, v: string): string => `<div class="stat"><b>${v}</b><span>${label}</span></div>`;
+    let lastGroup = "";
     const rows = ACHIEVEMENTS.map((a) => {
       const [cur, max] = a.progress(s);
       const got = !!s.unlocked[a.id];
-      return `<div class="row ach${got ? " done" : ""}"><div><div class="lb">${got ? "[x] " : "[ ] "}${a.name}</div><div class="hn">${a.desc}</div></div><span class="val">${got ? "Done" : `${cur} / ${max}`}</span></div>`;
+      const inGroup = ACHIEVEMENTS.filter((x) => x.group === a.group);
+      const head = a.group !== lastGroup ? `<div class="h4 ach-h">${a.group} <span class="hn">${inGroup.filter((x) => s.unlocked[x.id]).length}/${inGroup.length}</span></div>` : "";
+      lastGroup = a.group;
+      return `${head}<div class="row ach${got ? " done" : ""}"><div><div class="lb">${got ? "[x] " : "[ ] "}${a.name}</div><div class="hn">${a.desc}</div></div><span class="val">${got ? "Done" : `${cur} / ${max}`}</span></div>`;
     }).join("");
     return `<div class="px win" data-hit style="width:min(470px,92vw)">
 <div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Achievements ${done}/${ACHIEVEMENTS.length}</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
 <div class="wb">
 <div class="stats">${stat("Shots", String(s.throws))}${stat("Goals", String(s.goals))}${stat("Accuracy", acc + " %")}${stat("Best streak", String(s.bestStreak))}</div>
-<div class="h4">Achievements</div>
 ${rows}
 </div></div>`;
   }
@@ -1451,6 +1465,7 @@ ${rows}
         break;
       case "discord":
         if (DISCORD_URL) {
+          mark("discord");
           void openExternal(DISCORD_URL).catch(() => {
             window.open(DISCORD_URL, "_blank", "noopener,noreferrer");
           });

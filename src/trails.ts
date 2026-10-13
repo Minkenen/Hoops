@@ -19,7 +19,7 @@ export const TRAILS: Trail[] = [
   { id: "spark", name: "Sparkles", need: 9, desc: "Twinkling stars fall off the ball." },
   { id: "comet", name: "Comet", need: 12, desc: "A glowing tail from orange to blue." },
   { id: "rainbow", name: "Rainbow", need: 15, desc: "A pixel rainbow ribbon." },
-  { id: "gold", name: "Gold stars", need: ACHIEVEMENTS.length, desc: "Golden stars and a glow. Every achievement." },
+  { id: "gold", name: "Gold stars", need: 18, desc: "Golden stars and a glow." },
 ];
 
 export const trailById = (id: string): Trail => TRAILS.find((t) => t.id === id) ?? TRAILS[0];

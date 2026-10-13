@@ -1,6 +1,7 @@
 import type { BallSkinId, CourtSkinId, CrowdStyle } from "./skins";
 import type { ThemeId } from "./themes";
 import type { TrailId } from "./trails";
+import { addToSet, mark } from "./stats";
 
 export interface Settings {
   arrow: "arrow" | "dots";
@@ -97,6 +98,9 @@ export function setSetting<K extends keyof Settings>(k: K, v: Settings[K]): void
     /* ignore */
   }
   listeners.forEach((f) => f(k));
+  if (k === "theme") addToSet("themes", String(v));
+  else if (k === "crowd" && v !== "none") addToSet("crowds", String(v));
+  else if (k === "ballSkin" && v !== DEFAULTS.ballSkin) mark("skinChanged");
 }
 
 export function onSettingChange(f: Listener): void {
@@ -190,7 +194,10 @@ export function isPremiumUnlocked(): boolean {
 
 export function setPremiumUnlocked(v: boolean): void {
   try {
-    if (v) localStorage.setItem(PREMIUM_KEY, "1");
+    if (v) {
+      localStorage.setItem(PREMIUM_KEY, "1");
+      mark("bought");
+    }
     else localStorage.removeItem(PREMIUM_KEY);
   } catch {
     /* ignore */
@@ -224,6 +231,7 @@ function saveLicenses(list: StoredLicense[]): void {
 }
 
 export function addLicense(l: StoredLicense): void {
+  mark("bought");
   saveLicenses([...getLicenses().filter((x) => x.key !== l.key), l]);
 }
 

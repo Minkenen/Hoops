@@ -2,7 +2,7 @@ import { MAXPULL, drawAim, maxSpeed } from "./aim";
 import { isRegistered, register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { play } from "./audio";
 import { BallFire } from "./fire";
-import { type Achievement, getStats, recordGoal, recordHeroDown, recordMiss, recordThrow } from "./stats";
+import { type Achievement, getStats, recordGoal, recordHeroDown, recordMiss, recordThrow, setAchievementListener, touchDay, addToSet } from "./stats";
 import { Confetti } from "./confetti";
 import { Crowd, CROWD_ROW_H } from "./crowd";
 import { clamp, layer, rnd, text, textWidth } from "./draw";
@@ -163,6 +163,10 @@ export class Game {
     private monitors: MonitorInfo[],
   ) {
     this.cv = cv;
+    setAchievementListener((list) => this.announce(list));
+    touchDay();
+    addToSet("themes", settings.theme);
+    if (settings.crowd !== "none") addToSet("crowds", settings.crowd);
     this.ctx = cv.getContext("2d")!;
     this.ctx.imageSmoothingEnabled = false;
     cv.addEventListener("pointerdown", (e) => this.onDown(e));

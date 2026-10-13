@@ -16,6 +16,7 @@ export const MULTIPLAYER_MOCK: boolean = import.meta.env.VITE_MULTIPLAYER === "1
 const SERVER_URL = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) || "").trim();
 
 import type { GameId, MpCourt, OnlineMatchInit } from "./onlineMatch";
+import { mark } from "./stats";
 export type { GameId, MpCourt };
 export type MpScreen = "start" | "quick" | "found" | "friend" | "created" | "join" | "notfound" | "lobby" | "countdown" | "reconnect" | "gone" | "timeout";
 
@@ -52,6 +53,8 @@ export class MultiplayerMock {
   connected = false;
   direct = false;
   error = "";
+  /** This match is in a room that was made or joined with a code (not a quick match). */
+  private friendFlow = false;
   /** The quick-match screen is showing a room being joined with a code. */
   joining = false;
   peerName = "Mia";
@@ -157,12 +160,14 @@ export class MultiplayerMock {
         this.host.render();
         break;
       case "quick":
+        this.friendFlow = false;
         this.startQuick();
         break;
       case "friend":
         this.go("friend");
         break;
       case "create":
+        this.friendFlow = true;
         this.createRoom();
         break;
       case "copy":
@@ -182,6 +187,7 @@ export class MultiplayerMock {
         this.go("join");
         break;
       case "join":
+        this.friendFlow = true;
         this.join();
         break;
       case "cancel":
@@ -379,6 +385,7 @@ export class MultiplayerMock {
         // the match takes over the connection; this window gets a fresh one next time
         if (this.started) return;
         this.started = true;
+        if (this.friendFlow) mark("friendRoom");
         const conn = this.conn;
         this.conn = null;
         this.stopTimersOnly();
