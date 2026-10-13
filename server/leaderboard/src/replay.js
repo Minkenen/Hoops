@@ -6,9 +6,9 @@ const MAX_SPEED = 2400;
 const G = 0.16;
 function hash(value) { let h = 0; for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0; return Math.abs(h); }
 
-function predictedCrossing(shot) {
+export function simulateReplayShot(shot) {
   const flight = shot.resultT - shot.t;
-  if (!Number.isFinite(flight) || flight < 250 || flight > 30_000) return false;
+  if (!Number.isFinite(flight) || flight < 250 || flight > 30_000) return { crossed: false, flight };
   let x = shot.x;
   let y = shot.y;
   let vx = shot.vx;
@@ -21,10 +21,10 @@ function predictedCrossing(shot) {
     vy += G * (shot.gs + (1 - shot.gs) * Math.max(0, Math.min(1, elapsed / 40))) * dt;
     x += vx * dt;
     y += vy * dt;
-    if (previousY < shot.hoopY && y >= shot.hoopY && vy > 0 && x > shot.hoopL && x < shot.hoopR) return true;
+    if (previousY < shot.hoopY && y >= shot.hoopY && vy > 0 && x > shot.hoopL && x < shot.hoopR) return { crossed: true, flight };
     previousY = y;
   }
-  return false;
+  return { crossed: false, flight };
 }
 
 function expectedSide(seed, index) { return hash(`${seed}:${index}`) % 2 ? "right" : "left"; }
@@ -59,7 +59,7 @@ export function verifyReplay(input) {
     const hoopWidth = (shot.hoopR - shot.hoopL) / shot.width;
     const hoopY = shot.hoopY / shot.height;
     if (hoopWidth < 0.04 || hoopWidth > 0.25 || hoopY < 0.05 || hoopY > 0.9) return { ok: false, reason: "Replay hoop geometry is implausible." };
-    if (shot.goal && !predictedCrossing(shot)) return { ok: false, reason: "Replay goal is not physically possible." };
+    if (shot.goal && !simulateReplayShot(shot).crossed) return { ok: false, reason: "Replay goal is not physically possible." };
     const center = shot.hoopX / shot.width;
     const side = center < 0.5 ? "left" : "right";
     if (side !== expectedSide(input.seed, shot.id)) return { ok: false, reason: "Replay hoop side does not match the session." };

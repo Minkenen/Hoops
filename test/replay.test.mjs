@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { verifyReplay } from "../server/leaderboard/src/replay.js";
+import { simulateReplayShot, verifyReplay } from "../server/leaderboard/src/replay.js";
 
 const shot = (id, t, goal = false) => {
   const right = id === 0;
@@ -30,4 +30,10 @@ test("rejects coordinates that disagree with normalized replay data", () => {
 
 test("rejects a score that does not match the replay", () => {
   assert.equal(verifyReplay({ sessionId: "session_123", goals: 2, shots: [shot(0, 0, true)] }).ok, false);
+});
+
+test("simulates free flight with replay timing", () => {
+  const result = simulateReplayShot({ ...shot(0, 0), resultT: 1200 });
+  assert.equal(result.flight, 1200);
+  assert.equal(typeof result.crossed, "boolean");
 });
