@@ -333,7 +333,7 @@ export class Game {
           x: this.xFromPeer(p.nx),
           y: clamp(this.yFromPeer(p), BALL_R, this.floorY - BALL_R),
           ang: p.ang,
-          until: performance.now() + 900,
+          until: performance.now() + 5000,
         };
         this.sharedSamples.push({ t: performance.now(), ...this.sharedBallTarget });
         if (this.sharedSamples.length > 32) this.sharedSamples.shift();
@@ -503,6 +503,7 @@ export class Game {
     this.sharedSamples.length = 0;
     this.nudgeX = null;
     this.hoopSwapAt = 0;
+    this.onlineHoopRound = 0;
     this.burning = false;
     this.fireOn = false;
     this.fire = new BallFire();
@@ -988,7 +989,6 @@ export class Game {
     if (this.hoopSwapAt && now >= this.hoopSwapAt && !this.ball.moving) {
       // after a goal or a miss the hoop moves to a new place (the court stays), but only once the ball has stopped; not while a shot is being pulled
       this.hoopSwapAt = 0;
-    this.onlineHoopRound = 0;
       if ((this.onlineMatch || settings.stayOpen) && this.hoop && !this.drag) {
         // the court stays while the new hoop slides in
         this.keepCourt = true;
