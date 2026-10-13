@@ -479,6 +479,7 @@ interface MpPlayer {
   socket?: WebSocket;
   reconnectUntil?: number;
   matchSeq: number;
+  matchEvent: "none" | "shot" | "result" | "rest";
 }
 
 interface MpRoom {
@@ -635,7 +636,15 @@ export class MultiplayerHub {
         if (!event || typeof event !== "object" || !Number.isInteger(seq) || seq <= player.matchSeq || seq > player.matchSeq + 1) return sendError(ws, msg, "bad_match_event", "Match event was out of order.");
         const kind = String((event as Record<string, unknown>).type || "");
         if (kind !== "shot" && kind !== "result" && kind !== "rest") return sendError(ws, msg, "bad_match_event", "Match event was invalid.");
+        const previous = player.matchEvent;
+        const allowed = room.game === "speed"
+          ? (kind === "shot" ? previous === "none" : kind === "result" ? previous === "shot" : false)
+          : (kind === "shot" ? (previous === "none" || previous === "rest") : kind === "result" ? previous === "shot" : previous === "result");
+        if (!allowed) return sendError(ws, msg, "bad_match_event", "Match event was not valid for the current turn.");
+        if (kind === "result" && (typeof (event as Record<string, unknown>).goal !== "boolean" || typeof (event as Record<string, unknown>).far !== "boolean")) return sendError(ws, msg, "bad_match_event", "Match result was invalid.");
+        if (kind === "rest" && (typeof (event as Record<string, unknown>).nx !== "number" || Number((event as Record<string, unknown>).nx) < 0 || Number((event as Record<string, unknown>).nx) > 1)) return sendError(ws, msg, "bad_match_event", "Rest position was invalid.");
         player.matchSeq = seq;
+        player.matchEvent = room.game === "speed" && kind === "result" ? "none" : kind as "shot" | "result" | "rest";
         const peer = peerOf(room, player.id);
         if (peer?.socket && peer.connected) send(peer.socket, "match_event", { seq, event });
         break;
@@ -665,7 +674,7 @@ export class MultiplayerHub {
     if (waiting && waiting.player.id !== player.id && waiting.socket.readyState === 1) {
       this.quickWaiting.delete(game);
       const room = waiting.room;
-      room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "answerer", socket, matchSeq: -1 });
+      room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "answerer", socket, matchSeq: -1, matchEvent: "none" });
       this.rooms.set(room.id, room);
       sendPeerFound(room);
       broadcastLobby(room);
@@ -678,7 +687,7 @@ export class MultiplayerHub {
       game,
       court: "Street",
       hostId: player.id,
-      players: new Map([[player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "offerer", socket, matchSeq: -1 }]]),
+      players: new Map([[player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "offerer", socket, matchSeq: -1, matchEvent: "none" }]]),
       createdAt: now,
       expiresAt: now + MP_ROOM_TTL_MS,
     };
@@ -706,7 +715,7 @@ export class MultiplayerHub {
     }
     if (room.players.size >= 2) return send(socket, "error", { code: "room_full", message: "Two players are already in the room." });
     const role: MpRole = room.players.size === 0 ? "offerer" : "answerer";
-    room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role, socket, matchSeq: -1 });
+    room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role, socket, matchSeq: -1, matchEvent: "none" });
     if (room.players.size === 1) {
       room.hostId = player.id;
       send(socket, "room_created", { roomId: room.id, code: room.code, expiresAt: room.expiresAt });
