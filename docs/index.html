@@ -20,7 +20,7 @@ nav .logo img{width:36px;height:36px;border-radius:8px}
 nav .sp{flex:1}nav a{text-decoration:none;color:var(--mut)}nav a:hover{color:var(--text)}
 .btn{display:inline-flex;align-items:center;gap:10px;font:inherit;font-size:18px;font-weight:500;padding:12px 22px;background:var(--acc);color:#1b1022;text-decoration:none;border:0;cursor:pointer;margin:4px}
 .btn{position:relative;cursor:pointer}.btn:after{content:"";position:absolute;inset:-4px}.btn.alt{background:var(--panel);color:var(--text)}
-.btn:hover{background:var(--acc2);color:#1b1022}
+.btn:hover{background:var(--acc2);color:#1b1022}.btn.mobile-focus{background:#fff;color:#1b1022}
 .hero{display:grid;grid-template-columns:1fr 1.15fr;gap:36px;align-items:center;padding:30px 0 70px}
 .hero h1{font-size:clamp(38px,6vw,64px);line-height:1.02;margin:0 0 16px;font-weight:600}
 .hero h1 em{font-style:normal;color:var(--acc)}
@@ -66,7 +66,7 @@ footer a{margin-right:14px}
 <div class="wrap"><header class="hero">
 <div><h1>Shoot hoops <em>over</em> your work.</h1>
 <p>Hoops is a tiny pixel-art basketball game that lives on top of your desktop. Pull the ball back, let go, and sink it, then get back to what you were doing.</p>
-<a class="btn pxb" id="b-mac" href="#download">Download for Mac</a><a class="btn alt pxb" id="b-win" href="#download">Download for Windows</a><a class="btn alt pxb" href="play/">Play in your browser</a><p style="margin:14px 0 0;font-size:14px;color:var(--mut)">The browser version plays inside the page. The desktop app lets the game live over your whole desktop, on top of your other programs.</p>
+<a class="btn pxb" id="b-mac" href="#download">Download for Mac</a><a class="btn alt pxb" id="b-win" href="#download">Download for Windows</a><a class="btn alt pxb" id="b-play" href="play/">Play in your browser</a><p style="margin:14px 0 0;font-size:14px;color:var(--mut)">The browser version plays inside the page. The desktop app lets the game live over your whole desktop, on top of your other programs.</p>
 <small>Free to play. Three themes included, more when you want them.</small><p class="betanote"><b>Hoops is in beta.</b> It is new, and online multiplayer is brand new, so expect rough edges and the odd bug. Tell us what you find at hoopsgame.app@gmail.com.</p></div>
 <div class="stage pxb"><video src="video/fire.mp4" poster="video/fire.jpg" autoplay muted loop playsinline aria-label="Hoops: the ball catches fire after three goals in a row"></video></div>
 </header></div>
@@ -114,4 +114,4 @@ Mac version: Apple Silicon (M1 and newer).</div></div></div></section>
 <details><summary>Will it get in the way of my work?</summary><p>No. Clicks pass through the court to the app below, and one key hides everything.</p></details>
 <details><summary>Which systems does it run on?</summary><p>macOS (Apple Silicon) and Windows 10 or 11.</p></details>
 <details><summary>I lost my license key.</summary><p>Email <a href="mailto:hoopsgame.app@gmail.com">hoopsgame.app@gmail.com</a> from the address you bought with and we will resend it.</p></details>
-</div></section><div class="wrap"><footer><span>Hoops, made by Team Hoops</span><span><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="refunds.html">Refunds</a><a href="mailto:hoopsgame.app@gmail.com">hoopsgame.app@gmail.com</a></span></footer></div><script>if(/Win/i.test(navigator.platform||navigator.userAgent)){var m=document.getElementById("b-mac"),w=document.getElementById("b-win");if(m&&w){w.className="btn pxb";m.className="btn alt pxb";m.parentNode.insertBefore(w,m)}}</script></body></html>
+</div></section><div class="wrap"><footer><span>Hoops, made by Team Hoops</span><span><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="refunds.html">Refunds</a><a href="mailto:hoopsgame.app@gmail.com">hoopsgame.app@gmail.com</a></span></footer></div><script>(function(){var ua=navigator.userAgent||"",platform=navigator.platform||"",mobile=/Android|iPhone|iPad|iPod|Mobile/i.test(ua)||(/Macintosh/i.test(ua)&&navigator.maxTouchPoints>1),win=/Win/i.test(platform)||/Windows/i.test(ua),m=document.getElementById("b-mac"),w=document.getElementById("b-win"),p=document.getElementById("b-play");if(m&&w){if(win){w.className="btn pxb";m.className="btn alt pxb";m.parentNode.insertBefore(w,m)}else if(!mobile){m.className="btn pxb";w.className="btn alt pxb"}}if(mobile&&p){p.className="btn pxb mobile-focus";if(m)m.className="btn alt pxb";if(w)w.className="btn alt pxb"}})()</script></body></html>
