@@ -35,6 +35,7 @@ export function createMatch({ game, seed, playerIds, firstPlayerId, now }) {
     lastShotAt: Object.fromEntries(playerIds.map((id) => [id, -Infinity])),
     awaitingRest: null,
     restDueAt: 0,
+    restNx: 0.5,
     over: null,
     seq: 0,
     last: null,
@@ -53,7 +54,9 @@ export function snapshot(m) {
     streaks: { ...m.streaks },
     round: m.round,
     rounds: { ...m.rounds },
+    active: Object.fromEntries(m.ids.map((id) => [id, m.active[id] ? m.active[id].shotId : null])),
     awaitingRest: m.awaitingRest,
+    restNx: m.restNx,
     over: m.over,
     last: m.last,
   };
@@ -107,6 +110,7 @@ export function rest(m, id, event, now) {
 function passTurn(m, id, nx) {
   m.awaitingRest = null;
   m.restDueAt = 0;
+  m.restNx = nx;
   if (!m.over) m.turn = otherOf(m, id);
   bump(m, { type: "rest", by: id, nx });
 }

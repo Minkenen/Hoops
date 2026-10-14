@@ -776,13 +776,7 @@ export class Game {
         this.clearRemoteBallVisuals();
         this.sharedBallTarget = null;
       }
-      if (this.onlineMatch && this.hoop) {
-        const h = this.hoop;
-        const fx = h.x0 + h.sprite.frontX;
-        const bx = h.x0 + h.sprite.backX;
-        const board = h.sprite.hull.map(([x, y]) => [x + h.x0, y + h.y0] as const);
-        this.onlineMatch.localShot({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, width: this.artW, height: this.artH, floorY: this.floorY, gs: b.gs, hoopX: h.x0 + h.sprite.rimCx, hoopY: h.rimY, hoopL: Math.min(fx, bx), hoopR: Math.max(fx, bx), boardL: Math.min(...board.map(([x]) => x)), boardR: Math.max(...board.map(([x]) => x)), boardT: Math.min(...board.map(([, y]) => y)), boardB: Math.max(...board.map(([, y]) => y)) });
-      }
+      if (this.onlineMatch) this.onlineMatch.localShot({ artW: this.artW, artH: this.artH, floorY: this.floorY, x: b.x, y: b.y, vx: b.vx, vy: b.vy, gs: b.gs });
       this.crowd.shotStart(performance.now());
       play("shoot", clamp(d.power, 0.3, 1));
     } else if (this.hoop && !this.onlineMatch) {
@@ -860,9 +854,9 @@ export class Game {
     const gap = BALL_R + 36;
     const okRight = b.x < this.artW - this.refR.w - gap;
     const okLeft = b.x > this.refL.w + gap;
-    const onlineTurnGame = this.onlineMatch && this.onlineMatch.game !== "speed";
-    const round = onlineTurnGame ? this.onlineMatch!.round : 0;
-    const matchTarget = onlineTurnGame ? matchHoopTarget(this.onlineMatch!.seed, round, this.artH) : null;
+    const om = this.onlineMatch;
+    // Online the hoop of every shot follows from the room's seed (Speedball: from the seed and my own number of results), so the server knows where it stood.
+    const matchTarget = om ? matchHoopTarget(om.game === "speed" ? `${om.seed}:${om.myId}` : om.seed, om.game === "speed" ? om.localRound : om.round, this.artH) : null;
     // Solo play with a server session: the hoop of every shot follows from the session's seed (so the server knows where it was).
     const soloTarget = this.onlineMatch === null ? currentReplayTarget(this.artH) : null;
     let side: "left" | "right";

@@ -2,19 +2,37 @@ import { leaderboardSessionToken } from "./ipc";
 import type { GameId } from "./multiplayerMock";
 
 export type MpSignalKind = "offer" | "answer" | "ice" | "renegotiate";
-export const MP_PROTOCOL = "2";
+/** 3: the server keeps the match (turns, scores, results) and plays every shot itself. */
+export const MP_PROTOCOL = "3";
+
+/** What the server keeps of a match, sent to both players after every change. */
+export interface MpMatchState {
+  seq: number;
+  game: GameId;
+  turn: string | null;
+  scores: Record<string, number>;
+  letters: Record<string, number>;
+  streaks: Record<string, number>;
+  round: number;
+  rounds: Record<string, number>;
+  active: Record<string, number | null>;
+  awaitingRest: string | null;
+  restNx: number;
+  over: { winnerId: string; reason: string } | null;
+  last: { type: "shot" | "result" | "rest" | "over"; by: string; shotId?: number; goal?: boolean; far?: boolean; nx?: number } | null;
+}
 export type MpServerMessage =
   | { type: "room_created"; payload: { roomId: string; code: string; expiresAt: number } }
   | { type: "searching"; payload: { game: GameId; estimatedSeconds: number } }
   | { type: "peer_found"; payload: { roomId: string; game: GameId; role: "offerer" | "answerer"; you: MpPlayerInfo; peer: MpPlayerInfo } }
   | { type: "lobby_state"; payload: { roomId: string; game: GameId; court: "Street" | "Gym" | "Arena"; players: MpLobbyPlayer[] } }
-  | { type: "start_countdown"; payload: { startsAt: number; seed: string; countdownSeconds: number; game?: GameId; court?: "Street" | "Gym" | "Arena" } }
+  | { type: "start_countdown"; payload: { startsAt: number; seed: string; countdownSeconds: number; game?: GameId; court?: "Street" | "Gym" | "Arena"; firstPlayerId?: string | null; protocol?: string } }
   | { type: "signal"; payload: { from: string; kind: MpSignalKind; data: unknown } }
-  | { type: "match_event"; payload: { seq: number; event: Record<string, unknown> } }
+  | { type: "match_state"; payload: { state: MpMatchState } }
   | { type: "peer_disconnected"; payload: { playerId: string; reconnectUntil: number } }
   | { type: "peer_reconnected"; payload: { playerId: string } }
   | { type: "peer_left"; payload: { playerId: string } }
-  | { type: "error"; payload: { code: string; message: string } };
+  | { type: "error"; payload: { code: string; message: string; shotId?: number | null } };
 
 export interface MpPlayerInfo {
   id: string;
@@ -104,7 +122,23 @@ export class MultiplayerConnection {
     await this.connect(`/mp/ws?mode=room&code=${encodeURIComponent(code)}`);
   }
 
+  /** Asks the server which protocol it speaks, so an app that is too old can say so instead of failing to connect. */
+  private async checkProtocol(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseHttp()}/mp/version`, { headers: { accept: "application/json" } });
+      if (!res.ok) return true; // an older server without the check: let the connection decide
+      const data = (await res.json()) as { protocol?: string };
+      return data.protocol === MP_PROTOCOL;
+    } catch {
+      return true;
+    }
+  }
+
   private async connect(path: string): Promise<void> {
+    if (!(await this.checkProtocol())) {
+      this.onError("This version of Hoops is too old for online play. Please update Hoops.");
+      return;
+    }
     const token = await this.token();
     this.close();
     const sep = path.includes("?") ? "&" : "?";

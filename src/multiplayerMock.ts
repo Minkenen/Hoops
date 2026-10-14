@@ -59,6 +59,8 @@ export class MultiplayerMock {
   joining = false;
   peerName = "Mia";
   private seed = "";
+  /** HORSE and 21: who shoots first, decided by the server. */
+  private firstPlayerId: string | null = null;
   /** The match has started (once only: a second start would make a match without a connection). */
   private started = false;
   private myId = "";
@@ -343,6 +345,7 @@ export class MultiplayerMock {
         if (m.payload.court) this.court = m.payload.court;
         this.countdown = m.payload.countdownSeconds;
         this.seed = m.payload.seed;
+        this.firstPlayerId = m.payload.firstPlayerId ?? null;
         this.go("countdown");
         this.tickCountdownTo(m.payload.startsAt);
         break;
@@ -390,7 +393,7 @@ export class MultiplayerMock {
         this.conn = null;
         this.stopTimersOnly();
         this.host.startOnlineMatch(
-          { game: this.game, court: this.court, opponent: this.peerName, seed: this.seed || "online", myId: this.myId, peerId: this.peerId },
+          { game: this.game, court: this.court, opponent: this.peerName, seed: this.seed || "online", myId: this.myId, peerId: this.peerId, firstPlayerId: this.firstPlayerId },
           conn,
         );
       }
