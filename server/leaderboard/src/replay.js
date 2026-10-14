@@ -3,34 +3,32 @@ const MAX_REPLAY_BYTES = 64_000;
 const MIN_SHOT_GAP_MS = 700;
 const MAX_SHOT_GAP_MS = 120_000;
 const MAX_SPEED = 2400;
-import { geff } from "../../../shared/physics.ts";
+import { stepBall } from "../../../shared/physics.ts";
 function hash(value) { let h = 0; for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0; return Math.abs(h); }
 
 export function simulateReplayShot(shot) {
   const flight = shot.resultT - shot.t;
   if (!Number.isFinite(flight) || flight < 250 || flight > 30_000) return { crossed: false, flight };
-  let x = shot.x;
-  let y = shot.y;
-  let vx = shot.vx;
-  let vy = shot.vy;
-  let previousY = y;
+  const state = { x: shot.x, y: shot.y, vx: shot.vx, vy: shot.vy, t: 0, gs: shot.gs, ang: 0 };
+  let previousY = state.y;
   let bounces = 0;
   let elapsed = 0;
   while (elapsed < flight) {
     const dt = Math.min(1, flight - elapsed);
     elapsed += dt;
-    vy += geff(shot.gs, elapsed) * dt;
-    x += vx * dt;
-    y += vy * dt;
+    stepBall(state, { dt, radius: 1 });
+    let { x, y, vx, vy } = state;
     if (x < 0 || x > shot.width) {
       x = Math.max(0, Math.min(shot.width, x));
       vx = -vx * 0.65;
+      state.x = x; state.vx = vx;
       bounces++;
     }
     if (Number.isFinite(shot.boardL) && Number.isFinite(shot.boardR) && Number.isFinite(shot.boardT) && Number.isFinite(shot.boardB) && x >= shot.boardL && x <= shot.boardR && y >= shot.boardT && y <= shot.boardB) {
       const fromLeft = Math.abs(x - shot.boardL) < Math.abs(x - shot.boardR);
       x = fromLeft ? shot.boardL : shot.boardR;
       vx = -vx * 0.55;
+      state.x = x; state.vx = vx;
       bounces++;
     }
     if (y > shot.floorY) {
@@ -39,12 +37,13 @@ export function simulateReplayShot(shot) {
       bounces++;
       vy = -Math.abs(vy) * restitution;
       vx *= bounces > 2 ? 0.85 : 0.93;
+      state.y = y; state.vy = vy; state.vx = vx;
     }
     if (bounces > 12) return { crossed: false, flight, bounces };
-    if (previousY < shot.hoopY && y >= shot.hoopY && vy > 0 && x > shot.hoopL && x < shot.hoopR) return { crossed: true, flight, bounces };
+    if (previousY < shot.hoopY && y >= shot.hoopY && vy > 0 && x > shot.hoopL && x < shot.hoopR) return { crossed: true, flight, bounces, x: state.x, y: state.y, vx: state.vx, vy: state.vy };
     previousY = y;
   }
-  return { crossed: false, flight, bounces };
+  return { crossed: false, flight, bounces, x: state.x, y: state.y, vx: state.vx, vy: state.vy };
 }
 
 function expectedSide(seed, index) { return hash(`${seed}:${index}`) % 2 ? "right" : "left"; }
