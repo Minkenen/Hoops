@@ -16,6 +16,7 @@ export interface NetNode {
 }
 
 import type { NetGeom } from "./sprites";
+import { netBallForce as sharedNetBallForce } from "../shared/physics.ts";
 
 export const NET_PARAMS = {
   kTop: 0.5,
@@ -32,19 +33,7 @@ export const NET_PARAMS = {
 
 /** Pure ball-to-net interaction used by the simulation; drawing never enters this calculation. */
 export function netBallForce(node: NetNode, ball: NetBall): { nodeX: number; nodeY: number; ballX: number; ballY: number } {
-  const dx = node.x + node.offsetX - ball.x;
-  const dy = node.y + node.offsetY - ball.y;
-  const dist = Math.hypot(dx, dy);
-  const min = ball.r + 0.6;
-  if (dist <= 0.001 || dist >= min) return { nodeX: 0, nodeY: 0, ballX: 0, ballY: 0 };
-  const nx = dx / dist;
-  const ny = dy / dist;
-  const spring = NET_PARAMS.kc * (min - dist);
-  const relativeX = ball.vx - node.vx;
-  const relativeY = ball.vy - node.vy;
-  const nodeX = spring * nx + NET_PARAMS.mu * relativeX;
-  const nodeY = spring * ny + NET_PARAMS.mu * relativeY;
-  return { nodeX, nodeY, ballX: -nodeX, ballY: -nodeY };
+  return sharedNetBallForce(node, ball);
 }
 
 const SWAY_K = 0.05;

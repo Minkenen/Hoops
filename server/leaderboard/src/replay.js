@@ -3,7 +3,8 @@ const MAX_REPLAY_BYTES = 64_000;
 const MIN_SHOT_GAP_MS = 700;
 const MAX_SHOT_GAP_MS = 120_000;
 const MAX_SPEED = 2400;
-import { stepBall } from "../../../shared/physics.ts";
+import { collideCircle, collidePolygon, hoopCrossing, stepBall } from "../../../shared/physics.ts";
+const BALL_RADIUS = 10.5;
 function hash(value) { let h = 0; for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0; return Math.abs(h); }
 
 export function simulateReplayShot(shot) {
@@ -16,7 +17,9 @@ export function simulateReplayShot(shot) {
   while (elapsed < flight) {
     const dt = Math.min(1, flight - elapsed);
     elapsed += dt;
-    stepBall(state, { dt, radius: 1 });
+    const beforeY = state.y;
+    const inNet = state.x > shot.hoopL && state.x < shot.hoopR && state.y > shot.hoopY && state.y < shot.hoopY + 36;
+    stepBall(state, { dt, radius: BALL_RADIUS, gravityScale: inNet ? 1.12 : 1 });
     let { x, y, vx, vy } = state;
     if (x < 0 || x > shot.width) {
       x = Math.max(0, Math.min(shot.width, x));
@@ -24,15 +27,16 @@ export function simulateReplayShot(shot) {
       state.x = x; state.vx = vx;
       bounces++;
     }
-    if (Number.isFinite(shot.boardL) && Number.isFinite(shot.boardR) && Number.isFinite(shot.boardT) && Number.isFinite(shot.boardB) && x >= shot.boardL && x <= shot.boardR && y >= shot.boardT && y <= shot.boardB) {
-      const fromLeft = Math.abs(x - shot.boardL) < Math.abs(x - shot.boardR);
-      x = fromLeft ? shot.boardL : shot.boardR;
-      vx = -vx * 0.55;
-      state.x = x; state.vx = vx;
-      bounces++;
+    if ([shot.boardL, shot.boardR, shot.boardT, shot.boardB].every(Number.isFinite)) {
+      const board = [[shot.boardL, shot.boardT], [shot.boardR, shot.boardT], [shot.boardR, shot.boardB], [shot.boardL, shot.boardB]];
+      const hit = collidePolygon(state, board, 0, 0, BALL_RADIUS, 0.55);
+      if (hit.hit) bounces++;
     }
-    if (y > shot.floorY) {
-      y = shot.floorY;
+    const rimFront = collideCircle(state, shot.hoopL, shot.hoopY, BALL_RADIUS + 1.8, 0.5);
+    const rimBack = collideCircle(state, shot.hoopR, shot.hoopY, BALL_RADIUS + 1.8, 0.5);
+    if (rimFront.hit || rimBack.hit) bounces++;
+    if (y > shot.floorY - BALL_RADIUS) {
+      y = shot.floorY - BALL_RADIUS;
       const restitution = bounces < 2 ? 0.74 : Math.max(0.35, 0.62 - (bounces - 2) * 0.1);
       bounces++;
       vy = -Math.abs(vy) * restitution;
@@ -40,7 +44,8 @@ export function simulateReplayShot(shot) {
       state.y = y; state.vy = vy; state.vx = vx;
     }
     if (bounces > 12) return { crossed: false, flight, bounces };
-    if (previousY < shot.hoopY && y >= shot.hoopY && vy > 0 && x > shot.hoopL && x < shot.hoopR) return { crossed: true, flight, bounces, x: state.x, y: state.y, vx: state.vx, vy: state.vy };
+    const crossing = hoopCrossing(beforeY, state, shot.hoopY, shot.hoopL, shot.hoopR, BALL_RADIUS * 0.1);
+    if (crossing.scored && !crossing.blocked) return { crossed: true, flight, bounces, x: state.x, y: state.y, vx: state.vx, vy: state.vy };
     previousY = y;
   }
   return { crossed: false, flight, bounces, x: state.x, y: state.y, vx: state.vx, vy: state.vy };

@@ -31,6 +31,26 @@ export interface HoopCrossing {
   blocked: boolean;
 }
 
+export interface NetNodeState { x: number; y: number; vx: number; vy: number; offsetX: number; offsetY: number; }
+export interface NetBallState { x: number; y: number; vx: number; vy: number; r: number; }
+
+/** Shared deterministic ball/net interaction. Rendering and net-node integration stay outside this core. */
+export function netBallForce(node: NetNodeState, ball: NetBallState): { nodeX: number; nodeY: number; ballX: number; ballY: number } {
+  const dx = node.x + node.offsetX - ball.x;
+  const dy = node.y + node.offsetY - ball.y;
+  const dist = Math.hypot(dx, dy);
+  const min = ball.r + 0.6;
+  if (dist <= 0.001 || dist >= min) return { nodeX: 0, nodeY: 0, ballX: 0, ballY: 0 };
+  const nx = dx / dist;
+  const ny = dy / dist;
+  const spring = 0.5 * (min - dist);
+  const relativeX = ball.vx - node.vx;
+  const relativeY = ball.vy - node.vy;
+  const nodeX = spring * nx + 0.12 * relativeX;
+  const nodeY = spring * ny + 0.12 * relativeY;
+  return { nodeX, nodeY, ballX: -nodeX, ballY: -nodeY };
+}
+
 /** Advances only deterministic free-flight motion. Collision handling stays at the caller for now. */
 export function stepBall(state: BallPhysicsState, options: PhysicsStepOptions): void {
   const dt = Math.max(0, options.dt);

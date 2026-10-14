@@ -48,3 +48,21 @@ test("keeps the replay simulation bounded after floor and wall bounces", () => {
   assert.equal(result.flight, 1200);
   assert.equal(typeof result.crossed, "boolean");
 });
+
+test("replay simulation uses the shared ball radius and rim collisions", () => {
+  const result = simulateReplayShot({
+    ...shot(0, 0),
+    x: 100,
+    y: 200,
+    vx: 0,
+    vy: 2,
+    hoopX: 100,
+    hoopY: 300,
+    hoopL: 80,
+    hoopR: 120,
+    resultT: 250,
+  });
+  assert.equal(result.crossed, false);
+  assert.ok(result.bounces >= 1);
+  assert.ok(result.x !== 100 || result.vy < 0);
+});
