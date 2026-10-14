@@ -6,7 +6,7 @@ const TOUCH = WEB && window.matchMedia("(pointer: coarse)").matches;
 const esc = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 import { BUG_ICON } from "./beetle";
 import { activateLicense, focusWindow, openExternal, type Rect, quitApp } from "./ipc";
-import { DISCORD_URL, PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
+import { DISCORD_URL, LEADERBOARD_SERVER_URL, PREMIUM_CHECKOUT_URL, THEME_CHECKOUT_URLS } from "./config";
 import { DISCORD_ICON } from "./discordIcon";
 import { menuIcon } from "./menuIcons";
 import type { MultiplayerConnection } from "./multiplayerClient";
@@ -718,7 +718,7 @@ ${
 
   /** Tells the server (anonymously, just a counter) which Support format was shown or clicked, to learn which one works better. */
   private reportDonate(variant: DonateVariant, kind: "view" | "click"): void {
-    const base = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) ?? "").trim().replace(/\/$/, "");
+    const base = LEADERBOARD_SERVER_URL;
     if (!base) return;
     void fetch(`${base}/donate-event`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variant, kind }), keepalive: true }).catch(() => {});
   }
@@ -985,7 +985,7 @@ ${this.bugError ? `<div class="err">${esc(this.bugError)}</div>` : ""}
   }
 
   private async sendBug(): Promise<void> {
-    const base = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) ?? "").trim().replace(/\/$/, "");
+    const base = LEADERBOARD_SERVER_URL;
     if (!base) {
       this.bugError = "Bug reports are not available in this build.";
       this.render();

@@ -22,10 +22,11 @@ import { setBackend } from "./leaderboard";
 import { createRemoteLeaderboard } from "./leaderboardRemote";
 import { connectLeaderboardScoreSync } from "./leaderboardSync";
 import { startProfileSync } from "./profileSync";
+import { LEADERBOARD_SERVER_URL } from "./config";
 import { UI } from "./ui";
 
 async function main(): Promise<void> {
-  const leaderboardUrl = (import.meta.env.VITE_LEADERBOARD_URL as string | undefined)?.trim();
+  const leaderboardUrl = LEADERBOARD_SERVER_URL;
   if (leaderboardUrl) {
     const leaderboard = createRemoteLeaderboard(leaderboardUrl);
     setBackend(leaderboard);

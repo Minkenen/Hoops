@@ -12,9 +12,10 @@ import { createMultiplayerConnection, type MpLobbyPlayer, type MpServerMessage, 
 
 const esc = (t: string): string => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
-export const MULTIPLAYER_MOCK: boolean = import.meta.env.VITE_MULTIPLAYER === "1" || import.meta.env.VITE_MULTIPLAYER_MOCK === "1";
-const SERVER_URL = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) || "").trim();
+export const MULTIPLAYER_MOCK: boolean = !import.meta.env.DEV && import.meta.env.VITE_TARGET !== "web" ? import.meta.env.VITE_MULTIPLAYER !== "0" : import.meta.env.VITE_MULTIPLAYER === "1" || import.meta.env.VITE_MULTIPLAYER_MOCK === "1";
+const SERVER_URL = LEADERBOARD_SERVER_URL;
 
+import { LEADERBOARD_SERVER_URL } from "./config";
 import type { GameId, MpCourt, OnlineMatchInit } from "./onlineMatch";
 import { mark } from "./stats";
 export type { GameId, MpCourt };

@@ -31,3 +31,13 @@ export const THEME_CHECKOUT_URLS: Partial<Record<ThemeId, string>> = {
   "train-canyon": (import.meta.env.VITE_THEME_TRAIN_CANYON_URL as string | undefined) ??
     "https://hoops.lemonsqueezy.com/checkout/buy/50e23fe4-b77c-49b9-be13-68317e38f0fd",
 };
+
+/**
+ * The leaderboard server. A release build always has it; a development run or the browser build only when VITE_LEADERBOARD_URL is set
+ * (so that running the app while developing never writes to the live board).
+ */
+export const LEADERBOARD_SERVER_URL: string = (
+  (import.meta.env.VITE_LEADERBOARD_URL as string | undefined) ?? (import.meta.env.DEV || import.meta.env.VITE_TARGET === "web" ? "" : "https://hoops-leaderboard.hoopsgame.workers.dev")
+)
+  .trim()
+  .replace(/\/$/, "");
