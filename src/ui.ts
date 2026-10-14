@@ -29,7 +29,9 @@ type DonateVariant = "button" | "footer";
 
 const DONATE_URL = "https://ko-fi.com/hoopsgame";
 const DONATE_AB_KEY = "hoops.donate.ab";
-const AA_SEEN_KEY = "hoops.aa.seen";
+const AA_SEEN_KEY = "hoops.aa.week";
+/** How often the big All Access card comes forward by itself. */
+const AA_EVERY_MS = 7 * 24 * 3600 * 1000;
 
 const isMac = /Mac/i.test(navigator.platform);
 const SHORTCUT = isMac
@@ -155,7 +157,7 @@ export class UI {
   /** What the "Check for updates" button last found, in words. */
   private updateNote = "";
   private updateBusy = false;
-  /** Is the big All Access card open in Appearance? Otherwise the small strip shows. */
+  /** Is the big All Access card shown in Appearance? It comes forward once a week (or never again after the cross). */
   private aaBig = false;
   /** A trail that was just earned: the box that offers to use it. */
   private trailPop: Trail | null = null;
@@ -566,11 +568,11 @@ ${
   }
 
   openCosmetics(): void {
-    // The big All Access card shows the first time Appearance is opened in a day; after that a small strip that opens it.
+    // The big All Access card shows the first time Appearance is opened in a week; otherwise it stays away (a locked theme still offers it).
     this.aaBig = false;
     try {
       const seen = Number(localStorage.getItem(AA_SEEN_KEY)) || 0;
-      if (Date.now() - seen > 20 * 3600 * 1000) {
+      if (Date.now() - seen > AA_EVERY_MS) {
         this.aaBig = true;
         localStorage.setItem(AA_SEEN_KEY, String(Date.now()));
       }
@@ -937,8 +939,9 @@ ${this.lbError ? `<div class="err">${esc(this.lbError)}</div>` : ""}
     }
   }
 
-  /** The All Access offer: a small moving strip, or (the first time in a day, or when it is tapped) the big gold card with the crossed-out price, the price, the saving and one clear button. */
+  /** The All Access offer: the big gold card with the crossed-out price, the price, the saving and one clear button. It shows once a week, not every time. */
   private allAccessButton(): string {
+    if (!this.aaBig) return "";
     const left = THEMES.filter((t) => t.price !== null && !isOwned(t.id)).length;
     const sum = left * PRICE_VALUE;
     const save = sum - ALL_ACCESS_VALUE;
@@ -947,9 +950,6 @@ ${this.lbError ? `<div class="err">${esc(this.lbError)}</div>` : ""}
       return `<div class="allacc"><span class="aa-top">ALL ACCESS</span><span class="aa-price">${ALL_ACCESS_PRICE}</span><button class="aa-cta" data-a="premium">Unlock everything</button><span class="aa-note">Every theme, one payment, no subscription</span></div>`;
     }
     const pct = Math.round((save / sum) * 100);
-    if (!this.aaBig) {
-      return `<button class="allaccmini" data-a="aa-open"><i class="aa-shine"></i><span>ALL ACCESS <small>${left} theme${left === 1 ? "" : "s"}</small></span><span class="aa-zoom">-${pct}%</span><span>${ALL_ACCESS_PRICE} &#9656;</span></button>`;
-    }
     return `<div class="allacc"><i class="aa-sb"><i class="aa-shine"></i></i><span class="aa-badge">BEST VALUE</span><button class="aa-x" data-a="aa-close" aria-label="Make it small" title="Make it small">&#10005;</button><span class="aa-top">ALL ACCESS &middot; ${left} THEME${left === 1 ? "" : "S"}</span><span class="aa-price"><s>${money(sum)}</s> ${ALL_ACCESS_PRICE}</span><span class="aa-save aa-zoom">SAVE ${pct}% &middot; ${money(save)}</span><button class="aa-cta" data-a="premium">Unlock everything</button><span class="aa-note">One payment &middot; No subscription</span></div>`;
   }
 
@@ -1417,10 +1417,6 @@ ${rows}
         break;
       case "usetheme":
         this.applyTheme(v as ThemeId);
-        this.render();
-        break;
-      case "aa-open":
-        this.aaBig = true;
         this.render();
         break;
       case "aa-close":

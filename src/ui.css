@@ -361,7 +361,3 @@
 #ui .allacc .aa-cta{display:block;width:100%;margin-top:6px;padding:7px 10px;background:#1c1c22;color:#fff;font-weight:700;font-size:16px;border:0;cursor:pointer;font-family:inherit;box-shadow:-2px 0 0 #0d0e12,2px 0 0 #0d0e12,0 -2px 0 #0d0e12,0 2px 0 #0d0e12}
 #ui .allacc .aa-cta:hover{background:#000}
 #ui .allacc .aa-note{font-size:11px;opacity:.8}
-#ui .allaccmini{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;gap:10px;width:calc(100% - 4px);margin:8px 2px;padding:8px 12px;background:#f6c744;color:#1c1c22;font-weight:700;font-family:inherit;font-size:14px;border:0;cursor:pointer;box-shadow:-2px 0 0 #0d0e12,2px 0 0 #0d0e12,0 -2px 0 #0d0e12,0 2px 0 #0d0e12}
-#ui .allaccmini:hover{background:#ffd45a}
-#ui .allaccmini small{font-weight:400;opacity:.8}
-#ui .allaccmini .aa-zoom{background:#1c1c22;color:#f6c744;padding:1px 8px}
