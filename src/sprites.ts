@@ -178,12 +178,15 @@ class Iso {
   base: (string | null)[];
   front: (string | null)[];
   cur: (string | null)[];
-  constructor(
-    readonly side: "left" | "right",
-    readonly ox: number,
-    readonly oy: number,
-    readonly h: number = ISO_H,
-  ) {
+  readonly side: "left" | "right";
+  readonly ox: number;
+  readonly oy: number;
+  readonly h: number;
+  constructor(side: "left" | "right", ox: number, oy: number, h: number = ISO_H) {
+    this.side = side;
+    this.ox = ox;
+    this.oy = oy;
+    this.h = h;
     this.base = new Array(ISO_W * h).fill(null);
     this.front = new Array(ISO_W * h).fill(null);
     this.cur = this.base;

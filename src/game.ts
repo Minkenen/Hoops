@@ -24,8 +24,9 @@ import { themeById } from "./themes";
 import { drawTrail, trailById, trailOwned, type TrailPoint } from "./trails";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
-import { currentReplayShotIndex, replayHoopTarget, replayResult, replayShot } from "./replay";
-import { collideCircle as resolveCircle, collidePolygon as resolvePolygon, floorCollision, hoopCrossing, stepBall } from "./physics";
+import { currentReplayTarget, onReplaySession, replayResult, replayShot, replayVoid } from "./replay";
+import { matchHoopTarget, placeHoop, poleBox } from "../shared/court.ts";
+import { stepWorld, type WorldHoop } from "../shared/world.ts";
 import type { UI } from "./ui";
 import type { OnlineMatch, OpponentBall } from "./onlineMatch";
 
@@ -48,6 +49,8 @@ interface Ball {
 interface Hoop {
   sprite: HoopSprite;
   side: "left" | "right";
+  /** Solo: the number of the shot this hoop was made for, when its place follows from the server's seed (otherwise null). */
+  replayIndex: number | null;
   x0: number;
   y0: number;
   rimY: number;
@@ -163,6 +166,7 @@ export class Game {
     private monitors: MonitorInfo[],
   ) {
     this.cv = cv;
+    onReplaySession(() => this.onNewReplaySession());
     setAchievementListener((list) => this.announce(list));
     touchDay();
     addToSet("themes", settings.theme);
@@ -546,6 +550,8 @@ export class Game {
   private airborne = false;
   private floorHit = false;
   private gasped = false;
+  /** The number of the recorded solo shot that is in the air (-1: none is recorded). */
+  private replayId = -1;
   private rimTouched = false;
   private boardTouched = false;
   private shotFar = false;
@@ -742,7 +748,7 @@ export class Game {
       b.vy = (-d.ly / l) * d.power * this.vmax;
       b.gs = Math.abs(d.ly / l);
       if (!this.onlineMatch && this.hoop) {
-          replayShot(b.x, b.y, b.vx, b.vy, this.artW, this.artH, b.gs);
+          this.replayId = replayShot({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, gs: b.gs }, { artW: this.artW, artH: this.artH, floorY: this.floorY }, this.hoop.replayIndex);
       }
       b.t = 0;
       b.scored = false;
@@ -799,6 +805,7 @@ export class Game {
   }
 
   private releaseMoved(e: PointerEvent): void {
+    this.replayId = -1; // a throw after moving the ball is not a recorded shot
     const b = this.ball;
     const k = this.S * this.me.scale;
     const gx = this.me.x + e.clientX * k / this.S;
@@ -855,28 +862,32 @@ export class Game {
     const okLeft = b.x > this.refL.w + gap;
     const onlineTurnGame = this.onlineMatch && this.onlineMatch.game !== "speed";
     const round = onlineTurnGame ? this.onlineMatch!.round : 0;
+    const matchTarget = onlineTurnGame ? matchHoopTarget(this.onlineMatch!.seed, round, this.artH) : null;
+    // Solo play with a server session: the hoop of every shot follows from the session's seed (so the server knows where it was).
+    const soloTarget = this.onlineMatch === null ? currentReplayTarget(this.artH) : null;
     let side: "left" | "right";
     if (forceSide) side = forceSide;
-    else if (onlineTurnGame) side = this.onlineHash(`${this.onlineMatch!.seed}:${round}:side`) % 2 ? "right" : "left";
-    else if (this.onlineMatch === null && !forceSide) side = replayHoopTarget(currentReplayShotIndex(), this.artH).side;
+    else if (matchTarget) side = matchTarget.side;
+    else if (soloTarget) side = soloTarget.side;
     else if (okRight && okLeft) side = Math.random() < 0.5 ? "left" : "right";
     else if (okRight) side = "right";
     else if (okLeft) side = "left";
     else side = b.x < this.artW / 2 ? "right" : "left";
     const sp = side === "right" ? this.spR : this.spL;
     const maxH = Math.min(260, this.artH * 0.6);
-    const sharedHeight = onlineTurnGame ? 70 + (this.onlineHash(`${this.onlineMatch!.seed}:${round}:height`) / 0x7fffffff) * Math.max(10, maxH - 70) : null;
-    const replayHeight = this.onlineMatch === null && forceH === undefined ? replayHoopTarget(currentReplayShotIndex(), this.artH).rimHeight : null;
-    let rimY = forceH !== undefined ? this.floorY - forceH : this.floorY - (sharedHeight ?? replayHeight ?? rnd(70, Math.max(80, maxH)));
-    rimY = Math.max(rimY, 8 + sp.rimY);
+    const rimHeight = forceH ?? matchTarget?.rimHeight ?? soloTarget?.rimHeight ?? rnd(70, Math.max(80, maxH));
+    const seeded = soloTarget !== null && !forceSide && forceH === undefined;
     const ref = side === "right" ? this.refR : this.refL;
-    const hx0 = side === "right" ? this.artW - ref.w + ref.rimCx - sp.rimCx : ref.rimCx - sp.rimCx;
+    const at = placeHoop(sp, ref, side, this.artW, this.floorY, rimHeight);
+    const rimY = at.rimY;
+    const hx0 = at.x0;
     this.hoop = {
       sprite: sp,
       side,
       x0: hx0,
-      y0: rimY - sp.rimY,
+      y0: at.y0,
       rimY,
+      replayIndex: seeded ? soloTarget!.index : null,
       phase: "in",
       p: 0,
       off: (side === "right" ? 1 : -1) * (sp.w + 8),
@@ -884,22 +895,11 @@ export class Game {
       pole: makePoleSprite(side, this.poleBottom() - (rimY - sp.rimY - sp.shiftY) + 2, settings.baseSkin),
       poleX: hx0 - sp.shiftX,
       poleY: rimY - sp.rimY - sp.shiftY,
-      poleBox: [
-        sp.poleTop[0],
-        sp.poleTop[1],
-        [sp.poleTop[1][0], this.poleBottom() - (rimY - sp.rimY) + 2],
-        [sp.poleTop[0][0], this.poleBottom() - (rimY - sp.rimY) + 2],
-      ],
+      poleBox: poleBox(sp, rimY, this.poleBottom()),
       net: new Net(sp.netGeom, hx0, rimY - sp.rimY),
     };
     this.hideAt = null;
     play("appear");
-  }
-
-  private onlineHash(value: string): number {
-    let h = 0;
-    for (let i = 0; i < value.length; i++) h = (Math.imul(31, h) + value.charCodeAt(i)) | 0;
-    return Math.abs(h);
   }
 
   start(): void {
@@ -1003,7 +1003,8 @@ export class Game {
     if (this.hoopSwapAt && now >= this.hoopSwapAt && !this.ball.moving) {
       // after a goal or a miss the hoop moves to a new place (the court stays), but only once the ball has stopped; not while a shot is being pulled
       this.hoopSwapAt = 0;
-      if ((this.onlineMatch || settings.stayOpen) && this.hoop && !this.drag) {
+      if ((this.onlineMatch || settings.stayOpen || this.sessionHoopStale) && this.hoop && !this.drag) {
+        this.sessionHoopStale = false;
         // the court stays while the new hoop slides in
         this.keepCourt = true;
         this.hoop = null;
@@ -1177,6 +1178,8 @@ export class Game {
   }
 
   private handoffTo(target: MonitorInfo, gx: number, gy: number): void {
+    replayVoid(this.replayId); // the shot goes on on another screen: this one cannot vouch for it
+    this.replayId = -1;
     const b = this.ball;
     const k = this.S * this.me.scale;
     const payload: Handoff = {
@@ -1193,142 +1196,105 @@ export class Game {
     void sendHandoff(target.label, payload).then(() => activateOverlay(target.label));
   }
 
-  private collideCircle(cx: number, cy: number, r: number, e: number, sfx: "rim" | "board"): void {
-    const b = this.ball;
-    const result = resolveCircle(b, cx, cy, BALL_R + r, e);
-    if (!result.hit) return;
-    if (result.impactSpeed > 0.8) {
-      this.collisionSound(sfx, clamp(result.impactSpeed / 8, 0.25, 1));
-      if (sfx === "rim") this.rimTouched = true;
-      if (sfx === "rim" && this.hoop) this.hoop.net.rimHit(result.previousVx >= 0 ? 1 : -1, clamp(result.impactSpeed / 4, 0.35, 1.9));
-      // Only a hit on the top of the rim (the ball coming down onto it) can make the crowd gasp, and only some of the time (and not twice in a row), or it wears thin.
-      if (sfx === "rim" && result.normalY < -0.35 && result.impactSpeed > 1.2 && !this.gasped && !this.gaspAt && performance.now() - this.lastGasp > 20000 && Math.random() < 0.4) {
-        this.gaspAt = performance.now() + 700;
-      }
-    }
-  }
-
-  private collidePoly(hull: [number, number][], ox: number, oy: number, e: number, shakesNet = false): void {
-    const b = this.ball;
-    const result = resolvePolygon(b, hull, ox, oy, BALL_R, e);
-    if (result.hit && result.impactSpeed > 0.8) {
-        this.collisionSound("board", clamp(result.impactSpeed / 8, 0.25, 1));
-        if (this.hoop && hull === this.hoop.sprite.hull) this.boardTouched = true;
-        if (shakesNet && this.hoop) this.hoop.net.rimHit(result.previousVx >= 0 ? 1 : -1, clamp(result.impactSpeed / 4, 0.35, 1.9));
-    }
-  }
-
   private sub(dt: number): void {
     const b = this.ball;
-    const hp = this.hoop;
-    let inNet = false;
-    if (hp) {
-      const l0 = hp.x0 + Math.min(hp.sprite.frontX, hp.sprite.backX);
-      const r0 = hp.x0 + Math.max(hp.sprite.frontX, hp.sprite.backX);
-      inNet = b.x > l0 && b.x < r0 && b.y > hp.rimY && b.y < hp.rimY + hp.sprite.netLen + BALL_R;
-    }
-    const py = b.y;
-    stepBall(b, { dt, radius: BALL_R, gravityScale: inNet ? 1.12 : 1 });
-
     const h = this.hoop;
-    if (h && h.phase !== "out") {
-      const sp = h.sprite;
-      const fx = h.x0 + sp.frontX;
-      const bx = h.x0 + sp.backX;
-      this.collidePoly(sp.hull, h.x0, h.y0, 0.55, true);
-      this.collidePoly(h.poleBox, h.x0, h.y0, 0.5, true);
-      this.collideCircle(fx, h.rimY, 1.8, 0.5, "rim");
-      this.collideCircle(bx, h.rimY, 1.8, 0.5, "rim");
-      const l = Math.min(fx, bx);
-      const r = Math.max(fx, bx);
-      const crossing = hoopCrossing(py, b, h.rimY, l, r, 1);
-      if (crossing.blocked) b.noScore = true;
-      if (!b.scored && !b.noScore && crossing.scored) {
-        this.goal(h);
-      } else if (!b.scored && b.vy > 0 && b.y > h.rimY + 30) {
-        // Fell past the net without going in: that was a miss, and the fire goes out right away.
-        this.markMiss();
-      }
+    const result = stepWorld(b, {
+      dt,
+      floorY: this.floorY,
+      artW: this.artW,
+      hoop: h ? this.worldHoopOf(h) : null,
+      hasNeighbor: (side) => this.neighbor(side) !== null,
+      bounces: this.bounces,
+      hooks: {
+        hit: (kind, r) => {
+          if (r.impactSpeed <= 0.8) return;
+          this.collisionSound(kind === "rimFront" || kind === "rimBack" ? "rim" : "board", clamp(r.impactSpeed / 8, 0.25, 1));
+          if (kind === "board") this.boardTouched = true;
+          if (kind === "rimFront" || kind === "rimBack") this.rimTouched = true;
+          if (h) h.net.rimHit(r.previousVx >= 0 ? 1 : -1, clamp(r.impactSpeed / 4, 0.35, 1.9));
+          // Only a hit on the top of the rim (the ball coming down onto it) can make the crowd gasp, and only some of the time (and not twice in a row), or it wears thin.
+          if ((kind === "rimFront" || kind === "rimBack") && r.normalY < -0.35 && r.impactSpeed > 1.2 && !this.gasped && !this.gaspAt && performance.now() - this.lastGasp > 20000 && Math.random() < 0.4) {
+            this.gaspAt = performance.now() + 700;
+          }
+        },
+        goal: () => {
+          if (h) this.goal(h);
+        },
+        fell: () => this.markMiss(),
+        afterHoop: () => {
+          if (!h) return;
+          const f = h.net.step(dt, { x: b.x, y: b.y, vx: b.vx, vy: b.vy, r: BALL_R });
+          let ax = f[0] / NET_PARAMS.ballMass;
+          let ay = f[1] / NET_PARAMS.ballMass;
+          const am = Math.hypot(ax, ay);
+          if (am > NET_PARAMS.maxBallAccel) {
+            ax *= NET_PARAMS.maxBallAccel / am;
+            ay *= NET_PARAMS.maxBallAccel / am;
+          }
+          b.vx += ax * dt;
+          b.vy += ay * dt;
+        },
+        beforeFloor: (fy) => {
+          if (b.y < fy - 3) this.airborne = true;
+        },
+        floorTouch: () => {
+          if (this.shot && this.airborne && !this.floorHit) {
+            this.floorHit = true;
+            this.syncHit();
+            const t = performance.now() + 600;
+            this.hideAt = this.hideAt === null ? t : Math.min(this.hideAt, t);
+          }
+        },
+        floorBounce: (impactVy) => {
+          if (!b.scored) this.markMiss();
+          this.collisionSound("bounce", clamp(impactVy / 9, 0.2, 1));
+          if (this.burning) this.fire.bounce(b.x, b.y);
+        },
+        floorAfter: () => {
+          if (b.postGoal && !b.kicked) {
+            b.kicked = true;
+            // Where it rolls to after a goal is a matter of luck: usually a short roll, sometimes a long one, and now and then away from the middle.
+            const dir = (this.artW / 2 - b.x >= 0 ? 1 : -1) * (Math.random() < 0.2 ? -1 : 1);
+            const r = Math.random();
+            b.vx = dir * (r < 0.4 ? rnd(0.4, 1.6) : r < 0.8 ? rnd(1.6, 3.6) : rnd(3.6, 6.5));
+          }
+        },
+        wall: (impact) => {
+          if (impact > 1) this.collisionSound("wall", clamp(impact / 8, 0.2, 1));
+        },
+      },
+    });
+    this.bounces = result.bounces;
+    if (result.exited) {
+      const n = this.neighbor(result.exited);
+      if (n) this.handoff(n);
     }
-    if (h) {
-      const f = h.net.step(dt, { x: b.x, y: b.y, vx: b.vx, vy: b.vy, r: BALL_R });
-      let ax = f[0] / NET_PARAMS.ballMass;
-      let ay = f[1] / NET_PARAMS.ballMass;
-      const am = Math.hypot(ax, ay);
-      if (am > NET_PARAMS.maxBallAccel) {
-        ax *= NET_PARAMS.maxBallAccel / am;
-        ay *= NET_PARAMS.maxBallAccel / am;
-      }
-      b.vx += ax * dt;
-      b.vy += ay * dt;
-    }
+  }
 
-    const fy = this.floorY - BALL_R;
-    if (b.y < fy - 3) this.airborne = true;
-    if (floorCollision(b, fy)) {
-      if (this.shot && this.airborne && !this.floorHit) {
-        this.floorHit = true;
-        this.syncHit();
-        const t = performance.now() + 600;
-        this.hideAt = this.hideAt === null ? t : Math.min(this.hideAt, t);
-      }
-      b.noScore = false;
-      if (b.vy > 1.2) {
-        if (!b.scored) this.markMiss();
-        this.collisionSound("bounce", clamp(b.vy / 9, 0.2, 1));
-        if (this.burning) this.fire.bounce(b.x, b.y);
-        // First bounces as before, then they die out faster so hard shots do not make you wait.
-        const e = this.bounces < 2 ? 0.74 : Math.max(0.35, 0.62 - (this.bounces - 2) * 0.1);
-        this.bounces++;
-        b.vy *= -e;
-        b.vx *= this.bounces > 2 ? 0.85 : 0.93;
-      } else {
-        b.vy = 0;
-      }
-      if (b.postGoal && !b.kicked) {
-        b.kicked = true;
-        // Where it rolls to after a goal is a matter of luck: usually a short roll, sometimes a long one, and now and then away from the middle.
-        const dir = (this.artW / 2 - b.x >= 0 ? 1 : -1) * (Math.random() < 0.2 ? -1 : 1);
-        const r = Math.random();
-        b.vx = dir * (r < 0.4 ? rnd(0.4, 1.6) : r < 0.8 ? rnd(1.6, 3.6) : rnd(3.6, 6.5));
-      }
-    }
+  /** A new replay session started: the hoop for the next shot must be the one its seed gives. */
+  private sessionHoopStale = false;
+  private onNewReplaySession(): void {
+    if (this.onlineMatch || !this.hoop || this.hoop.phase === "out") return;
+    const want = currentReplayTarget(this.artH);
+    if (this.hoop.replayIndex === (want?.index ?? null)) return;
+    this.sessionHoopStale = true;
+    this.hoopSwapAt = performance.now();
+  }
 
-    if (b.entering) {
-      if (b.x >= BALL_R && b.x <= this.artW - BALL_R) b.entering = false;
-    } else if (b.x < BALL_R) {
-      const n = this.neighbor(-1);
-      if (n) {
-        if (b.x < 0) {
-          this.handoff(n);
-          return;
-        }
-      } else {
-        b.x = BALL_R;
-        if (b.vx < 0) {
-          if (-b.vx > 1) this.collisionSound("wall", clamp(-b.vx / 8, 0.2, 1));
-          b.vx *= -0.65;
-        }
-      }
-    } else if (b.x > this.artW - BALL_R) {
-      const n = this.neighbor(1);
-      if (n) {
-        if (b.x > this.artW) {
-          this.handoff(n);
-          return;
-        }
-      } else {
-        b.x = this.artW - BALL_R;
-        if (b.vx > 0) {
-          if (b.vx > 1) this.collisionSound("wall", clamp(b.vx / 8, 0.2, 1));
-          b.vx *= -0.65;
-        }
-      }
-    }
-    if (b.y < -700) {
-      b.y = -700;
-      b.vy = Math.abs(b.vy);
-    }
+  /** The hoop as the shared world step sees it. */
+  private worldHoopOf(h: Hoop): WorldHoop {
+    return {
+      x0: h.x0,
+      y0: h.y0,
+      rimY: h.rimY,
+      frontX: h.sprite.frontX,
+      backX: h.sprite.backX,
+      netLen: h.sprite.netLen,
+      hull: h.sprite.hull,
+      poleBox: h.poleBox,
+      active: h.phase !== "out",
+    };
   }
 
   /** The layers that play together on a milestone. */
@@ -1422,7 +1388,7 @@ export class Game {
     this.shotResolved = true;
     const b = this.ball;
     recordMiss();
-    if (!this.onlineMatch) replayResult(false);
+    if (!this.onlineMatch) replayResult(this.replayId, false);
     pushLast10(false);
     if (this.burning) {
       this.burning = false;
@@ -1456,7 +1422,7 @@ export class Game {
         far: this.shotFar,
       }),
     );
-    if (!this.onlineMatch) replayResult(true);
+    if (!this.onlineMatch) replayResult(this.replayId, true);
     // The ball catches fire on the third goal in a row.
     if (!this.onlineMatch && getStats().streak === 3) {
       this.burning = true;
@@ -1566,12 +1532,14 @@ export class Game {
     this.confetti.draw(ctx);
 
     if (this.ball.moving && this.crowd.shootAtHero(settings.crowd, b.x, b.y, BALL_R)) {
+      replayVoid(this.replayId);
       this.announce(recordHeroDown());
       play("boom", 0.9);
     }
     const swat = this.ball.moving ? this.crowd.guardianSwat(settings.crowd, b.x, b.y, BALL_R) : null;
     if (swat !== null) {
       // Night Owl bats it away: back where it came from, and it does not count
+      replayVoid(this.replayId);
       b.vx = swat * Math.max(2.5, Math.abs(b.vx) * 0.9);
       b.vy = -Math.abs(b.vy) * 0.4 - 1.5;
       b.noScore = true;

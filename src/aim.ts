@@ -1,14 +1,9 @@
 import { DARK, HALO, clamp, mix } from "./draw";
 import { BALL_R } from "./sprites";
-import { G, geff } from "./physics";
+import { geff } from "./physics";
 
-export const VMAX = 9;
-export const RANGE_FACTOR = 1.35;
-
-export function maxSpeed(screenArtWidth: number): number {
-  return Math.max(VMAX, Math.sqrt(RANGE_FACTOR * G * screenArtWidth));
-}
-export const MAXPULL = 40;
+import { MAXPULL, RANGE_FACTOR, VMAX, maxSpeed } from "../shared/court.ts";
+export { MAXPULL, RANGE_FACTOR, VMAX, maxSpeed };
 export const MAXLEN = 70;
 export const TFADE = 40;
 
