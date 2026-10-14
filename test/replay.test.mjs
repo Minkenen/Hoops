@@ -24,6 +24,11 @@ test("rejects impossible timing and speed", () => {
   assert.equal(verifyReplay({ sessionId: "session_123", shots: [{ ...shot(0, 0), vx: 9999 }] }).ok, false);
 });
 
+test("rejects oversized replay geometry", () => {
+  assert.equal(verifyReplay({ sessionId: "session_123", seed: "session_123", shots: [{ ...shot(0, 0), width: 4800, hoopR: 1180 }] }).ok, false);
+  assert.equal(verifyReplay({ sessionId: "session_123", seed: "session_123", shots: [{ ...shot(0, 0), hoopL: 40, hoopR: 180 }] }).ok, false);
+});
+
 test("rejects coordinates that disagree with normalized replay data", () => {
   assert.equal(verifyReplay({ sessionId: "session_123", seed: "session_123", shots: [{ ...shot(0, 0), nx: 0.2 }] }).ok, false);
 });
