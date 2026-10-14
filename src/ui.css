@@ -114,16 +114,6 @@
 #ui .err{color:#c0392b;font-size:12px;margin-top:6px}
 #ui .pb[disabled]{opacity:.6;pointer-events:none}
 #ui .wl{display:flex;align-items:center;gap:10px}
-#ui .allacc{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;width:calc(100% - 4px);margin:14px 2px 8px;padding:14px 12px 10px;background:#f6c744;color:#1c1c22;text-align:center}
-#ui .allacc:hover{background:#ffd45a}
-#ui .allacc .aa-badge{position:absolute;left:-6px;top:-10px;background:#d9312b;color:#fff;font-weight:700;font-size:12px;padding:2px 9px;box-shadow:-2px 0 0 #0d0e12,2px 0 0 #0d0e12,0 -2px 0 #0d0e12,0 2px 0 #0d0e12}
-#ui .allacc .aa-top{font-size:12px;letter-spacing:.08em;font-weight:500}
-#ui .allacc .aa-price{font-size:32px;font-weight:700;line-height:1.1}
-#ui .allacc .aa-price s{font-size:18px;font-weight:400;opacity:.6;text-decoration-thickness:2px}
-#ui .allacc .aa-save{background:#1c1c22;color:#f6c744;padding:2px 10px;font-weight:700;font-size:13px}
-#ui .allacc .aa-cta{display:block;width:100%;margin-top:6px;padding:7px 10px;background:#1c1c22;color:#fff;font-weight:700;font-size:16px}
-#ui .allacc:hover .aa-cta{background:#000}
-#ui .allacc .aa-note{font-size:11px;opacity:.8}
 #ui .seg{display:flex}#ui .seg .pb{flex:1;text-align:center;margin:2px 0}#ui .seg .pb+.pb{margin-left:4px}
 #ui .lbl{display:flex !important;justify-content:space-between;align-items:center}#ui .lbl small{font-size:12px;color:var(--mut)}
 #ui .lt{display:grid;grid-template-columns:24px 18px 1fr auto;gap:8px;align-items:center;padding:4px 6px;margin:2px 0}
@@ -354,3 +344,25 @@
 .notes{padding:4px 2px 6px;font-size:12px;line-height:1.35}
 .notes ul{margin:2px 0 0;padding-left:16px}
 .notes li{margin:1px 0}
+
+#ui .allacc{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;width:calc(100% - 4px);margin:14px 2px 8px;padding:14px 12px 10px;background:#f6c744;color:#1c1c22;text-align:center;box-shadow:-2px 0 0 #0d0e12,2px 0 0 #0d0e12,0 -2px 0 #0d0e12,0 2px 0 #0d0e12}
+#ui .allacc .aa-sb{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+#ui .aa-shine{position:absolute;top:0;left:-40%;width:28%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);transform:skewX(-18deg);animation:aa-sweep 3.6s linear infinite;pointer-events:none}
+@keyframes aa-sweep{0%{left:-40%}35%{left:130%}100%{left:130%}}
+#ui .aa-zoom{display:inline-block;animation:aa-zoom 1.6s ease-in-out infinite}
+@keyframes aa-zoom{0%,100%{transform:scale(1)}50%{transform:scale(1.16)}}
+@media (prefers-reduced-motion:reduce){#ui .aa-shine,#ui .aa-zoom{animation:none}}
+#ui .allacc .aa-badge{position:absolute;left:-6px;top:-10px;background:#d9312b;color:#fff;font-weight:700;font-size:12px;padding:2px 9px;box-shadow:-2px 0 0 #0d0e12,2px 0 0 #0d0e12,0 -2px 0 #0d0e12,0 2px 0 #0d0e12}
+#ui .allacc .aa-x{position:absolute;right:4px;top:3px;width:22px;height:22px;padding:0;background:none;color:#1c1c22;opacity:.55;font-size:13px;cursor:pointer;border:0}
+#ui .allacc .aa-x:hover{opacity:1}
+#ui .allacc .aa-top{font-size:12px;letter-spacing:.08em;font-weight:500}
+#ui .allacc .aa-price{font-size:32px;font-weight:700;line-height:1.1}
+#ui .allacc .aa-price s{font-size:18px;font-weight:400;opacity:.6;text-decoration-thickness:2px}
+#ui .allacc .aa-save{background:#1c1c22;color:#f6c744;padding:2px 10px;font-weight:700;font-size:13px}
+#ui .allacc .aa-cta{display:block;width:100%;margin-top:6px;padding:7px 10px;background:#1c1c22;color:#fff;font-weight:700;font-size:16px;border:0;cursor:pointer;font-family:inherit;box-shadow:-2px 0 0 #0d0e12,2px 0 0 #0d0e12,0 -2px 0 #0d0e12,0 2px 0 #0d0e12}
+#ui .allacc .aa-cta:hover{background:#000}
+#ui .allacc .aa-note{font-size:11px;opacity:.8}
+#ui .allaccmini{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;gap:10px;width:calc(100% - 4px);margin:8px 2px;padding:8px 12px;background:#f6c744;color:#1c1c22;font-weight:700;font-family:inherit;font-size:14px;border:0;cursor:pointer;box-shadow:-2px 0 0 #0d0e12,2px 0 0 #0d0e12,0 -2px 0 #0d0e12,0 2px 0 #0d0e12}
+#ui .allaccmini:hover{background:#ffd45a}
+#ui .allaccmini small{font-weight:400;opacity:.8}
+#ui .allaccmini .aa-zoom{background:#1c1c22;color:#f6c744;padding:1px 8px}
