@@ -89,7 +89,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   A("Explore", "crowds-all", "Crowd pleaser", "Try every crowd style", setSize("crowds", TRYABLE_CROWDS)),
   A("Explore", "skin-change", "New look", "Change the ball skin", flag("skinChanged")),
   A("Explore", "bought", "Supporter", "Unlock a paid theme or All Access", flag("bought")),
-  A("Explore", "discord", "Join the crowd", "Open the Hoops Discord", flag("discord")),
+  A("Explore", "discord", "Join the crowd", "Open the Hooperly Discord", flag("discord")),
   A("Explore", "bug-report", "Bug catcher", "Report a bug", flag("bugReport")),
   A("Time", "days-3", "Back again", "Play 3 days in a row", count(ex("dayRunBest"), 3)),
   A("Time", "days-7", "Weekly habit", "Play 7 days in a row", count(ex("dayRunBest"), 7)),

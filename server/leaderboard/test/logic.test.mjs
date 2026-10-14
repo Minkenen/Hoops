@@ -39,7 +39,7 @@ test("nicknameDecision rejects invalid names with the user-facing message", () =
 test("defaultNickname can retry with different digits", () => {
   const first = defaultNickname("same-provider-hash", 0);
   const retry = defaultNickname("same-provider-hash", 1);
-  assert.match(first, /^HoopsFan\d{4}$/);
-  assert.match(retry, /^HoopsFan\d{4}$/);
+  assert.match(first, /^HooperlyFan\d{4}$/);
+  assert.match(retry, /^HooperlyFan\d{4}$/);
   assert.notEqual(first, retry);
 });

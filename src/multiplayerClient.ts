@@ -136,7 +136,7 @@ export class MultiplayerConnection {
 
   private async connect(path: string): Promise<void> {
     if (!(await this.checkProtocol())) {
-      this.onError("This version of Hoops is too old for online play. Please update Hoops.");
+      this.onError("This version of Hooperly is too old for online play. Please update Hooperly.");
       return;
     }
     const token = await this.token();

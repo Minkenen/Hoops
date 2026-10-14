@@ -73,11 +73,11 @@ const mock: LbBackend = {
   },
   async signIn() {
     try {
-      localStorage.setItem(ME, "HoopsFan");
+      localStorage.setItem(ME, "HooperlyFan");
     } catch {
       /* ignore */
     }
-    return { id: "mock", nickname: "HoopsFan" };
+    return { id: "mock", nickname: "HooperlyFan" };
   },
   async setNickname(name) {
     const n = cleanNickname(name);
@@ -91,7 +91,7 @@ const mock: LbBackend = {
     return { id: "mock", nickname: n };
   },
   async setColor(color) {
-    return { id: "mock", nickname: localStorage.getItem(ME) ?? "HoopsFan", color };
+    return { id: "mock", nickname: localStorage.getItem(ME) ?? "HooperlyFan", color };
   },
   async deleteAccount() {
     try {
@@ -112,7 +112,7 @@ const mock: LbBackend = {
     const names = tab === "friends" ? FRIENDS : NAMES;
     const base = tab === "weekly" ? 290 : tab === "friends" ? 244 : 1204;
     const top = names.slice(0, 5).map((name, i) => ({ rank: i + 1, name, score: Math.round(base - i * (base / 14)), icon: i + 1 }));
-    const you = mock.user() ? { rank: tab === "friends" ? top.length + 1 : tab === "weekly" ? 78 : 128, name: "You (HoopsFan)", score: tab === "weekly" ? 241 : 412, icon: 0 } : null;
+    const you = mock.user() ? { rank: tab === "friends" ? top.length + 1 : tab === "weekly" ? 78 : 128, name: "You (HooperlyFan)", score: tab === "weekly" ? 241 : 412, icon: 0 } : null;
     return { top, you, players: tab === "friends" ? 5 : 8412, updatedAt: Date.now() - 60000 };
   },
 };

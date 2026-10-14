@@ -1,4 +1,4 @@
-// Looks for a newer version of Hoops, so the menu can offer an update button. Nothing is downloaded or installed here:
+// Looks for a newer version of Hooperly, so the menu can offer an update button. Nothing is downloaded or installed here:
 // the button just opens the download.
 import { getVersion } from "@tauri-apps/api/app";
 
@@ -25,7 +25,7 @@ function newer(a: string, b: string): boolean {
 
 /** Only ever open our own pages from that file. */
 const trusted = (u: unknown): u is string =>
-  typeof u === "string" && /^https:\/\/(github\.com\/Minkenen\/Hoops\/|minkenen\.github\.io\/Hoops\/)/.test(u);
+  typeof u === "string" && /^https:\/\/(github\.com\/Minkenen\/Hooperly\/|minkenen\.github\.io\/Hooperly\/)/.test(u);
 
 export type UpdateCheck = { kind: "new"; info: UpdateInfo } | { kind: "latest"; current: string } | { kind: "error" };
 

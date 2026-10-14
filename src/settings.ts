@@ -183,7 +183,7 @@ export function setOnboarded(): void {
 
 const PREMIUM_KEY = "hoops.premium";
 
-/** Whether the one-time Hoops All Access purchase is unlocked on this computer. */
+/** Whether the one-time Hooperly All Access purchase is unlocked on this computer. */
 export function isPremiumUnlocked(): boolean {
   try {
     return localStorage.getItem(PREMIUM_KEY) === "1";

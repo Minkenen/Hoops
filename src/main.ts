@@ -120,4 +120,4 @@ async function main(): Promise<void> {
   if (await isWindowVisible()) game.intro();
 }
 
-main().catch((e) => console.error("Hoops failed to start", e));
+main().catch((e) => console.error("Hooperly failed to start", e));

@@ -209,7 +209,7 @@ fn build_overlays(app: &AppHandle) -> tauri::Result<()> {
     let infos = monitor_infos(app);
     for info in infos.iter() {
         let win = WebviewWindowBuilder::new(app, &info.label, WebviewUrl::App("index.html".into()))
-            .title("Hoops")
+            .title("Hooperly")
             .transparent(true)
             .decorations(false)
             .shadow(false)
@@ -360,7 +360,7 @@ fn licensed_products() -> Vec<LicensedProduct> {
 }
 
 fn lemon_activate(key: &str, email: &str, store_id: u64, products: &[LicensedProduct]) -> Result<LicenseActivation, String> {
-    let name = format!("Hoops on {}", std::env::consts::OS);
+    let name = format!("Hooperly on {}", std::env::consts::OS);
     let body: serde_json::Value = match ureq::post("https://api.lemonsqueezy.com/v1/licenses/activate")
         .set("Accept", "application/json")
         .send_form(&[("license_key", key), ("instance_name", name.as_str())])
@@ -394,7 +394,7 @@ fn lemon_activate(key: &str, email: &str, store_id: u64, products: &[LicensedPro
     })
 }
 
-/// Activates a Hoops license key. The page only ever sees success or an error message.
+/// Activates a Hooperly license key. The page only ever sees success or an error message.
 #[tauri::command]
 async fn activate_license(key: String, email: String) -> Result<LicenseActivation, String> {
     let key = key.trim().to_string();
@@ -587,7 +587,7 @@ fn read_loopback_callback(listener: TcpListener) -> Result<String, String> {
     let req = String::from_utf8_lossy(&buf[..n]);
     let first = req.lines().next().unwrap_or_default();
     let path = first.split_whitespace().nth(1).unwrap_or_default();
-    let body = b"<html><body>You can close this window and return to Hoops.</body></html>";
+    let body = b"<html><body>You can close this window and return to Hooperly.</body></html>";
     let _ = stream.write_all(
         format!(
             "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
@@ -757,7 +757,7 @@ async fn leaderboard_profile_put(server_url: String, profile: serde_json::Value)
     .map_err(|e| e.to_string())?
 }
 
-/// Opens or closes the Hoops menu on the visible overlays: the same thing the global shortcut does.
+/// Opens or closes the Hooperly menu on the visible overlays: the same thing the global shortcut does.
 fn toggle_menu(app: &AppHandle) {
     for (label, win) in app.webview_windows() {
         if label.starts_with("overlay-") && win.is_visible().unwrap_or(false) {
@@ -768,11 +768,11 @@ fn toggle_menu(app: &AppHandle) {
 
 /// A menu bar / system tray icon: click it to start the game, right-click (or Ctrl-click) for Quit.
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open Hoops", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Hoops", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open Hooperly", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Hooperly", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
     let mut tray = TrayIconBuilder::with_id("hoops")
-        .tooltip("Hoops")
+        .tooltip("Hooperly")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -856,5 +856,5 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running Hoops");
+        .expect("error while running Hooperly");
 }

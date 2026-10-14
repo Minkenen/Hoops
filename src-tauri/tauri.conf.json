@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Hoops",
+  "productName": "Hooperly",
   "version": "0.1.24",
   "identifier": "com.hoops.app",
   "build": {

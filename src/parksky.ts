@@ -91,7 +91,7 @@ function biplane(x: number, y: number, t: number): void {
   r(x + 48, y - 8, 74, 18, "#ffffff");
   r(x + 48, y - 8, 74, 2, "#e8731f");
   r(x + 48, y + 8, 74, 2, "#e8731f");
-  text("PLAY HOOPS", x + 52, y - 4, "#1c1c22");
+  text("HOOPERLY", x + 71 - 24, y - 4, "#1c1c22");
 }
 
 /** Verde: a white suit with green trim and a green cape, a green basketball on the chest. Flies to the right. */

@@ -40,7 +40,7 @@ export function nicknameDecision(value, existingLowerNames = new Set()) {
 
 export function defaultNickname(seed, attempt = 0) {
   const digits = String(Math.abs(hashCode(`${seed}:${attempt}`)) % 9000 + 1000);
-  return `HoopsFan${digits}`;
+  return `HooperlyFan${digits}`;
 }
 
 function hashCode(value) {

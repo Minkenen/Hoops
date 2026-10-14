@@ -318,7 +318,7 @@ async function score(request: Request, env: Env): Promise<Response> {
   const sessionId = typeof body?.replaySessionId === "string" ? body.replaySessionId : "";
   const claimed = claimedScore(body?.score);
   if (!sessionId || claimed === null) return rejected("bad_request", false, "The score needs a replay session and a whole score.");
-  if (!versionAtLeast(version)) return rejected("client_too_old", false, "Update Hoops to count scores.");
+  if (!versionAtLeast(version)) return rejected("client_too_old", false, "Update Hooperly to count scores.");
 
   const ipRate = await env.DB.prepare("SELECT updated_at FROM score_submissions WHERE key = ?").bind(`ip:${ip}`).first<{ updated_at: number }>();
   const playerRate = await env.DB.prepare("SELECT updated_at FROM score_submissions WHERE key = ?").bind(`player:${player.id}`).first<{ updated_at: number }>();
@@ -672,7 +672,7 @@ export class MultiplayerHub {
     const player = { id: request.headers.get("x-player-id") || "", nickname: request.headers.get("x-player-nickname") || "" };
     if (!player.id || !player.nickname) return bad("Sign in before playing online.", 401);
     const mode = url.searchParams.get("mode") || "";
-    if (url.searchParams.get("protocol") !== MP_PROTOCOL) return bad("This multiplayer client is out of date. Update Hoops.", 426);
+    if (url.searchParams.get("protocol") !== MP_PROTOCOL) return bad("This multiplayer client is out of date. Update Hooperly.", 426);
     const game = (url.searchParams.get("game") || "speed") as MpGame;
     let code = normalizeRoomCode(url.searchParams.get("code") || "");
     if (mode !== "quick" && mode !== "room") return bad("Unsupported multiplayer mode.");
@@ -1095,7 +1095,7 @@ async function licenseActivate(request: Request): Promise<Response> {
   const email = String(body.email || "").trim().toLowerCase();
   if (!key) return bad("Enter your license key.");
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) return bad("Enter the email address used for the purchase.");
-  const r = await lemon("activate", { license_key: key, instance_name: "Hoops in the browser" });
+  const r = await lemon("activate", { license_key: key, instance_name: "Hooperly in the browser" });
   if (r.activated !== true) return bad(String(r.error || "That license key was not accepted."), 400);
   const match = licenseMatch(r.meta);
   if (!match) return bad("That license key is for a different product.");
@@ -1104,7 +1104,7 @@ async function licenseActivate(request: Request): Promise<Response> {
   return json({ instance_id: String(r.instance?.id || ""), unlock: match.unlock, theme_id: match.theme });
 }
 
-/** Counts how often each Support Hoops format is shown and clicked (no personal data: just two counters per format per day). */
+/** Counts how often each Support Hooperly format is shown and clicked (no personal data: just two counters per format per day). */
 async function donateEvent(request: Request, env: Env): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as { variant?: string; kind?: string };
   const variant = body.variant === "footer" ? "footer" : body.variant === "button" ? "button" : "";

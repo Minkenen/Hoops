@@ -725,9 +725,9 @@ ${
 
   private donateHtml(): string {
     if (this.donateVariant === "footer") {
-      return `<button class="donate-footer" data-a="donate" data-v="footer"><span>Enjoying Hoops?</span><b>Donate a coffee</b></button>`;
+      return `<button class="donate-footer" data-a="donate" data-v="footer"><span>Enjoying Hooperly?</span><b>Donate a coffee</b></button>`;
     }
-    return `<button class="donate-link" data-a="donate" data-v="button">Support Hoops</button>`;
+    return `<button class="donate-link" data-a="donate" data-v="button">Support Hooperly</button>`;
   }
 
   private tile(k: "autostart" | "fullscreen", v: 0 | 1, title: string, desc: string): string {
@@ -763,7 +763,7 @@ ${this.row("Sound", this.tog("sound"))}
 <div class="mrow"><button class="pb mi" data-a="inst">${menuIcon("set")}<span>Settings</span></button>${WEB ? "" : `<button class="pb mi" data-a="quit">${menuIcon("quit")}<span>Quit</span></button>`}</div>
 ${this.game?.online ? `<button class="pb full danger" data-a="leavematch">Leave online match</button>` : ""}
 ${this.donateHtml()}
-<div class="foot"><button class="bugbtn" data-a="bug" aria-label="Report a bug" title="Report a bug">${BUG_ICON}<span class="bugtip">Report a bug</span></button><span class="hn">Hoops v${__APP_VERSION__}</span><button class="dcbtn" data-a="discord" aria-label="Join our Discord" title="Join our Discord">${DISCORD_ICON}<span class="bugtip" style="left:auto;right:0">Join our Discord</span></button></div></div>`;
+<div class="foot"><button class="bugbtn" data-a="bug" aria-label="Report a bug" title="Report a bug">${BUG_ICON}<span class="bugtip">Report a bug</span></button><span class="hn">Hooperly v${__APP_VERSION__}</span><button class="dcbtn" data-a="discord" aria-label="Join our Discord" title="Join our Discord">${DISCORD_ICON}<span class="bugtip" style="left:auto;right:0">Join our Discord</span></button></div></div>`;
   }
 
   /** A picture tile for a choice: a small drawing above its name. */
@@ -807,11 +807,11 @@ ${this.row("Basketball court", this.tog("court"), "Shown while aiming")}
 <div class="row"><div><div class="lb">Ball see-through at rest</div><div class="hn">So you can see what is behind it</div></div><div class="st-fade"><canvas data-art="fade" width="40" height="22"></canvas>${this.sld("ballFade", 0, 0.8, 0.05)}</div></div>
 <button class="pb full" data-a="cos" style="margin-top:6px">Edit appearance…</button>`;
     } else {
-      pane = `${WEB ? "" : this.row("Updates", `<button class="pb${this.update ? " buy" : ""}" data-a="${this.update ? "update" : "chkupdate"}"${this.updateBusy ? " disabled" : ""}>${this.updateBusy ? "Checking…" : this.update ? `Get v${this.update.version}` : "Check for updates"}</button>`, this.updateNote || `Hoops v${__APP_VERSION__}`)}
+      pane = `${WEB ? "" : this.row("Updates", `<button class="pb${this.update ? " buy" : ""}" data-a="${this.update ? "update" : "chkupdate"}"${this.updateBusy ? " disabled" : ""}>${this.updateBusy ? "Checking…" : this.update ? `Get v${this.update.version}` : "Check for updates"}</button>`, this.updateNote || `Hooperly v${__APP_VERSION__}`)}
 ${WEB ? "" : this.row("Start automatically", this.tog("autostart"), "When your computer starts")}
 ${WEB ? "" : this.row("Over fullscreen apps", this.tog("fullscreen"), "Games and video")}
 ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
-<div class="acts"><button class="pb" data-a="reset">Reset score</button>${WEB ? "" : '<button class="pb danger" data-a="quit">Quit Hoops</button>'}</div>`;
+<div class="acts"><button class="pb" data-a="reset">Reset score</button>${WEB ? "" : '<button class="pb danger" data-a="quit">Quit Hooperly</button>'}</div>`;
     }
     return `<div class="px win" data-hit style="width:min(680px,94vw)">
 <div class="wt"><span class="wl"><button class="pb" data-a="back" aria-label="Back">←</button>Settings</span><button class="pb" data-a="close" aria-label="Close">×</button></div>
@@ -861,7 +861,7 @@ ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
     const g = this.buyGate!;
     const name = g.kind === "theme" ? themeById(g.id).name : "All Access";
     const busy = this.lbSigning ? " disabled" : "";
-    return `<div class="h4" style="margin-top:0">${this.lockIcon()} Create your Hoops account first</div>
+    return `<div class="h4" style="margin-top:0">${this.lockIcon()} Create your Hooperly account first</div>
 <div class="hn">Buying ${esc(name)}</div>
 <div class="hn" style="margin-top:8px;text-transform:uppercase;letter-spacing:.06em">Why sign in?</div>
 <ul class="buy-why"><li>Your purchase follows you to every computer</li><li>Get it back if you reinstall or lose the license key</li><li>Keep your score and achievements too</li></ul>
@@ -917,7 +917,7 @@ ${this.lbError ? `<div class="err">${esc(this.lbError)}</div>` : ""}
       this.licenseBusy = false;
       const msg = typeof err === "string" ? err : "Could not check the license key. Try again.";
       this.licenseError = msg.includes("activate_license")
-        ? "This Hoops build is too old. Install or run the latest build and try again."
+        ? "This Hooperly build is too old. Install or run the latest build and try again."
         : msg;
       this.render();
     }
@@ -1202,11 +1202,11 @@ ${rows}
     const user = backend.user();
     let body = "";
     if (id === "welcome") {
-      body = `<h3>Welcome to Hoops</h3><p>${WEB ? "A tiny pixel-art basketball game." : "A tiny basketball that lives at the bottom of your screen."}</p><ul class="how"><li>Drag the ball and let go to shoot</li><li>Sink it for points and confetti</li>${TOUCH ? "<li>Press and hold the ball for the menu</li>" : "<li>Hold Shift and drag to move the ball</li><li>Right-click the ball for the menu</li>"}</ul>`;
+      body = `<h3>Welcome to Hooperly</h3><p>${WEB ? "A tiny pixel-art basketball game." : "A tiny basketball that lives at the bottom of your screen."}</p><ul class="how"><li>Drag the ball and let go to shoot</li><li>Sink it for points and confetti</li>${TOUCH ? "<li>Press and hold the ball for the menu</li>" : "<li>Hold Shift and drag to move the ball</li><li>Right-click the ball for the menu</li>"}</ul>`;
     } else if (id === "overlay") {
-      body = `<h3>Desktop app</h3><p>The overlay effect, where the ball and courts live on top of your other programs and your whole screen, only works in the downloaded version of Hoops.</p><p><a class="lk" href="../#download" target="_blank" rel="noopener">Download Hoops for Mac or Windows</a></p>`;
+      body = `<h3>Desktop app</h3><p>The overlay effect, where the ball and courts live on top of your other programs and your whole screen, only works in the downloaded version of Hooperly.</p><p><a class="lk" href="../#download" target="_blank" rel="noopener">Download Hooperly for Mac or Windows</a></p>`;
     } else if (id === "autostart") {
-      body = `<h3>Start automatically?</h3><p>Hoops starts quietly in the background when you log in.</p><div class="tiles">${this.tile("autostart", 1, "Yes, start it for me", "Ready right after login")}${this.tile("autostart", 0, "No, I will start it", "Open Hoops whenever you want")}</div>`;
+      body = `<h3>Start automatically?</h3><p>Hooperly starts quietly in the background when you log in.</p><div class="tiles">${this.tile("autostart", 1, "Yes, start it for me", "Ready right after login")}${this.tile("autostart", 0, "No, I will start it", "Open Hooperly whenever you want")}</div>`;
     } else if (id === "fullscreen") {
       body = `<h3>Over other apps?</h3><p>Should the ball show over fullscreen apps, like games and video?</p><div class="tiles">${this.tile("fullscreen", 1, "On top of everything", "Even fullscreen")}${this.tile("fullscreen", 0, "Regular windows only", "Hidden behind fullscreen")}</div>`;
     } else if (id === "crowd") {
@@ -1218,7 +1218,7 @@ ${rows}
     } else if (id === "board") {
       body = user
         ? `<h3>You are on the board</h3><p>Signed in as <b>${user.nickname}</b>. Next you can pick your own name.</p>`
-        : `<h3>Join the leaderboard?</h3><p>Sign in with Google to save your points and get a rank against other players. It is optional: Hoops works fully without it, and you can do this later from the menu.</p>
+        : `<h3>Join the leaderboard?</h3><p>Sign in with Google to save your points and get a rank against other players. It is optional: Hooperly works fully without it, and you can do this later from the menu.</p>
 <button class="pb full gold lbsign" data-a="obsign"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".11111.", "1111111", "11.....", "11.1111", "11...11", "1111111", ".11111."], ["#1c1c22"], 2)}${this.lbSigning ? "Signing in…" : "Sign in with Google"}</button>${this.lbError ? `<div class="err">${this.lbError}</div>` : ""}`;
     } else if (id === "name") {
       const cur = this.nickDraft || user?.nickname || "";
@@ -1470,7 +1470,7 @@ ${rows}
             window.open(DISCORD_URL, "_blank", "noopener,noreferrer");
           });
         } else {
-          this.toast("The Hoops Discord is coming soon", 2200);
+          this.toast("The Hooperly Discord is coming soon", 2200);
         }
         break;
       case "bug":

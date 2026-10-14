@@ -166,16 +166,17 @@ function guy(gx: number, base: number, t: number, o: Pose): void {
 function frontA(t: number, lt: number, alpha: number): void {
   const T = SCENES[0];
   const p = lt / T;
-  const sc = 4;
-  const x0 = 92;
+  const sc = 3;
+  const word = "HOOPERLY";
+  const x0 = 84;
   const y0 = 72;
-  const wd = 5 * 4 * sc - sc;
+  const wd = wordW(word, sc);
   const reveal = p < 0.55 ? ease(p / 0.55) * wd : wd;
   x.globalAlpha = alpha * (p > 0.93 ? 1 - (p - 0.93) / 0.07 : 1);
-  bubble("HOOPS", x0, y0, sc, PAL.slice(0, 5), reveal, "#ffffff", DK, Math.max(0, Math.min(1, (p - 0.55) / 0.3)));
+  bubble(word, x0, y0, sc, PAL.slice(0, 5), reveal, "#ffffff", DK, Math.max(0, Math.min(1, (p - 0.55) / 0.3)));
   x.globalAlpha = alpha;
   if (p < 0.55) {
-    const li = Math.min(4, Math.floor(reveal / (4 * sc)));
+    const li = Math.min(word.length - 1, Math.floor(reveal / (4 * sc))) % 5;
     guy(x0 + reveal - 18, FLOOR, t, { walk: p > 0.01 && p < 0.54, tx: x0 + reveal + 2, ty: y0 + 8 + Math.sin(t / 180) * 5, spray: true, col: PAL[li], face: 1 });
   } else {
     guy(x0 + wd - 18, FLOOR, t, { col: PAL[4], face: 1, rattle: p > 0.86 && p < 0.93 });
@@ -317,7 +318,7 @@ function cell(i: number, j: number, fenceY: number): void {
 
 
 function fenceB(): void {
-  bubble("HOOPS", 24, 80, 2, ["#ff4fa0", "#ffe14a", "#5de06a", "#35d4ff", "#ff8a1f"], 99, DK, "#00000066", 1);
+  bubble("HOOPERLY", 24, 80, 2, ["#ff4fa0", "#ffe14a", "#5de06a", "#35d4ff", "#ff8a1f"], 99, DK, "#00000066", 1);
   bubble("MVP", 196, 82, 2, ["#ffe14a", "#ff4fa0"], 99, "#ffffff", DK, 0);
   drawPix(HEART, 110, 86, "#ff4fa0", 2);
 }
@@ -516,11 +517,11 @@ function ropeGuy(ax: number, top: number, gx: number, gy: number, t: number, o: 
   }
 }
 
-/** He abseils down, bobs and swings along the wall and sprays a huge GO HOOPS, then is hauled back up. */
+/** He abseils down, bobs and swings along the wall and sprays a huge GO HOOPERLY, then is hauled back up. */
 function frontRope(t: number, lt: number, alpha: number, w: number, topY: number): void {
   const p = lt / SCENES[3];
-  const sc = 7;
-  const word = "GO HOOPS";
+  const sc = 5;
+  const word = "GO HOOPERLY";
   const wd = word.length * 4 * sc - sc;
   const x00 = Math.round((w - wd) / 2);
   const y0 = Math.round(topY + (45 - topY) * 0.29);
@@ -610,24 +611,25 @@ function chairGuy(top: number, gx: number, gy: number, tx: number, ty: number, c
   r(gx - 22, gy + 6, 6, 1, "#9aa1ad");
 }
 
-/** He is lowered on the plank and rolls a huge 3D HOOPS onto the wall from the top down, then is hauled back up. */
+/** He is lowered on the plank and rolls a huge 3D HOOPERLY onto the wall from the top down, then is hauled back up. */
 function frontChair(t: number, lt: number, alpha: number, w: number, topY: number): void {
   const p = lt / SCENES[4];
-  const sc = 10;
-  const wd = 5 * 4 * sc - sc;
+  const sc = 6;
+  const word = "HOOPERLY";
+  const wd = wordW(word, sc);
   const x0 = Math.round((w - wd) / 2) - 5;
   const y0 = Math.round(topY + (45 - topY) * 0.27);
-  const h = 58;
+  const h = 5 * sc + 8;
   const down = ease(p / 0.1);
   const up = ease((p - 0.8) / 0.14);
   const paintU = p < 0.1 ? 0 : p < 0.72 ? (p - 0.1) / 0.62 : 1;
   const yR = y0 + paintU * h;
   x.globalAlpha = alpha * (p > 0.95 ? 1 - (p - 0.95) / 0.05 : 1);
-  blockTo("HOOPS", x0, y0, sc, "#ffe14a", "#c2410c", 7, p >= 0.72 ? 9999 : yR);
+  blockTo(word, x0, y0, sc, "#ffe14a", "#c2410c", 7, p >= 0.72 ? 9999 : yR);
   if (p >= 0.76) {
     for (let k = 0; k < 7; k++) {
       const sx = x0 + Math.floor(hs(k, 2) * wd);
-      const sy = y0 + Math.floor(hs(k, 5) * 50);
+      const sy = y0 + Math.floor(hs(k, 5) * 5 * sc);
       if (Math.floor(t / 120 + k * 3) % 5 < 2) {
         r(sx, sy, 1, 1, "#fff");
         r(sx - 2, sy, 5, 1, "#fff6a0");

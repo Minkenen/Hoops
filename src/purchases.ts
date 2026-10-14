@@ -1,4 +1,4 @@
-// Which themes you own. Free themes are always owned, Hoops All Access unlocks all themes,
+// Which themes you own. Free themes are always owned, Hooperly All Access unlocks all themes,
 // and single-theme purchases unlock one theme at a time.
 import { clearLicenses, isPremiumUnlocked, setPremiumUnlocked, setSetting, settings } from "./settings";
 import { THEMES, type ThemeId, themeById } from "./themes";
