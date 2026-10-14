@@ -1,6 +1,6 @@
 // Browser version of ipc.ts: one "monitor" the size of the page, no native windows, no keychain.
 import type { LbBoard, LbProviderId, LbTab, LbUser } from "./leaderboard";
-import type { Handoff, LicenseActivation, MonitorInfo, Rect } from "./ipc";
+import type { Handoff, LicenseActivation, MonitorInfo, Rect, ScoreResult } from "./ipc";
 
 export type { Handoff, LicenseActivation, MonitorInfo, Rect };
 
@@ -89,9 +89,9 @@ export const leaderboardSignIn = (u: string, provider: LbProviderId): Promise<Lb
 export const leaderboardSignOut = async (): Promise<void> => setToken("");
 export const leaderboardLoad = (u: string, t: LbTab): Promise<LbBoard> => api<LbBoard>(u, "GET", `/leaderboard?tab=${t}`);
 export const leaderboardEntitlements = (u: string): Promise<{ all: boolean; themes: string[] }> => api<{ all: boolean; themes: string[] }>(u, "GET", "/entitlements");
-export const leaderboardSubmitScore = async (u: string, score: number, bestStreak: number, throws: number, goals: number, replaySessionId?: string): Promise<void> => {
-  if (!getToken()) return;
-  await api(u, "POST", "/score", { score, bestStreak, throws, goals, version: __APP_VERSION__, ...(replaySessionId ? { replaySessionId } : {}) });
+export const leaderboardSubmitScore = async (u: string, score: number, replaySessionId: string): Promise<ScoreResult | null> => {
+  if (!getToken()) return null;
+  return api<ScoreResult>(u, "POST", "/score", { score, version: __APP_VERSION__, replaySessionId });
 };
 export const leaderboardSetColor = (u: string, color: number): Promise<LbUser> => api<LbUser>(u, "POST", "/color", { color });
 export const leaderboardSetNickname = (u: string, nickname: string): Promise<LbUser> => api<LbUser>(u, "POST", "/nickname", { nickname });

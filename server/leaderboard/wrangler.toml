@@ -16,3 +16,6 @@ class_name = "MultiplayerHub"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["MultiplayerHub"]
+
+[triggers]
+crons = ["17 * * * *"]

@@ -34,6 +34,8 @@ let sessionId = "";
 let seed = "";
 let shots: ReplayShot[] = [];
 let onSession: (() => void) | null = null;
+/** The replay is on its way to the server: shots taken meanwhile are not recorded (they would be lost when the session ends). */
+let submitting = false;
 
 /** The game rebuilds the hoop for the next shot when a new session starts. */
 export function onReplaySession(f: () => void): void {
@@ -42,7 +44,7 @@ export function onReplaySession(f: () => void): void {
 
 /** Where the hoop of the next shot must stand, or null when there is no session (then the hoop is placed at random and nothing is recorded). */
 export function currentReplayTarget(artH: number): { side: "left" | "right"; rimHeight: number; index: number } | null {
-  if (!seed || shots.length >= MAX_SHOTS) return null;
+  if (!seed || submitting || shots.length >= MAX_SHOTS) return null;
   return { ...replayHoopTarget(seed, shots.length, artH), index: shots.length };
 }
 
@@ -63,9 +65,13 @@ export function resetReplay(): void {
   shots = [];
 }
 
+export function replaySubmitting(on: boolean): void {
+  submitting = on;
+}
+
 /** The ball leaves the hand. `hoopIndex` is the shot number the hoop on screen was made for (null: not from the seed). Returns the shot's number, or -1 when nothing is recorded. */
 export function replayShot(hand: { x: number; y: number; vx: number; vy: number; gs: number }, view: { artW: number; artH: number; floorY: number }, hoopIndex: number | null): number {
-  if (!seed || shots.length >= MAX_SHOTS) return -1;
+  if (!seed || submitting || shots.length >= MAX_SHOTS) return -1;
   const last = shots[shots.length - 1];
   if (last && !last.void && last.resultT === 0) last.void = true; // the shot before was never decided
   const id = shots.length;

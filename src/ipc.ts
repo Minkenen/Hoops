@@ -54,8 +54,16 @@ export const leaderboardSignIn = (serverUrl: string, provider: LbProviderId): Pr
 export const leaderboardSignOut = (): Promise<void> => invoke("leaderboard_sign_out");
 export const leaderboardLoad = (serverUrl: string, tab: LbTab): Promise<LbBoard> => invoke<LbBoard>("leaderboard_load", { serverUrl, tab });
 export const leaderboardEntitlements = (serverUrl: string): Promise<{ all: boolean; themes: string[] }> => invoke("leaderboard_entitlements", { serverUrl });
-export const leaderboardSubmitScore = (serverUrl: string, score: number, bestStreak: number, throws: number, goals: number, replaySessionId?: string): Promise<void> =>
-  invoke("leaderboard_submit_score", { serverUrl, score, bestStreak, throws, goals, version: __APP_VERSION__, replaySessionId });
+/** What the server says about a score: counted (verified) or not, and if not, whether the same replay is worth sending again later. */
+export interface ScoreResult {
+  ok: boolean;
+  verified: boolean;
+  reason?: string;
+  retryable?: boolean;
+  message?: string;
+}
+export const leaderboardSubmitScore = (serverUrl: string, score: number, replaySessionId: string): Promise<ScoreResult | null> =>
+  invoke<ScoreResult | null>("leaderboard_submit_score", { serverUrl, score, version: __APP_VERSION__, replaySessionId });
 export const leaderboardSetNickname = (serverUrl: string, nickname: string): Promise<LbUser> =>
   invoke<LbUser>("leaderboard_set_nickname", { serverUrl, nickname });
 export const leaderboardSetColor = (serverUrl: string, color: number): Promise<LbUser> => invoke<LbUser>("leaderboard_set_color", { serverUrl, color });

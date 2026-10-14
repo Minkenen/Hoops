@@ -1,142 +1,121 @@
-const MAX_SHOTS = 200;
-const MAX_REPLAY_BYTES = 64_000;
-const MIN_SHOT_GAP_MS = 700;
+// Plays a player's solo shots again on the server.
+// The server does not take anything about the court from the player: where the hoop stood follows from the server's seed and the shot's number,
+// and the ball moves with the same step the game uses (shared/world.ts). A goal counts only if the replay of the shot is a goal too.
+import { stepWorld } from "../../../shared/world.ts";
+import { shotProblem, soloCourt } from "./shots.js";
+
+export const MAX_SHOTS = 200;
+export const MAX_REPLAY_BYTES = 64_000;
+export const MIN_SHOT_GAP_MS = 700;
 const MAX_SHOT_GAP_MS = 120_000;
-const MAX_SPEED = 2400;
-import { collideCircle, collidePolygon, hoopCrossing, netBallForce, stepBall } from "../../../shared/physics.ts";
-const BALL_RADIUS = 10.5;
-const NET_MASS = 30;
-const NET_MAX_ACCEL = 0.35;
-const CLIENT_GEOMETRY_FIELDS = ["floorY", "hoopX", "hoopY", "hoopL", "hoopR", "boardL", "boardR", "boardT", "boardB"];
+const MAX_FLIGHT_MS = 30_000;
+/** The game steps 60 times a second, 4 sub-steps of 0.3125 each. */
+export const TICK_MS = 1000 / 60;
+const SUB_STEPS = 4;
+const SUB_DT = 0.25 * 1.25;
+const MAX_TICKS = 1800;
+/** A goal is accepted when the replay scores within this many milliseconds of when the game said it did. */
+const TIME_SLACK_MS = 150;
+const TIME_SLACK_FRACTION = 0.15;
 
-export function hasClientGeometry(shot) {
-  return CLIENT_GEOMETRY_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(shot, field));
-}
+const SHOT_FIELDS = ["id", "t", "resultT", "artW", "artH", "floorY", "x", "y", "vx", "vy", "gs", "goal", "void"];
 
-export function applyReplayNetForce(state, shot, dt) {
-  if (!(state.x > shot.hoopL && state.x < shot.hoopR && state.y > shot.hoopY && state.y < shot.hoopY + 36)) return false;
-  let ax = 0;
-  let ay = 0;
-  for (const fraction of [0.15, 0.35, 0.5, 0.65, 0.85]) {
-    const force = netBallForce({ x: shot.hoopL, y: shot.hoopY + 18, vx: 0, vy: 0, offsetX: (shot.hoopR - shot.hoopL) * fraction, offsetY: 0 }, state);
-    ax += force.ballX / NET_MASS;
-    ay += force.ballY / NET_MASS;
-  }
-  const acceleration = Math.hypot(ax, ay);
-  if (acceleration > NET_MAX_ACCEL) {
-    ax *= NET_MAX_ACCEL / acceleration;
-    ay *= NET_MAX_ACCEL / acceleration;
-  }
-  state.vx += ax * dt;
-  state.vy += ay * dt;
-  return acceleration > 0;
-}
-function hash(value) { let h = 0; for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0; return Math.abs(h); }
-
-export function simulateReplayShot(shot) {
-  const flight = shot.resultT - shot.t;
-  if (!Number.isFinite(flight) || flight < 250 || flight > 30_000) return { crossed: false, flight };
-  const state = { x: shot.x, y: shot.y, vx: shot.vx, vy: shot.vy, t: 0, gs: shot.gs, ang: 0 };
-  let previousY = state.y;
+/**
+ * Plays one shot from the hand until it is decided: the first of a goal, the ball falling past the net, or a hard bounce on the floor.
+ * Returns { outcome: "goal" | "miss" | "open", tick, hits }.
+ */
+export function simulateShot(shot, hoop, limits = {}) {
+  const maxTicks = Math.min(MAX_TICKS, limits.maxTicks ?? MAX_TICKS);
+  const ball = { x: shot.x, y: shot.y, vx: shot.vx, vy: shot.vy, t: 0, gs: shot.gs, ang: 0, scored: false, noScore: false };
+  let outcome = "open";
+  let tick = 0;
+  let hits = 0;
   let bounces = 0;
-  let elapsed = 0;
-  while (elapsed < flight) {
-    const dt = Math.min(1, flight - elapsed);
-    elapsed += dt;
-    const beforeY = state.y;
-    const inNet = state.x > shot.hoopL && state.x < shot.hoopR && state.y > shot.hoopY && state.y < shot.hoopY + 36;
-    stepBall(state, { dt, radius: BALL_RADIUS, gravityScale: inNet ? 1.12 : 1 });
-    if (inNet) applyReplayNetForce(state, shot, dt);
-    let { x, y, vx, vy } = state;
-    if (x < 0 || x > shot.width) {
-      x = Math.max(0, Math.min(shot.width, x));
-      vx = -vx * 0.65;
-      state.x = x; state.vx = vx;
-      bounces++;
+  const hooks = {
+    hit: () => { hits++; },
+    goal: () => { if (outcome === "open") { outcome = "goal"; ball.scored = true; } },
+    fell: () => { if (outcome === "open") outcome = "miss"; },
+    floorBounce: () => { if (outcome === "open" && !ball.scored) outcome = "miss"; },
+  };
+  for (tick = 1; tick <= maxTicks && outcome === "open"; tick++) {
+    for (let k = 0; k < SUB_STEPS && outcome === "open"; k++) {
+      const r = stepWorld(ball, { dt: SUB_DT, floorY: shot.floorY, artW: shot.artW, hoop, bounces, hooks });
+      bounces = r.bounces;
     }
-    if ([shot.boardL, shot.boardR, shot.boardT, shot.boardB].every(Number.isFinite)) {
-      const board = [[shot.boardL, shot.boardT], [shot.boardR, shot.boardT], [shot.boardR, shot.boardB], [shot.boardL, shot.boardB]];
-      const hit = collidePolygon(state, board, 0, 0, BALL_RADIUS, 0.55);
-      if (hit.hit) bounces++;
-    }
-    const rimFront = collideCircle(state, shot.hoopL, shot.hoopY, BALL_RADIUS + 1.8, 0.5);
-    const rimBack = collideCircle(state, shot.hoopR, shot.hoopY, BALL_RADIUS + 1.8, 0.5);
-    if (rimFront.hit || rimBack.hit) bounces++;
-    if (y > shot.floorY - BALL_RADIUS) {
-      y = shot.floorY - BALL_RADIUS;
-      const restitution = bounces < 2 ? 0.74 : Math.max(0.35, 0.62 - (bounces - 2) * 0.1);
-      bounces++;
-      vy = -Math.abs(vy) * restitution;
-      vx *= bounces > 2 ? 0.85 : 0.93;
-      state.y = y; state.vy = vy; state.vx = vx;
-    }
-    if (bounces > 12) return { crossed: false, flight, bounces };
-    const crossing = hoopCrossing(beforeY, state, shot.hoopY, shot.hoopL, shot.hoopR, BALL_RADIUS * 0.1);
-    if (crossing.scored && !crossing.blocked) return { crossed: true, flight, bounces, x: state.x, y: state.y, vx: state.vx, vy: state.vy };
-    previousY = y;
   }
-  return { crossed: false, flight, bounces, x: state.x, y: state.y, vx: state.vx, vy: state.vy };
+  return { outcome, tick: outcome === "open" ? tick : tick - 1, hits };
 }
 
-function expectedSide(seed, index) { return hash(`${seed}:${index}`) % 2 ? "right" : "left"; }
-function expectedRimHeight(seed, index, height) {
-  const max = Math.min(260, height * 0.6);
-  return 70 + (hash(`${seed}:${index}`) % 100000) / 100000 * Math.max(10, max - 70);
-}
+const bad = (reason) => ({ ok: false, reason });
+const finite = (v) => typeof v === "number" && Number.isFinite(v);
 
-export function replayGeometry(seed, index, width, height) {
-  const side = expectedSide(seed, index);
-  const center = side === "right" ? width * 0.82 : width * 0.18;
-  const rimWidth = Math.max(20, width * 0.05);
-  const floorY = height - Math.max(18, height * 0.08);
-  const hoopY = floorY - expectedRimHeight(seed, index, height);
-  const boardWidth = Math.max(34, width * 0.08);
-  const boardHeight = Math.max(70, height * 0.24);
-  const boardCenter = side === "right" ? center + rimWidth * 0.9 : center - rimWidth * 0.9;
-  return { hoopX: center, hoopY, hoopL: center - rimWidth / 2, hoopR: center + rimWidth / 2, floorY, boardL: boardCenter - boardWidth / 2, boardR: boardCenter + boardWidth / 2, boardT: hoopY - boardHeight / 2, boardB: hoopY + boardHeight / 2 };
-}
-
-export function verifyReplay(input) {
-  if (!input || typeof input !== "object") return { ok: false, reason: "Invalid replay." };
-  if (typeof input.sessionId !== "string" || !/^[a-zA-Z0-9_-]{8,80}$/.test(input.sessionId)) return { ok: false, reason: "Invalid replay session." };
-  if (typeof input.seed !== "string" || input.seed.length < 8 || input.seed.length > 80) return { ok: false, reason: "Invalid replay seed." };
-  if (!Array.isArray(input.shots) || input.shots.length < 1 || input.shots.length > MAX_SHOTS) return { ok: false, reason: "Invalid replay shots." };
+/**
+ * Checks a replay against the session it belongs to.
+ * `seed` is the one the server issued for the session (never the one in the payload).
+ * Returns { ok, reason } or { ok: true, throws, goals, outcomes, unconfirmed, voided, suspicion }.
+ */
+export function verifyReplay(input, seed) {
+  if (!input || typeof input !== "object") return bad("Invalid replay.");
+  if (typeof input.sessionId !== "string" || !/^[a-zA-Z0-9_-]{8,80}$/.test(input.sessionId)) return bad("Invalid replay session.");
+  if (typeof seed !== "string" || seed.length < 8 || seed.length > 80) return bad("Invalid replay seed.");
+  if (!Array.isArray(input.shots) || input.shots.length < 1 || input.shots.length > MAX_SHOTS) return bad("Invalid replay shots.");
   let previousTime = -1;
-  let goals = 0;
-  const ids = new Set();
-  for (const shot of input.shots) {
-    if (!shot || typeof shot !== "object") return { ok: false, reason: "Invalid replay shot." };
-    if (!Number.isInteger(shot.id) || shot.id !== ids.size || ids.has(shot.id)) return { ok: false, reason: "Replay shots are out of order." };
-    ids.add(shot.id);
-    if (!Number.isFinite(shot.t) || shot.t < 0 || shot.t <= previousTime) return { ok: false, reason: "Replay times are out of order." };
-    if (previousTime >= 0 && (shot.t - previousTime < MIN_SHOT_GAP_MS || shot.t - previousTime > MAX_SHOT_GAP_MS)) return { ok: false, reason: "Replay shot timing is impossible." };
+  let unconfirmed = 0;
+  let claimedGoals = 0;
+  let voided = 0;
+  const outcomes = [];
+  const gaps = [];
+  for (let index = 0; index < input.shots.length; index++) {
+    const shot = input.shots[index];
+    if (!shot || typeof shot !== "object" || Array.isArray(shot)) return bad("Invalid replay shot.");
+    // the court is never taken from the player: a shot that brings any of it is refused
+    for (const key of Object.keys(shot)) if (!SHOT_FIELDS.includes(key)) return bad("Replay shots must not carry court data.");
+    if (shot.id !== index) return bad("Replay shots are out of order.");
+    if (!finite(shot.t) || shot.t < 0 || shot.t <= previousTime) return bad("Replay times are out of order.");
+    if (previousTime >= 0 && (shot.t - previousTime < MIN_SHOT_GAP_MS || shot.t - previousTime > MAX_SHOT_GAP_MS)) return bad("Replay shot timing is impossible.");
+    if (previousTime >= 0) gaps.push(shot.t - previousTime);
     previousTime = shot.t;
-    if (!Number.isFinite(shot.width) || !Number.isFinite(shot.height) || shot.width < 100 || shot.height < 100 || shot.width > 2_000 || shot.height > 2_000) return { ok: false, reason: "Replay dimensions are invalid." };
-    const geometry = replayGeometry(input.seed, shot.id, shot.width, shot.height);
-    const hasClientGeometry = [shot.floorY, shot.hoopX, shot.hoopY, shot.hoopL, shot.hoopR].every(Number.isFinite);
-    const physicsShot = hasClientGeometry ? { ...geometry, ...shot } : { ...shot, ...geometry };
-    for (const key of ["x", "y", "vx", "vy"]) if (!Number.isFinite(shot[key]) || Math.abs(shot[key]) > MAX_SPEED * 2) return { ok: false, reason: "Replay physics are impossible." };
-    const speed = Math.hypot(shot.vx, shot.vy);
-    if (speed > MAX_SPEED) return { ok: false, reason: "Replay shot speed is impossible." };
-    if (!Number.isFinite(shot.nx) || !Number.isFinite(shot.ny) || shot.nx < 0 || shot.nx > 1 || shot.ny < 0 || shot.ny > 1) return { ok: false, reason: "Replay coordinates are invalid." };
-    if (shot.x < 0 || shot.x > shot.width || shot.y < 0 || shot.y > physicsShot.floorY || Math.abs(shot.nx - shot.x / shot.width) > 0.002 || Math.abs(shot.ny - shot.y / shot.height) > 0.002) return { ok: false, reason: "Replay coordinates do not match the shot." };
-    if (physicsShot.floorY <= physicsShot.hoopY || physicsShot.floorY > shot.height + 40) return { ok: false, reason: "Replay floor data is invalid." };
-    if (![shot.resultT, shot.gs, physicsShot.hoopX, physicsShot.hoopY, physicsShot.hoopL, physicsShot.hoopR].every(Number.isFinite) || shot.resultT <= shot.t || shot.resultT - shot.t > 30_000 || shot.gs < 0.25 || shot.gs > 2.5 || physicsShot.hoopL >= physicsShot.hoopR || physicsShot.hoopX < physicsShot.hoopL || physicsShot.hoopX > physicsShot.hoopR) return { ok: false, reason: "Replay hoop data is invalid." };
-    const hoopWidth = (physicsShot.hoopR - physicsShot.hoopL) / shot.width;
-    const hoopY = physicsShot.hoopY / shot.height;
-    const hoopCenter = physicsShot.hoopX / shot.width;
-    if (hoopWidth < 0.045 || hoopWidth > 0.16 || hoopCenter < 0.08 || hoopCenter > 0.92 || hoopY < 0.05 || hoopY > 0.9) return { ok: false, reason: "Replay hoop geometry is implausible." };
-    if (shot.goal && !simulateReplayShot(physicsShot).crossed) return { ok: false, reason: "Replay goal is not physically possible." };
-    const center = physicsShot.hoopX / shot.width;
-    const side = center < 0.5 ? "left" : "right";
-    if (side !== expectedSide(input.seed, shot.id)) return { ok: false, reason: "Replay hoop side does not match the session." };
-    const expectedY = physicsShot.floorY - expectedRimHeight(input.seed, shot.id, shot.height);
-    if (Math.abs(physicsShot.hoopY - expectedY) > 4) return { ok: false, reason: "Replay hoop height does not match the session." };
-    if (typeof shot.goal !== "boolean") return { ok: false, reason: "Replay result is invalid." };
-    if (shot.goal) goals++;
+    if (typeof shot.void !== "boolean" || typeof shot.goal !== "boolean") return bad("Replay result is invalid.");
+    if (shot.void) {
+      voided++;
+      continue;
+    }
+    if (!finite(shot.resultT)) return bad("Replay numbers are invalid.");
+    const problem = shotProblem(shot);
+    if (problem) return bad(`Replay: ${problem}`);
+    const flight = shot.resultT - shot.t;
+    if (flight <= 0 || flight > MAX_FLIGHT_MS) return bad("Replay shot time is impossible.");
+    if (shot.goal) claimedGoals++;
+
+    // what the player claims is checked against the replay; a miss is never turned into a goal
+    let goal = false;
+    if (shot.goal) {
+      const { hoop } = soloCourt(seed, index, shot);
+      const slack = Math.max(TIME_SLACK_MS, flight * TIME_SLACK_FRACTION);
+      const maxTicks = Math.ceil((flight + slack) / TICK_MS) + 2;
+      const played = simulateShot(shot, hoop, { maxTicks });
+      goal = played.outcome === "goal" && Math.abs(played.tick * TICK_MS - flight) <= slack;
+      if (!goal) unconfirmed++;
+    }
+    outcomes.push(goal);
   }
-  if (Number.isInteger(input.goals) && input.goals !== goals) return { ok: false, reason: "Replay score does not match its shots." };
-  return { ok: true, shots: input.shots.length, goals };
+  const throws = outcomes.length;
+  if (throws < 1) return bad("Replay has no counted shots.");
+  const goals = outcomes.filter(Boolean).length;
+  return { ok: true, throws, goals, outcomes, unconfirmed, claimedGoals, voided, suspicion: suspicion(outcomes, gaps, unconfirmed, claimedGoals) };
 }
 
-export { MAX_REPLAY_BYTES };
+/** Signs that a replay was made by a program: very few misses over many shots, shots at exactly the same pace, goals the replay cannot reproduce. */
+function suspicion(outcomes, gaps, unconfirmed, claimedGoals) {
+  const reasons = [];
+  const n = outcomes.length;
+  const goals = outcomes.filter(Boolean).length;
+  if (n >= 30 && goals / n > 0.92) reasons.push("accuracy above 92 % over 30 or more shots");
+  if (claimedGoals >= 10 && unconfirmed > Math.max(2, claimedGoals * 0.2)) reasons.push("many goals the replay does not reproduce");
+  if (gaps.length >= 20) {
+    const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    const sd = Math.sqrt(gaps.reduce((a, b) => a + (b - mean) * (b - mean), 0) / gaps.length);
+    if (sd < 40) reasons.push("shots at a perfectly even pace");
+  }
+  return reasons;
+}

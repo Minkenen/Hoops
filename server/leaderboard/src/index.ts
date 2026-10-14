@@ -1,15 +1,22 @@
-import { MIN_CLIENT_VERSION, NICKNAME_TAKEN_ERROR, defaultNickname, nicknameDecision, nicknameLower, scoreDecision, versionAtLeast, weekKey } from "./logic.js";
-import { MAX_REPLAY_BYTES, hasClientGeometry, simulateReplayShot, verifyReplay } from "./replay.js";
+import { MIN_CLIENT_VERSION, NICKNAME_TAKEN_ERROR, defaultNickname, nicknameDecision, nicknameLower, versionAtLeast, weekKey } from "./logic.js";
+import { MAX_REPLAY_BYTES, verifyReplay } from "./replay.js";
+import { IP_SYNC_MS, SCORE_SYNC_MS, WEEKLY_GAIN_CAP, claimedScore, summarize } from "./scoring.js";
+import { advance, createMatch, forfeit, nextDue, rest as matchRest, snapshot, startShot } from "./match.js";
+
+interface D1Result {
+  meta: { changes: number };
+}
 
 interface D1Database {
   prepare(query: string): D1PreparedStatement;
+  batch(statements: D1PreparedStatement[]): Promise<D1Result[]>;
 }
 
 interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
   first<T>(): Promise<T | null>;
   all<T>(): Promise<{ results: T[] }>;
-  run(): Promise<unknown>;
+  run(): Promise<D1Result>;
 }
 
 interface DurableObjectNamespace {
@@ -56,7 +63,8 @@ const MP_RECONNECT_MS = 15_000;
 const MP_ROOM_TTL_MS = 10 * 60_000;
 const MP_GAMES = new Set(["speed", "horse", "t21"]);
 const MP_COURTS = new Set(["Street", "Gym", "Arena"]);
-const MP_PROTOCOL = "2";
+/** The multiplayer protocol: 3 = the server keeps the match (turns, scores, results) and plays every shot itself. */
+const MP_PROTOCOL = "3";
 
 const allowedOrigin = (origin: string): boolean =>
   origin === "https://minkenen.github.io" ||
@@ -73,6 +81,10 @@ const json = (body: unknown, status = 200): Response =>
 const bad = (message: string, status = 400): Response => json({ error: message }, status);
 
 export default {
+  /** Clears away unused replays and old records every hour (see the cron in wrangler.toml). */
+  async scheduled(_event: unknown, env: Env): Promise<void> {
+    await cleanupReplays(env);
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get("origin") || "";
     const cors: Record<string, string> = allowedOrigin(origin)
@@ -122,6 +134,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       if (request.method === "GET" && url.pathname === "/profile") return profileGet(request, env);
       if (request.method === "PUT" && url.pathname === "/profile") return profilePut(request, env);
       if (request.method === "POST" && url.pathname === "/mp/rooms") return mpRoom(request, env);
+      if (request.method === "GET" && url.pathname === "/mp/version") return json({ protocol: MP_PROTOCOL, minClient: MIN_CLIENT_VERSION });
       if (request.method === "GET" && url.pathname === "/mp/ws") return mpWs(request, env, url);
       if (request.method === "POST" && url.pathname === "/donate-event") return donateEvent(request, env);
       if (request.method === "POST" && url.pathname === "/bug") return bugReport(request, env);
@@ -257,108 +270,152 @@ async function leaderboard(request: Request, env: Env, url: URL): Promise<Respon
   return json({ top, you, players: count?.n || 0, updatedAt: Date.now() });
 }
 
+const REPLAY_SESSION_MS = 6 * 3_600_000;
+const OPEN_SESSIONS_MAX = 5;
+const SESSIONS_PER_DAY = 200;
+const REPLAYS_PER_DAY = 2000;
+const CLEANUP_MS = 24 * 3_600_000;
+
+/** A score submission that was not accepted, with the reason and whether the app should try again later with the same replay. */
+const rejected = (reason: string, retryable: boolean, message = ""): Response => json({ ok: false, verified: false, reason, retryable, message });
+
+/**
+ * A score submission. The numbers come from the replay the server verified (its shots and goals), never from the app's own totals:
+ * the app only says which replay session it means and what its score is, and the score can grow by at most the goals of the replay.
+ */
 async function score(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
-  const body = await request.json();
-  const previous = await env.DB.prepare("SELECT best_score, best_streak, throws, goals, updated_at, version FROM scores WHERE player_id = ?").bind(player.id).first<{ best_score: number; best_streak: number; throws: number; goals: number; updated_at: number; version: string }>();
-  const ipRate = await env.DB.prepare("SELECT updated_at FROM score_submissions WHERE key = ?").bind(`ip:${ip}`).first<{ updated_at: number }>();
-  if (ipRate && Date.now() - ipRate.updated_at < 10_000) return json({ ok: true });
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const now = Date.now();
   const version = typeof body?.version === "string" ? body.version.slice(0, 20) : "";
-  const replaySessionId = typeof body?.replaySessionId === "string" ? body.replaySessionId : "";
-  const replay = replaySessionId ? await env.DB.prepare("SELECT player_id, shots, goals FROM replays WHERE session_id = ? AND used_at IS NULL").bind(replaySessionId).first<{ player_id: string; shots: number; goals: number }>() : null;
-  const expectedThrows = (previous?.throws || 0) + (replay?.shots || 0);
-  const expectedGoals = (previous?.goals || 0) + (replay?.goals || 0);
-  if (!replay || replay.player_id !== player.id || Number(body?.throws) !== expectedThrows || Number(body?.goals) !== expectedGoals) {
+  const sessionId = typeof body?.replaySessionId === "string" ? body.replaySessionId : "";
+  const claimed = claimedScore(body?.score);
+  if (!sessionId || claimed === null) return rejected("bad_request", false, "The score needs a replay session and a whole score.");
+  if (!versionAtLeast(version)) return rejected("client_too_old", false, "Update Hoops to count scores.");
+
+  const ipRate = await env.DB.prepare("SELECT updated_at FROM score_submissions WHERE key = ?").bind(`ip:${ip}`).first<{ updated_at: number }>();
+  const playerRate = await env.DB.prepare("SELECT updated_at FROM score_submissions WHERE key = ?").bind(`player:${player.id}`).first<{ updated_at: number }>();
+  if ((ipRate && now - ipRate.updated_at < IP_SYNC_MS) || (playerRate && now - playerRate.updated_at < SCORE_SYNC_MS)) return rejected("rate_limited", true, "Too soon after the last score. It will be sent again.");
+
+  const replay = await env.DB.prepare("SELECT player_id, shots, goals, data, used_at FROM replays WHERE session_id = ?").bind(sessionId).first<{ player_id: string; shots: number; goals: number; data: string; used_at: number | null }>();
+  if (!replay || replay.player_id !== player.id) {
     await flag(env, player.id, "score_replay", "Score was not linked to a verified replay.", version);
-    return json({ ok: true });
+    return rejected("no_replay", false, "There is no verified replay for this score.");
   }
-  if (version && !versionAtLeast(version)) return json({ ok: true });
-  const weekly = await env.DB.prepare("SELECT best_score, gained_score FROM weekly_scores WHERE player_id = ? AND week = ?")
-    .bind(player.id, weekKey(now)).first<{ best_score: number; gained_score: number }>();
-  if (weekly && Number(body?.score) - weekly.best_score > Math.max(0, 5000 - weekly.gained_score)) {
-    await flag(env, player.id, "weekly_score", "Weekly score cap exceeded.", version);
-    return json({ ok: true });
+  if (replay.used_at) return rejected("session_used", false, "That replay was already counted.");
+  let outcomes: boolean[] = [];
+  try {
+    outcomes = [...String((JSON.parse(replay.data) as { o: string }).o)].map((c) => c === "1");
+  } catch {
+    return rejected("bad_replay", false, "The stored replay could not be read.");
   }
-  const decision = scoreDecision(body, previous, now);
-  if (!decision.ok) {
-    if (decision.suspicious) await flag(env, player.id, "score", decision.reason, version);
-    return json({ ok: true });
-  }
-  const consumed = await env.DB.batch([
-    env.DB.prepare("UPDATE replays SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, replaySessionId, player.id),
-    env.DB.prepare("UPDATE replay_sessions SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, replaySessionId, player.id),
+  const sum = summarize(outcomes);
+  if (sum.throws !== replay.shots || sum.goals !== replay.goals) return rejected("bad_replay", false, "The stored replay does not add up.");
+
+  const token = crypto.randomUUID();
+  const mine = "EXISTS (SELECT 1 FROM replays WHERE session_id = ?11 AND claim = ?12)";
+  const results = await env.DB.batch([
+    env.DB.prepare("UPDATE replays SET used_at = ?, claim = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, token, sessionId, player.id),
+    env.DB.prepare("UPDATE replay_sessions SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, sessionId, player.id),
+    env.DB.prepare(
+      `INSERT INTO scores (player_id, best_score, best_streak, throws, goals, updated_at, version, streak)
+       SELECT ?1, MIN(?2, ?3), MAX(?4, ?5), ?6, ?3, ?7, ?8, CASE WHEN ?9 THEN ?6 ELSE ?10 END
+       WHERE ${mine}
+       ON CONFLICT(player_id) DO UPDATE SET
+         throws = scores.throws + ?6,
+         goals = scores.goals + ?3,
+         best_score = MIN(MAX(scores.best_score, ?2), scores.best_score + ?3),
+         best_streak = MAX(scores.best_streak, ?4, scores.streak + ?5),
+         streak = CASE WHEN ?9 THEN scores.streak + ?6 ELSE ?10 END,
+         updated_at = ?7, version = ?8`,
+    ).bind(player.id, claimed, sum.goals, sum.bestRun, sum.lead, sum.throws, now, version, sum.all ? 1 : 0, sum.trail, sessionId, token),
+    env.DB.prepare(
+      `INSERT INTO weekly_scores (player_id, week, best_score, gained_score)
+       SELECT ?1, ?2, MIN(?3, ?4), MIN(MIN(?3, ?4), ?5)
+       WHERE EXISTS (SELECT 1 FROM replays WHERE session_id = ?6 AND claim = ?7)
+       ON CONFLICT(player_id, week) DO UPDATE SET
+         gained_score = MIN(weekly_scores.gained_score + MAX(0, MIN(MAX(weekly_scores.best_score, ?3), weekly_scores.best_score + ?4) - weekly_scores.best_score), ?5),
+         best_score = MIN(MAX(weekly_scores.best_score, ?3), weekly_scores.best_score + ?4)`,
+    ).bind(player.id, weekKey(now), claimed, sum.goals, WEEKLY_GAIN_CAP, sessionId, token),
   ]);
-  if (consumed.some((result) => result.meta.changes !== 1)) {
+  if (results[0].meta.changes !== 1) {
     await flag(env, player.id, "score_replay_race", "Replay session was already consumed.", version);
-    return json({ ok: true });
+    return rejected("session_used", false, "That replay was already counted.");
   }
-  await env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`ip:${ip}`, now).run();
-  await env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`player:${player.id}`, now).run();
-  await env.DB.prepare(
-    `INSERT INTO scores (player_id, best_score, best_streak, throws, goals, updated_at, version)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(player_id) DO UPDATE SET
-       best_score = MAX(scores.best_score, excluded.best_score),
-       best_streak = MAX(scores.best_streak, excluded.best_streak),
-       throws = MAX(scores.throws, excluded.throws),
-       goals = MAX(scores.goals, excluded.goals),
-       updated_at = excluded.updated_at, version = excluded.version`,
-  ).bind(player.id, decision.score, decision.bestStreak, decision.throws, decision.goals, now, version).run();
-  await env.DB.prepare(
-    `INSERT INTO weekly_scores (player_id, week, best_score, gained_score) VALUES (?, ?, ?, ?)
-     ON CONFLICT(player_id, week) DO UPDATE SET best_score = MAX(weekly_scores.best_score, excluded.best_score), gained_score = MIN(weekly_scores.gained_score + MAX(0, excluded.best_score - weekly_scores.best_score), 5000)`,
-  ).bind(player.id, weekKey(now), decision.score, decision.score).run();
-  return json({ ok: true, verified: true });
+  await env.DB.batch([
+    env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`ip:${ip}`, now),
+    env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`player:${player.id}`, now),
+  ]);
+  const row = await env.DB.prepare("SELECT best_score, best_streak, throws, goals FROM scores WHERE player_id = ?").bind(player.id).first<{ best_score: number; best_streak: number; throws: number; goals: number }>();
+  return json({ ok: true, verified: true, counters: row });
 }
 
+/** The app uploads the shots of a session. The server plays them again; a goal counts only if the replay of the shot is a goal too. */
 async function replay(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
   const now = Date.now();
+  const text = await request.text();
+  if (text.length > MAX_REPLAY_BYTES) return bad("Replay is too large.", 413);
+  let body: Record<string, unknown> | null = null;
+  try {
+    body = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return bad("Invalid replay.", 400);
+  }
+  const version = typeof body?.version === "string" ? body.version.slice(0, 20) : "";
   const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM replays WHERE player_id = ? AND created_at > ?").bind(player.id, now - 86_400_000).first<{ n: number }>();
-  if ((recent?.n || 0) >= 100) return bad("Too many replays today.", 429);
-  const length = Number(request.headers.get("content-length") || 0);
-  if (length > MAX_REPLAY_BYTES) return bad("Replay is too large.", 413);
-  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
-  if (versionAtLeast(typeof body?.version === "string" ? body.version : "", "0.1.24") && Array.isArray(body?.shots) && body.shots.some((shot) => shot && typeof shot === "object" && hasClientGeometry(shot))) {
-    await flag(env, player.id, "replay_geometry", "This client version must use server-owned replay geometry.", typeof body?.version === "string" ? body.version : "");
-    return bad("Please update the game before submitting this replay.", 422);
-  }
-  const decision = verifyReplay(body);
-  if (!decision.ok) {
-    await flag(env, player.id, "replay", decision.reason, typeof body?.version === "string" ? body.version : "");
-    return bad("Replay rejected.", 422);
-  }
-  const sessionId = body?.sessionId as string;
+  if ((recent?.n || 0) >= REPLAYS_PER_DAY) return bad("Too many replays today.", 429);
+  const sessionId = typeof body?.sessionId === "string" ? body.sessionId : "";
   const session = await env.DB.prepare("SELECT player_id, seed, created_at, used_at FROM replay_sessions WHERE session_id = ?").bind(sessionId).first<{ player_id: string; seed: string; created_at: number; used_at: number | null }>();
-  if (!session || session.player_id !== player.id || session.used_at || now - session.created_at > 30 * 60_000 || body?.seed !== session.seed) {
-    await flag(env, player.id, "replay_session", "Replay did not use a valid server session.", typeof body?.version === "string" ? body.version : "");
-    return bad("Replay session expired.", 422);
+  if (!session || session.player_id !== player.id) {
+    await flag(env, player.id, "replay_session", "Replay did not use a valid server session.", version);
+    return json({ error: "Replay session not found.", code: "bad_session", retryable: false }, 422);
   }
-  const data = JSON.stringify(body);
-  if (data.length > MAX_REPLAY_BYTES) return bad("Replay is too large.", 413);
-  await env.DB.prepare(
-    `INSERT OR IGNORE INTO replays (session_id, player_id, created_at, client_version, shots, goals, data) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(sessionId, player.id, now, typeof body?.version === "string" ? body.version.slice(0, 20) : null, decision.shots, decision.goals, data).run();
-  return json({ ok: true, verified: true, shots: decision.shots, goals: decision.goals });
+  if (session.used_at) return json({ error: "That replay session is already used.", code: "session_used", retryable: false }, 409);
+  if (now - session.created_at > REPLAY_SESSION_MS) return json({ error: "Replay session expired.", code: "session_expired", retryable: false }, 422);
+  const decision = verifyReplay(body, session.seed);
+  if (!decision.ok) {
+    await flag(env, player.id, "replay", decision.reason, version);
+    return json({ error: "Replay rejected.", code: "replay_rejected", reason: decision.reason, retryable: false }, 422);
+  }
+  if (decision.suspicion.length) await flag(env, player.id, "replay_suspicious", decision.suspicion.join("; "), version);
+  const data = JSON.stringify({ o: decision.outcomes.map((g: boolean) => (g ? "1" : "0")).join(""), u: decision.unconfirmed, v: decision.voided });
+  const inserted = await env.DB.prepare(
+    "INSERT OR IGNORE INTO replays (session_id, player_id, created_at, client_version, shots, goals, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).bind(sessionId, player.id, now, version || null, decision.throws, decision.goals, data).run();
+  if (inserted.meta.changes !== 1) {
+    // the same upload again (a retry after a lost answer) is fine; anything else is not
+    const existing = await env.DB.prepare("SELECT player_id, shots, goals, data FROM replays WHERE session_id = ?").bind(sessionId).first<{ player_id: string; shots: number; goals: number; data: string }>();
+    if (!existing || existing.player_id !== player.id || existing.data !== data) return json({ error: "That replay session already has a replay.", code: "replay_exists", retryable: false }, 409);
+  }
+  return json({ ok: true, verified: true, shots: decision.throws, goals: decision.goals, unconfirmed: decision.unconfirmed });
 }
 
+/** A session is the seed for the hoops of the next shots. A few can be open at a time, and old unused ones are cleared away. */
 async function replaySession(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
   const now = Date.now();
-  // Keep abandoned verification payloads from accumulating indefinitely.
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM replays WHERE created_at < ?").bind(now - 7 * 86_400_000),
-    env.DB.prepare("DELETE FROM replay_sessions WHERE created_at < ?").bind(now - 7 * 86_400_000),
-  ]);
-  const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM replay_sessions WHERE player_id = ? AND created_at > ?").bind(player.id, now - 86_400_000).first<{ n: number }>();
-  if ((recent?.n || 0) >= 100) return bad("Too many replay sessions today.", 429);
+  await cleanupReplays(env, now);
+  const day = await env.DB.prepare("SELECT COUNT(*) AS n FROM replay_sessions WHERE player_id = ? AND created_at > ?").bind(player.id, now - 86_400_000).first<{ n: number }>();
+  if ((day?.n || 0) >= SESSIONS_PER_DAY) return bad("Too many replay sessions today.", 429);
+  const open = await env.DB.prepare("SELECT COUNT(*) AS n FROM replay_sessions WHERE player_id = ? AND used_at IS NULL AND created_at > ?").bind(player.id, now - REPLAY_SESSION_MS).first<{ n: number }>();
+  if ((open?.n || 0) >= OPEN_SESSIONS_MAX) return bad("Too many open replay sessions.", 429);
   const sessionId = crypto.randomUUID();
   const seed = crypto.randomUUID();
-  await env.DB.prepare("INSERT INTO replay_sessions (session_id, player_id, seed, created_at) VALUES (?, ?, ?, ?)")
-    .bind(sessionId, player.id, seed, now).run();
-  return json({ sessionId, seed, expiresAt: now + 30 * 60_000 });
+  await env.DB.prepare("INSERT INTO replay_sessions (session_id, player_id, seed, created_at) VALUES (?, ?, ?, ?)").bind(sessionId, player.id, seed, now).run();
+  return json({ sessionId, seed, expiresAt: now + REPLAY_SESSION_MS });
+}
+
+/** Removes replays and sessions that were never used, and old records. Runs on a schedule and whenever a session is made. */
+export async function cleanupReplays(env: Env, now = Date.now()): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM replays WHERE used_at IS NULL AND created_at < ?").bind(now - CLEANUP_MS),
+    env.DB.prepare("DELETE FROM replays WHERE used_at IS NOT NULL AND used_at < ?").bind(now - 7 * CLEANUP_MS),
+    env.DB.prepare("DELETE FROM replay_sessions WHERE created_at < ?").bind(now - CLEANUP_MS),
+    env.DB.prepare("DELETE FROM score_submissions WHERE updated_at < ?").bind(now - CLEANUP_MS),
+    env.DB.prepare("DELETE FROM entitlement_checks WHERE checked_at < ?").bind(now - 30 * CLEANUP_MS),
+  ]);
 }
 
 async function nickname(request: Request, env: Env): Promise<Response> {
@@ -507,9 +564,8 @@ interface MpPlayer {
   role: MpRole;
   socket?: WebSocket;
   reconnectUntil?: number;
-  matchSeq: number;
-  matchEvent: "none" | "shot" | "result" | "rest";
-  activeShot?: Record<string, unknown>;
+  /** Gives the match to the other player when this one does not come back. */
+  forfeitTimer?: ReturnType<typeof setTimeout>;
 }
 
 interface MpRoom {
@@ -524,10 +580,9 @@ interface MpRoom {
   expiresAt: number;
   startsAt?: number;
   seed?: string;
-  turnPlayerId?: string;
-  scores: Map<string, number>;
-  letters: Map<string, number>;
-  over?: boolean;
+  /** The match once both are ready (see match.js). */
+  match?: ReturnType<typeof createMatch>;
+  timer?: ReturnType<typeof setTimeout>;
 }
 
 interface MpClientMessage {
@@ -547,7 +602,10 @@ export class MultiplayerHub {
   private codeToRoom = new Map<string, string>();
   private quickWaiting = new Map<MpGame, { player: { id: string; nickname: string }; socket: WebSocket; room: MpRoom }>();
 
-  constructor(private state: DurableObjectState) {}
+  private state: DurableObjectState;
+  constructor(state: DurableObjectState) {
+    this.state = state;
+  }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -578,8 +636,6 @@ export class MultiplayerHub {
       players: new Map(),
       createdAt: now,
       expiresAt: now + MP_ROOM_TTL_MS,
-      scores: new Map(),
-      letters: new Map(),
     };
     this.rooms.set(room.id, room);
     this.codeToRoom.set(code, room.id);
@@ -654,13 +710,14 @@ export class MultiplayerHub {
         player.ready = payload.ready === true;
         broadcastLobby(room);
         if (room.players.size === 2 && [...room.players.values()].every((p) => p.ready && p.connected)) {
-          room.startsAt = Date.now() + 3000;
+          const now = Date.now();
+          room.startsAt = now + 3000;
           room.seed = room.seed || crypto.randomUUID();
-          room.turnPlayerId = room.game === "speed" ? undefined : [...room.players.keys()][0];
-          room.scores = new Map([...room.players.keys()].map((id) => [id, 0]));
-          room.letters = new Map([...room.players.keys()].map((id) => [id, 0]));
-          room.over = false;
-          broadcast(room, "start_countdown", { startsAt: room.startsAt, seed: room.seed, countdownSeconds: 3, game: room.game, court: room.court });
+          const ids = [...room.players.keys()];
+          // the server picks who shoots first (HORSE and 21); the apps follow
+          const firstPlayerId = ids[crypto.getRandomValues(new Uint32Array(1))[0] % 2];
+          room.match = createMatch({ game: room.game, seed: room.seed, playerIds: ids, firstPlayerId, now });
+          broadcast(room, "start_countdown", { startsAt: room.startsAt, seed: room.seed, countdownSeconds: 3, game: room.game, court: room.court, firstPlayerId: room.game === "speed" ? null : firstPlayerId, protocol: MP_PROTOCOL });
         }
         break;
       }
@@ -672,52 +729,23 @@ export class MultiplayerHub {
         break;
       }
       case "match_event": {
-        if (room.over || !room.startsAt || Date.now() < room.startsAt) return sendError(ws, msg, "not_started", "The match has not started yet.");
-        const event = payload.event;
-        const seq = Number(payload.seq);
-        if (!event || typeof event !== "object" || !Number.isInteger(seq) || seq <= player.matchSeq || seq > player.matchSeq + 1) return sendError(ws, msg, "bad_match_event", "Match event was out of order.");
-        const kind = String((event as Record<string, unknown>).type || "");
-        if (kind !== "shot" && kind !== "result" && kind !== "rest") return sendError(ws, msg, "bad_match_event", "Match event was invalid.");
-        const previous = player.matchEvent;
-        const allowed = room.game === "speed"
-          ? (kind === "shot" ? previous === "none" : kind === "result" ? previous === "shot" : false)
-          : (kind === "shot" ? (previous === "none" || previous === "rest") : kind === "result" ? previous === "shot" : previous === "result");
-        if (!allowed) return sendError(ws, msg, "bad_match_event", "Match event was not valid for the current turn.");
-        if (kind === "shot") {
-          if (room.game !== "speed" && room.turnPlayerId !== player.id) return sendError(ws, msg, "wrong_turn", "It is not your turn.");
-          if (!Number.isInteger((event as Record<string, unknown>).shotId) || Number((event as Record<string, unknown>).shotId) < 0) return sendError(ws, msg, "bad_match_event", "Shot id was invalid.");
-          const numeric = ["x", "y", "vx", "vy", "width", "height", "floorY", "gs", "hoopX", "hoopY", "hoopL", "hoopR", "boardL", "boardR", "boardT", "boardB"];
-          if (!numeric.every((key) => typeof (event as Record<string, unknown>)[key] === "number" && Number.isFinite((event as Record<string, unknown>)[key]))) return sendError(ws, msg, "bad_match_event", "Shot physics were invalid.");
-          player.activeShot = event as Record<string, unknown>;
+        const m = room.match;
+        const now = Date.now();
+        if (!m || !room.startsAt || now < room.startsAt) return sendError(ws, msg, "not_started", "The match has not started yet.");
+        const event = payload.event as Record<string, unknown> | undefined;
+        const kind = String(event?.type || "");
+        let outcome: { ok: boolean; code?: string; message?: string };
+        if (kind === "shot") outcome = startShot(m, player.id, event, now);
+        else if (kind === "rest") outcome = matchRest(m, player.id, event, now);
+        else return sendError(ws, msg, "bad_match_event", "Match event was invalid.");
+        if (!outcome.ok) {
+          // the app is told why and gets the real state, so it can carry on from it
+          send(ws, "error", { code: outcome.code, message: outcome.message, shotId: event?.shotId ?? null }, msg.requestId);
+          if (player.socket) send(player.socket, "match_state", { state: snapshot(m) });
+          return;
         }
-        if (kind === "result") {
-          const resultT = (event as Record<string, unknown>).resultT;
-          if (typeof resultT !== "number" || !Number.isFinite(resultT) || !player.activeShot) return sendError(ws, msg, "bad_match_event", "Match result was invalid.");
-          if (!Number.isInteger((event as Record<string, unknown>).shotId) || Number((event as Record<string, unknown>).shotId) < 0) return sendError(ws, msg, "bad_match_event", "Match result shot id was invalid.");
-          if ((event as Record<string, unknown>).shotId !== player.activeShot.shotId) return sendError(ws, msg, "bad_match_event", "Match result did not match the active shot.");
-          const expectedGoal = simulateReplayShot({ ...player.activeShot, t: 0, resultT, goal: false }).crossed;
-          if ((event as Record<string, unknown>).goal !== expectedGoal) return sendError(ws, msg, "bad_match_event", "Server rejected the reported result.");
-          const goal = expectedGoal;
-          if (room.game === "speed" && goal) room.scores.set(player.id, (room.scores.get(player.id) || 0) + 1);
-          if (room.game === "t21" && goal) room.scores.set(player.id, (room.scores.get(player.id) || 0) + ((event as Record<string, unknown>).far === true ? 2 : 1));
-          if (room.game === "horse" && !goal) room.letters.set(player.id, (room.letters.get(player.id) || 0) + 1);
-          (event as Record<string, unknown>).score = room.scores.get(player.id) || 0;
-          (event as Record<string, unknown>).letters = room.letters.get(player.id) || 0;
-          const finished = room.game === "speed" ? (room.scores.get(player.id) || 0) >= 10 : room.game === "t21" ? (room.scores.get(player.id) || 0) >= 21 : (room.letters.get(player.id) || 0) >= 5;
-          if (finished) room.over = true;
-          player.activeShot = undefined;
-        }
-        if (kind === "result" && (typeof (event as Record<string, unknown>).goal !== "boolean" || typeof (event as Record<string, unknown>).far !== "boolean")) return sendError(ws, msg, "bad_match_event", "Match result was invalid.");
-        if (kind === "rest" && (typeof (event as Record<string, unknown>).nx !== "number" || Number((event as Record<string, unknown>).nx) < 0 || Number((event as Record<string, unknown>).nx) > 1)) return sendError(ws, msg, "bad_match_event", "Rest position was invalid.");
-        if (kind === "rest" && room.game !== "speed") {
-          const peer = peerOf(room, player.id);
-          if (!peer) return sendError(ws, msg, "bad_match_event", "The opponent is missing.");
-          room.turnPlayerId = peer.id;
-        }
-        player.matchSeq = seq;
-        player.matchEvent = room.game === "speed" && kind === "result" ? "none" : kind as "shot" | "result" | "rest";
-        const peer = peerOf(room, player.id);
-        if (peer?.socket && peer.connected) send(peer.socket, "match_event", { seq, event });
+        broadcastState(room);
+        this.armMatch(room);
         break;
       }
       case "leave": {
@@ -740,12 +768,26 @@ export class MultiplayerHub {
     this.disconnect(ws);
   }
 
+  /** Looks again when the next shot is decided (or a rest is late). */
+  private armMatch(room: MpRoom): void {
+    if (room.timer) clearTimeout(room.timer);
+    room.timer = undefined;
+    const m = room.match;
+    const due = m ? nextDue(m) : null;
+    if (!m || due === null) return;
+    room.timer = setTimeout(() => {
+      room.timer = undefined;
+      if (advance(m, Date.now())) broadcastState(room);
+      this.armMatch(room);
+    }, Math.max(0, due - Date.now()));
+  }
+
   private connectQuick(player: { id: string; nickname: string }, game: MpGame, socket: WebSocket): void {
     const waiting = this.quickWaiting.get(game);
     if (waiting && waiting.player.id !== player.id && waiting.socket.readyState === 1) {
       this.quickWaiting.delete(game);
       const room = waiting.room;
-      room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "answerer", socket, matchSeq: -1, matchEvent: "none" });
+      room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "answerer", socket });
       this.rooms.set(room.id, room);
       sendPeerFound(room);
       broadcastLobby(room);
@@ -758,11 +800,9 @@ export class MultiplayerHub {
       game,
       court: "Street",
       hostId: player.id,
-      players: new Map([[player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "offerer", socket, matchSeq: -1, matchEvent: "none" }]]),
+      players: new Map([[player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "offerer", socket }]]),
       createdAt: now,
       expiresAt: now + MP_ROOM_TTL_MS,
-      scores: new Map(),
-      letters: new Map(),
     };
     this.rooms.set(room.id, room);
     this.quickWaiting.set(game, { player, socket, room });
@@ -782,13 +822,16 @@ export class MultiplayerHub {
       existing.socket = socket;
       existing.connected = true;
       existing.reconnectUntil = undefined;
+      if (existing.forfeitTimer) clearTimeout(existing.forfeitTimer);
+      existing.forfeitTimer = undefined;
       broadcast(room, "peer_reconnected", { playerId: player.id }, player.id);
       broadcastLobby(room);
+      if (room.match) send(socket, "match_state", { state: snapshot(room.match) });
       return;
     }
     if (room.players.size >= 2) return send(socket, "error", { code: "room_full", message: "Two players are already in the room." });
     const role: MpRole = room.players.size === 0 ? "offerer" : "answerer";
-    room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role, socket, matchSeq: -1, matchEvent: "none" });
+    room.players.set(player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role, socket });
     if (room.players.size === 1) {
       room.hostId = player.id;
       send(socket, "room_created", { roomId: room.id, code: room.code, expiresAt: room.expiresAt });
@@ -812,6 +855,15 @@ export class MultiplayerHub {
     }
     broadcast(room, "peer_disconnected", { playerId: player.id, reconnectUntil: player.reconnectUntil }, player.id);
     broadcastLobby(room);
+    if (room.match && !room.match.over) {
+      player.forfeitTimer = setTimeout(() => {
+        if (player.connected || !room.match || room.match.over) return;
+        if (forfeit(room.match, player.id, "lost the connection")) {
+          broadcastState(room);
+          if (room.timer) clearTimeout(room.timer);
+        }
+      }, MP_RECONNECT_MS);
+    }
   }
 
   private leave(room: MpRoom, playerId: string): void {
@@ -836,6 +888,8 @@ export class MultiplayerHub {
   }
 
   private deleteRoom(room: MpRoom): void {
+    if (room.timer) clearTimeout(room.timer);
+    for (const p of room.players.values()) if (p.forfeitTimer) clearTimeout(p.forfeitTimer);
     this.rooms.delete(room.id);
     if (room.code) this.codeToRoom.delete(room.code);
     const waiting = this.quickWaiting.get(room.game);
@@ -887,6 +941,10 @@ function broadcast(room: MpRoom, type: string, payload: Record<string, unknown>,
   for (const player of room.players.values()) {
     if (player.id !== exceptId && player.socket && player.connected) send(player.socket, type, payload);
   }
+}
+
+function broadcastState(room: MpRoom): void {
+  if (room.match) broadcast(room, "match_state", { state: snapshot(room.match) });
 }
 
 function broadcastLobby(room: MpRoom): void {

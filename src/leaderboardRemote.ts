@@ -1,5 +1,4 @@
-import { getStats } from "./stats";
-import { getBestScore } from "./settings";
+import { getScore } from "./settings";
 import {
   leaderboardDeleteAccount,
   leaderboardLoad,
@@ -12,7 +11,7 @@ import {
 } from "./ipc";
 import { syncNow } from "./profileSync";
 import { leaderboardSessionToken } from "./ipc";
-import { replayPayload, resetReplay, setReplaySession } from "./replay";
+import { hasReplaySession, replayBusy, replayPayload, replaySubmitting, resetReplay, setReplaySession } from "./replay";
 import type { LbBackend, LbBoard, LbProviderId, LbTab, LbUser } from "./leaderboard";
 
 const SYNC_MS = 30_000;
@@ -80,38 +79,73 @@ export class RemoteLeaderboard implements LbBackend {
     return leaderboardLoad(this.serverUrl, tab);
   }
 
+  /** Sends the shots of this session and then the score. The score is only counted by the server together with a replay it has verified. */
   submitScore(force = false): void {
     if (!this.me || this.syncing) return;
     const now = Date.now();
     if (!force && now - this.lastSync < SYNC_MS) return;
+    if (replayBusy()) {
+      // a shot is in the air: wait until it is decided
+      window.setTimeout(() => this.submitScore(force), 2500);
+      return;
+    }
     this.lastSync = now;
     this.syncing = true;
-    const stats = getStats();
-    void this.submitReplay()
-      .then((replaySessionId) => replaySessionId ? leaderboardSubmitScore(this.serverUrl, getBestScore(), stats.bestStreak, stats.throws, stats.goals, replaySessionId).then(() => { resetReplay(); return this.prepareReplaySession(); }) : undefined)
+    void this.sync()
       .catch(() => {
-        /* offline play should never care */
+        /* offline play should never care: the shots are kept and sent next time */
       })
       .finally(() => {
         this.syncing = false;
       });
   }
 
-  private async submitReplay(): Promise<string | null> {
-    const payload = replayPayload(__APP_VERSION__);
-    const token = await leaderboardSessionToken();
-    if (!payload || !token) return null;
-    const response = await fetch(`${this.serverUrl}/replay`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
-    if (!response.ok) return null;
-    return payload.sessionId;
+  private retryTimer = 0;
+  private retryLater(): void {
+    window.clearTimeout(this.retryTimer);
+    this.retryTimer = window.setTimeout(() => this.submitScore(true), SYNC_MS + 5_000);
   }
 
-  private async prepareReplaySession(): Promise<void> {
+  private async sync(): Promise<void> {
+    if (!hasReplaySession()) {
+      await this.prepareReplaySession();
+      return;
+    }
+    const payload = replayPayload(__APP_VERSION__);
+    if (!payload) return;
+    replaySubmitting(true);
+    try {
+      const token = await leaderboardSessionToken();
+      if (!token) return;
+      const upload = await fetch(`${this.serverUrl}/replay`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+      if (!upload.ok) {
+        // a server problem: keep the shots and try again; a refusal of this replay: start a new session
+        if (upload.status >= 500 || upload.status === 429) this.retryLater();
+        else await this.newSession();
+        return;
+      }
+      const result = await leaderboardSubmitScore(this.serverUrl, getScore(), payload.sessionId);
+      if (!result) return;
+      if (result.verified) await this.newSession();
+      else if (result.retryable) this.retryLater();
+      else await this.newSession(); // the server will not count this replay: do not carry it around
+    } finally {
+      replaySubmitting(false);
+    }
+  }
+
+  /** The shots are counted (or can never be): a new session starts, and the next hoop is built from its seed. */
+  private async newSession(): Promise<void> {
+    resetReplay();
+    await this.prepareReplaySession();
+  }
+
+  async prepareReplaySession(): Promise<void> {
     const token = await leaderboardSessionToken();
     if (!token) return;
     const response = await fetch(`${this.serverUrl}/replay/session`, { method: "POST", headers: { authorization: `Bearer ${token}`, accept: "application/json" } });
     if (!response.ok) return;
-    const data = await response.json() as { sessionId?: string; seed?: string };
+    const data = (await response.json()) as { sessionId?: string; seed?: string };
     if (data.sessionId && data.seed) setReplaySession(data.sessionId, data.seed);
   }
 }

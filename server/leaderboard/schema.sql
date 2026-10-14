@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS scores (
   throws INTEGER NOT NULL DEFAULT 0,
   goals INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL,
-  version TEXT
+  version TEXT,
+  streak INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS weekly_scores (
@@ -75,3 +76,35 @@ CREATE TABLE IF NOT EXISTS donate_events (
   clicks INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (variant, day)
 );
+
+CREATE TABLE IF NOT EXISTS replay_sessions (
+  session_id TEXT PRIMARY KEY,
+  player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  seed TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  used_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS replay_sessions_player_idx ON replay_sessions(player_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS replays (
+  session_id TEXT PRIMARY KEY,
+  player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  client_version TEXT,
+  shots INTEGER NOT NULL,
+  goals INTEGER NOT NULL,
+  data TEXT NOT NULL,
+  used_at INTEGER,
+  claim TEXT
+);
+CREATE INDEX IF NOT EXISTS replays_player_idx ON replays(player_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS replays_unused_idx ON replays(player_id, used_at);
+
+CREATE TABLE IF NOT EXISTS entitlement_checks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  checked_at INTEGER NOT NULL,
+  valid_count INTEGER NOT NULL,
+  all_access INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS entitlement_checks_player_idx ON entitlement_checks(player_id, checked_at DESC);
