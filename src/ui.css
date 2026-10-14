@@ -341,3 +341,7 @@
 #ui .pb.hero em{display:block;font-style:normal;font-size:12px;color:#3a2a1c}
 #ui .menu .mrow{display:flex;gap:4px}#ui .menu .mrow .pb{flex:1}
 #ui .donate-link{display:block;margin:6px auto 0;background:none;color:#ff9a45;text-decoration:underline;font-size:13px;padding:2px 6px}
+
+.notes{padding:4px 2px 6px;font-size:12px;line-height:1.35}
+.notes ul{margin:2px 0 0;padding-left:16px}
+.notes li{margin:1px 0}

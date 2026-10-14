@@ -748,7 +748,7 @@ ${
       `<button class="pb full mi${extra}" data-a="${action}">${menuIcon(icon as never)}<span>${label}</span><small>${hint}</small></button>`;
     return `<div class="px menu" data-hit style="left:${Math.max(8, left)}px;bottom:${bottom}px;width:${W}px">
 <div class="row" style="padding:2px 0"><span class="lb hn">Score</span><b class="score">${getScore()}</b></div>
-${this.update ? `<button class="pb buy full" data-a="update">Update available: v${this.update.version}</button>` : ""}
+${this.update ? `<button class="pb buy full" data-a="update">Update available: v${this.update.version}</button>${this.update.notes.length ? `<div class="notes"><div class="hn">What's new</div><ul>${this.update.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}` : ""}
 ${MULTIPLAYER_MOCK ? `<button class="pb pri full mi hero" data-a="online">${menuIcon("online")}<div><span>Play online</span><em>Speedball · HORSE · 21</em></div><small>beta ›</small></button>` : ""}
 <div class="sec">You</div>
 ${LEADERBOARD_ON && backend.user() ? item("profile", "prof", "Profile", "›") : ""}

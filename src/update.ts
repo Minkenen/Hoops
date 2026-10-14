@@ -7,6 +7,8 @@ const VERSION_URL = "https://minkenen.github.io/Hoops/version.json";
 export interface UpdateInfo {
   version: string;
   url: string;
+  /** What the update contains, a few short lines. */
+  notes: string[];
 }
 
 /** Is a newer than b? Compares 1.2.3 style numbers part by part. */
@@ -32,12 +34,13 @@ export async function checkForUpdateDetailed(): Promise<UpdateCheck> {
   try {
     const [current, res] = await Promise.all([getVersion(), fetch(`${VERSION_URL}?t=${Date.now()}`, { cache: "no-store" })]);
     if (!res.ok) return { kind: "error" };
-    const j = (await res.json()) as { version?: unknown; url?: unknown; mac?: unknown; windows?: unknown };
+    const j = (await res.json()) as { version?: unknown; url?: unknown; mac?: unknown; windows?: unknown; notes?: unknown };
     if (typeof j.version !== "string") return { kind: "error" };
     if (!newer(j.version, current)) return { kind: "latest", current };
     const mac = /Mac/i.test(navigator.platform);
     const url = [mac ? j.mac : j.windows, j.url].find(trusted);
-    return url ? { kind: "new", info: { version: j.version, url } } : { kind: "error" };
+    const notes = Array.isArray(j.notes) ? j.notes.filter((n): n is string => typeof n === "string").map((n) => n.slice(0, 110)).slice(0, 8) : [];
+    return url ? { kind: "new", info: { version: j.version, url, notes } } : { kind: "error" };
   } catch {
     return { kind: "error" };
   }
