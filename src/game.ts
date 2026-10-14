@@ -740,7 +740,8 @@ export class Game {
       if (!this.onlineMatch && this.hoop) {
         const fx = this.hoop.x0 + this.hoop.sprite.frontX;
         const bx = this.hoop.x0 + this.hoop.sprite.backX;
-          replayShot(b.x, b.y, b.vx, b.vy, this.artW, this.artH, this.floorY, b.gs, this.hoop.x0 + this.hoop.sprite.rimCx, this.hoop.rimY, Math.min(fx, bx), Math.max(fx, bx));
+          const board = this.hoop.sprite.hull.map(([x, y]) => [x + this.hoop!.x0, y + this.hoop!.y0] as const);
+          replayShot(b.x, b.y, b.vx, b.vy, this.artW, this.artH, this.floorY, b.gs, this.hoop.x0 + this.hoop.sprite.rimCx, this.hoop.rimY, Math.min(fx, bx), Math.max(fx, bx), Math.min(...board.map(([x]) => x)), Math.max(...board.map(([x]) => x)), Math.min(...board.map(([, y]) => y)), Math.max(...board.map(([, y]) => y)));
       }
       b.t = 0;
       b.scored = false;
