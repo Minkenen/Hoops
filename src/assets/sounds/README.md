@@ -17,6 +17,8 @@ Supported formats: `.wav`, `.mp3`, `.ogg`, `.m4a`. If a file is missing, nothing
 | `cheer`      | Goal! (exists: 8-bit power-up, freesound)        |
 | `boom`       | Goal! Plays at the same time (8-bit explosion)   |
 | `crowd`      | Goal! Crowd cheering (8-bit filtered)            |
+| `ignite`     | The ball catches fire (three goals in a row)     |
+| `fireball`   | The spoken word "Fireball", a layer on `ignite` |
 | `gasp`       | Near miss: the crowd sometimes gasps when the ball hits the rim without going in |
 | `milestone`  | Milestone: 25, 50, 100 goals and then every 100  |
 | `levelup`    | Milestone: plays together with `milestone` (8-bit level-up) |

@@ -17,6 +17,7 @@ export type Sfx =
   | "achievement"
   | "achievement2"
   | "ignite"
+  | "fireball"
   | "extinguish"
   | "gasp"
   | "crowd"
@@ -135,6 +136,7 @@ const GROUP: Record<Sfx, "sfxBounce" | "sfxShoot" | "sfxGoal" | "sfxMilestone" |
   achievement: "sfxAchievement",
   achievement2: "sfxAchievement",
   ignite: "sfxGoal",
+  fireball: "sfxGoal",
   extinguish: "sfxGoal",
   gasp: "sfxGoal",
   appear: "sfxUi",
@@ -158,6 +160,7 @@ const TRIM: Partial<Record<Sfx, number>> = {
   crowd: 0.56, // -15.8
   gasp: 0.8, // -21.4
   ignite: 0.45, // -11.1
+  fireball: 0.6, // -13.7: the spoken word "Fireball", a layer on the ignite sound at the same loudness (-18 LUFS after the trim)
   extinguish: 0.24, // -7.6, peaks at 0 dB
   levelup: 0.29, // -7.3, peaks at 0 dB
   milestone: 1.8, // -25.2, peak -16.7 dB

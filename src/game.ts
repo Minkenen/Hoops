@@ -447,7 +447,10 @@ export class Game {
         if (lit) {
           this.fire.relight();
           const streak = m.turn === "me" ? m.streakMe : m.streakOpp;
-          if (streak === 3 && (this.shot || m.waitingForPeer)) play("ignite");
+          if (streak === 3 && (this.shot || m.waitingForPeer)) {
+            play("ignite");
+            play("fireball");
+          }
         }
       }
     }
@@ -1425,6 +1428,7 @@ export class Game {
       this.fire.mode = settings.fireStyle;
       this.fire.ignite();
       play("ignite");
+      play("fireball");
     }
     this.start();
   }
@@ -1533,6 +1537,7 @@ export class Game {
       this.fire.mode = settings.fireStyle;
       this.fire.ignite();
       play("ignite");
+      play("fireball");
     }
     h.net.impulse(rnd(-0.25, 0.25), 0.3);
     this.hideAt = performance.now() + 1500;
