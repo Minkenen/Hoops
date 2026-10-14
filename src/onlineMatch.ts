@@ -214,6 +214,9 @@ export class OnlineMatch {
   private onPeer(d: unknown): void {
     if (typeof d !== "object" || d === null) return;
     const m = d as { type?: string; payload?: { shotId?: unknown; goal?: unknown; far?: unknown; nx?: unknown; score?: unknown; letters?: unknown } & Record<string, unknown> };
+    // Shot/result/rest are authoritative server events. The direct channel may
+    // still carry visual ball and sound updates, but cannot change match state.
+    if (m.type === "shot" || m.type === "result" || m.type === "rest") return;
     if (m.type === "result" && !this.over) {
       if (this.game !== "speed" && (this.turn !== "opp" || this.peerBusy)) return;
       const shotId = m.payload?.shotId;
@@ -275,7 +278,7 @@ export class OnlineMatch {
 
   private onServer(m: MpServerMessage): void {
     if (m.type === "match_event") {
-      this.onPeer(m.payload.event);
+      this.onServerEvent(m.payload.event);
     } else if (m.type === "peer_disconnected") {
       this.peerAway = true;
       this.host.changed();
@@ -285,6 +288,40 @@ export class OnlineMatch {
     } else if (m.type === "peer_left" && !this.over) {
       this.finish(true, `${this.opponent} left the match`);
       this.host.changed();
+    }
+  }
+
+  private onServerEvent(d: unknown): void {
+    this.onPeerEvent(d);
+  }
+
+  private onPeerEvent(d: unknown): void {
+    if (typeof d !== "object" || d === null) return;
+    const m = d as { type?: string; payload?: Record<string, unknown> };
+    if (m.type === "result" && !this.over) {
+      const shotId = m.payload?.shotId;
+      if (typeof shotId !== "number" || !Number.isInteger(shotId) || shotId !== this.peerShotId || shotId <= this.peerResultId) return;
+      this.peerResultId = shotId;
+      const goal = m.payload?.goal === true;
+      this.apply("opp", goal, m.payload?.far === true);
+      if (typeof m.payload?.score === "number") this.scoreOpp = m.payload.score;
+      if (typeof m.payload?.letters === "number") this.lettersOpp = m.payload.letters;
+      this.checkEnd();
+      if (this.game !== "speed") { this.peerBusy = true; window.clearTimeout(this.busyTimer); }
+      this.host.toast(goal ? `${this.opponent} scored` : `${this.opponent} missed`);
+      this.host.peerShotEnded(goal);
+      this.host.changed();
+    } else if (m.type === "shot" && !this.over) {
+      const shotId = m.payload?.shotId;
+      if (typeof shotId !== "number" || !Number.isInteger(shotId) || shotId <= this.peerShotId) return;
+      this.peerShotId = shotId;
+      this.host.peerShotStarted();
+      this.host.changed();
+    } else if (m.type === "rest" && m.payload && typeof m.payload.nx === "number") {
+      if (this.game === "speed" || this.turn !== "opp" || !this.peerBusy) return;
+      window.clearTimeout(this.busyTimer); this.peerBusy = false;
+      if (!this.over) this.turn = "me";
+      this.host.peerRest(m.payload.nx); this.host.changed();
     }
   }
 

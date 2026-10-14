@@ -338,6 +338,8 @@ async function replay(request: Request, env: Env): Promise<Response> {
 async function replaySession(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
   const now = Date.now();
+  const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM replay_sessions WHERE player_id = ? AND created_at > ?").bind(player.id, now - 86_400_000).first<{ n: number }>();
+  if ((recent?.n || 0) >= 100) return bad("Too many replay sessions today.", 429);
   const sessionId = crypto.randomUUID();
   const seed = crypto.randomUUID();
   await env.DB.prepare("INSERT INTO replay_sessions (session_id, player_id, seed, created_at) VALUES (?, ?, ?, ?)")
@@ -643,6 +645,7 @@ export class MultiplayerHub {
           : (kind === "shot" ? (previous === "none" || previous === "rest") : kind === "result" ? previous === "shot" : previous === "result");
         if (!allowed) return sendError(ws, msg, "bad_match_event", "Match event was not valid for the current turn.");
         if (kind === "shot") {
+          if (!Number.isInteger((event as Record<string, unknown>).shotId) || Number((event as Record<string, unknown>).shotId) < 0) return sendError(ws, msg, "bad_match_event", "Shot id was invalid.");
           const numeric = ["x", "y", "vx", "vy", "width", "height", "floorY", "gs", "hoopX", "hoopY", "hoopL", "hoopR", "boardL", "boardR", "boardT", "boardB"];
           if (!numeric.every((key) => typeof (event as Record<string, unknown>)[key] === "number" && Number.isFinite((event as Record<string, unknown>)[key]))) return sendError(ws, msg, "bad_match_event", "Shot physics were invalid.");
           player.activeShot = event as Record<string, unknown>;
@@ -650,6 +653,7 @@ export class MultiplayerHub {
         if (kind === "result") {
           const resultT = (event as Record<string, unknown>).resultT;
           if (typeof resultT !== "number" || !Number.isFinite(resultT) || !player.activeShot) return sendError(ws, msg, "bad_match_event", "Match result was invalid.");
+          if (!Number.isInteger((event as Record<string, unknown>).shotId) || Number((event as Record<string, unknown>).shotId) < 0) return sendError(ws, msg, "bad_match_event", "Match result shot id was invalid.");
           if ((event as Record<string, unknown>).shotId !== player.activeShot.shotId) return sendError(ws, msg, "bad_match_event", "Match result did not match the active shot.");
           const expectedGoal = simulateReplayShot({ ...player.activeShot, t: 0, resultT, goal: false }).crossed;
           if ((event as Record<string, unknown>).goal !== expectedGoal) return sendError(ws, msg, "bad_match_event", "Server rejected the reported result.");
