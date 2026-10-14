@@ -33,11 +33,11 @@ export const THEME_CHECKOUT_URLS: Partial<Record<ThemeId, string>> = {
 };
 
 /**
- * The leaderboard server. A release build always has it; a development run or the browser build only when VITE_LEADERBOARD_URL is set
+ * The leaderboard server. A release build (the app and the browser version alike) always has it; a development run only when VITE_LEADERBOARD_URL is set
  * (so that running the app while developing never writes to the live board).
  */
 export const LEADERBOARD_SERVER_URL: string = (
-  (import.meta.env.VITE_LEADERBOARD_URL as string | undefined) ?? (import.meta.env.DEV || import.meta.env.VITE_TARGET === "web" ? "" : "https://hoops-leaderboard.hoopsgame.workers.dev")
+  (import.meta.env.VITE_LEADERBOARD_URL as string | undefined) ?? (import.meta.env.DEV ? "" : "https://hoops-leaderboard.hoopsgame.workers.dev")
 )
   .trim()
   .replace(/\/$/, "");

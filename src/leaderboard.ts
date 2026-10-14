@@ -55,7 +55,7 @@ export function cleanNickname(v: string): string | null {
 const USE_MOCK_LEADERBOARD = import.meta.env.DEV && import.meta.env.VITE_LEADERBOARD_MOCK === "1";
 
 /** The leaderboard is shown in local mock mode, or in a release only when it is switched on at build time (VITE_LEADERBOARD=1). */
-export const LEADERBOARD_ON: boolean = USE_MOCK_LEADERBOARD || (import.meta.env.DEV || import.meta.env.VITE_TARGET === "web" ? import.meta.env.VITE_LEADERBOARD === "1" : import.meta.env.VITE_LEADERBOARD !== "0");
+export const LEADERBOARD_ON: boolean = USE_MOCK_LEADERBOARD || (import.meta.env.DEV ? import.meta.env.VITE_LEADERBOARD === "1" : import.meta.env.VITE_LEADERBOARD !== "0");
 
 const NAMES = ["DunkMaster", "SwishQueen", "BallBot", "CourtKid", "NetNinja", "RimRider", "HoopHero", "AirMia"];
 const FRIENDS = ["Mia", "Leo", "Sam", "Noa"];

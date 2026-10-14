@@ -1,4 +1,5 @@
 // Browser version of ipc.ts: one "monitor" the size of the page, no native windows, no keychain.
+import { LEADERBOARD_SERVER_URL } from "./config";
 import type { LbBoard, LbProviderId, LbTab, LbUser } from "./leaderboard";
 import type { Handoff, LicenseActivation, MonitorInfo, Rect, ScoreResult } from "./ipc";
 
@@ -25,7 +26,7 @@ export const setOverFullscreen = async (_on: boolean): Promise<void> => {};
 export const openExternal = async (url: string): Promise<void> => {
   window.open(url, "_blank", "noopener");
 };
-const SERVER = ((import.meta.env.VITE_LEADERBOARD_URL as string | undefined) ?? "").trim().replace(/\/$/, "");
+const SERVER = LEADERBOARD_SERVER_URL;
 const TOKEN_KEY = "hoops.lbtoken";
 export const WEB_PLAY_URL = "https://minkenen.github.io/Hooperly/play/";
 export const RESUME_KEY = "hoops.onb.resume";

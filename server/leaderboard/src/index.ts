@@ -47,6 +47,8 @@ interface Env {
 type Provider = "google";
 
 const WEB_REDIRECT = "https://minkenen.github.io/Hooperly/play/";
+/** The web game's earlier address (it now redirects): a sign-in that started there still comes back. */
+const WEB_REDIRECTS = [WEB_REDIRECT, "https://minkenen.github.io/Hoops/play/"];
 const LS_STORE_ID = 495291;
 /** Lemon Squeezy product ids (public, the license API needs no key). */
 const LICENSED: Record<number, { unlock: "all" | "theme"; theme: string }> = {
@@ -150,7 +152,7 @@ async function authStart(env: Env, url: URL): Promise<Response> {
   const provider = url.searchParams.get("provider");
   const redirectUri = url.searchParams.get("redirect_uri") || "";
   if (provider !== "google") return bad("Unsupported provider.");
-  if (!redirectUri.startsWith("http://127.0.0.1:") && redirectUri !== WEB_REDIRECT) return bad("Unsupported redirect.");
+  if (!redirectUri.startsWith("http://127.0.0.1:") && !WEB_REDIRECTS.includes(redirectUri)) return bad("Unsupported redirect.");
   const state = await signJwt(env, { provider, redirectUri, exp: Math.floor(Date.now() / 1000) + 600 });
   const next = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   next.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
@@ -170,7 +172,7 @@ async function authCallback(env: Env, url: URL): Promise<Response> {
   const token = await signJwt(env, { playerId: player.id, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 90 });
   const redirect = new URL(state.redirectUri);
   // The desktop app gets the token in the query of its own loopback address; the web page gets it in the fragment, which never reaches a server.
-  if (state.redirectUri === WEB_REDIRECT) redirect.hash = `token=${token}`;
+  if (WEB_REDIRECTS.includes(state.redirectUri)) redirect.hash = `token=${token}`;
   else redirect.searchParams.set("token", token);
   return Response.redirect(redirect.toString(), 302);
 }
