@@ -923,16 +923,17 @@ ${this.lbError ? `<div class="err">${esc(this.lbError)}</div>` : ""}
     }
   }
 
-  /** The big All Access button, with what it saves compared to buying the locked themes one by one. */
+  /** The big All Access offer: the real price of the locked themes crossed out, the price of All Access, what it saves, one button. */
   private allAccessButton(): string {
     const left = THEMES.filter((t) => t.price !== null && !isOwned(t.id)).length;
     const sum = left * PRICE_VALUE;
     const save = sum - ALL_ACCESS_VALUE;
-    const line =
-      save >= 1
-        ? `Save $${save.toFixed(2)} (${Math.round((save / sum) * 100)}%) compared to buying ${left} themes one by one`
-        : "Every theme, one payment, and the ones to come";
-    return `<button class="pb buy allacc" data-a="premium"><span class="ah">${this.lockIcon()} Unlock All Access ${ALL_ACCESS_PRICE}</span><small>${line}</small></button>`;
+    const money = (n: number): string => `$${n.toFixed(2)}`;
+    if (save < 1) {
+      return `<button class="pb allacc" data-a="premium"><span class="aa-top">ALL ACCESS</span><span class="aa-price">${ALL_ACCESS_PRICE}</span><span class="aa-cta">Unlock everything</span><span class="aa-note">Every theme, one payment, no subscription</span></button>`;
+    }
+    const pct = Math.round((save / sum) * 100);
+    return `<button class="pb allacc" data-a="premium"><span class="aa-badge">BEST VALUE</span><span class="aa-top">ALL ACCESS &middot; ${left} THEME${left === 1 ? "" : "S"}</span><span class="aa-price"><s>${money(sum)}</s> ${ALL_ACCESS_PRICE}</span><span class="aa-save">SAVE ${pct}% &middot; ${money(save)}</span><span class="aa-cta">Unlock everything</span><span class="aa-note">One payment &middot; No subscription</span></button>`;
   }
 
   private premiumDialogHtml(): string {
