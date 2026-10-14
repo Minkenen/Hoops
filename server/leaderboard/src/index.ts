@@ -56,6 +56,7 @@ const MP_RECONNECT_MS = 15_000;
 const MP_ROOM_TTL_MS = 10 * 60_000;
 const MP_GAMES = new Set(["speed", "horse", "t21"]);
 const MP_COURTS = new Set(["Street", "Gym", "Arena"]);
+const MP_PROTOCOL = "2";
 
 const allowedOrigin = (origin: string): boolean =>
   origin === "https://minkenen.github.io" ||
@@ -565,6 +566,7 @@ export class MultiplayerHub {
     const player = { id: request.headers.get("x-player-id") || "", nickname: request.headers.get("x-player-nickname") || "" };
     if (!player.id || !player.nickname) return bad("Sign in before playing online.", 401);
     const mode = url.searchParams.get("mode") || "";
+    if (url.searchParams.get("protocol") !== MP_PROTOCOL) return bad("This multiplayer client is out of date. Update Hoops.", 426);
     const game = (url.searchParams.get("game") || "speed") as MpGame;
     let code = normalizeRoomCode(url.searchParams.get("code") || "");
     if (mode !== "quick" && mode !== "room") return bad("Unsupported multiplayer mode.");

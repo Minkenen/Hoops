@@ -2,6 +2,7 @@ import { leaderboardSessionToken } from "./ipc";
 import type { GameId } from "./multiplayerMock";
 
 export type MpSignalKind = "offer" | "answer" | "ice" | "renegotiate";
+export const MP_PROTOCOL = "2";
 export type MpServerMessage =
   | { type: "room_created"; payload: { roomId: string; code: string; expiresAt: number } }
   | { type: "searching"; payload: { game: GameId; estimatedSeconds: number } }
@@ -107,7 +108,7 @@ export class MultiplayerConnection {
     const token = await this.token();
     this.close();
     const sep = path.includes("?") ? "&" : "?";
-    const ws = new WebSocket(`${this.baseWs()}${path}${sep}token=${encodeURIComponent(token)}`);
+    const ws = new WebSocket(`${this.baseWs()}${path}${sep}protocol=${MP_PROTOCOL}&token=${encodeURIComponent(token)}`);
     this.ws = ws;
     ws.onmessage = (event) => {
       try {
