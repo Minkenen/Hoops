@@ -22,9 +22,7 @@ export class RemoteLeaderboard implements LbBackend {
   private lastSync = 0;
   private syncing = false;
 
-  constructor(private serverUrl: string) {
-    void this.refreshUser();
-  }
+  constructor(private serverUrl: string) {}
 
   user(): LbUser | null {
     return this.me;
@@ -84,7 +82,7 @@ export class RemoteLeaderboard implements LbBackend {
     this.syncing = true;
     const stats = getStats();
     void this.submitReplay()
-      .then((replaySessionId) => replaySessionId ? leaderboardSubmitScore(this.serverUrl, getBestScore(), stats.bestStreak, stats.throws, stats.goals, replaySessionId).then(() => resetReplay()) : undefined)
+      .then((replaySessionId) => replaySessionId ? leaderboardSubmitScore(this.serverUrl, getBestScore(), stats.bestStreak, stats.throws, stats.goals, replaySessionId).then(() => { resetReplay(); return this.prepareReplaySession(); }) : undefined)
       .catch(() => {
         /* offline play should never care */
       })
