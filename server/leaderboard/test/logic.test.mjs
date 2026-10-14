@@ -1,33 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanNickname, defaultNickname, nicknameDecision, nicknameLower, scoreDecision, weekKey } from "../src/logic.js";
+import { cleanNickname, defaultNickname, nicknameDecision, nicknameLower, versionAtLeast, weekKey } from "../src/logic.js";
 
 test("weekKey starts on Monday UTC", () => {
   assert.equal(weekKey(Date.UTC(2026, 9, 12, 0, 0, 0)), "2026-10-12");
   assert.equal(weekKey(Date.UTC(2026, 9, 18, 23, 59, 0)), "2026-10-12");
 });
 
-test("scoreDecision rejects non-integers and inconsistent stats", () => {
-  assert.equal(scoreDecision({ score: 1.5, bestStreak: 1, throws: 2, goals: 1 }, null).ok, false);
-  assert.equal(scoreDecision({ score: 3, bestStreak: 1, throws: 2, goals: 1 }, null).ok, false);
-});
-
-test("scoreDecision rate limits and checks lifetime deltas", () => {
-  const previous = { best_score: 10, best_streak: 1, throws: 10, goals: 10, updated_at: 1_000_000 };
-  assert.equal(scoreDecision({ score: 11, bestStreak: 1, throws: 11, goals: 11 }, previous, 1_010_000).ok, false);
-  assert.equal(scoreDecision({ score: 500, bestStreak: 1, throws: 500, goals: 500 }, previous, 1_120_000).ok, false);
-});
-
-test("scoreDecision rejects impossible counter changes", () => {
-  const previous = { best_score: 10, best_streak: 2, throws: 10, goals: 10, updated_at: 1_000_000 };
-  assert.equal(scoreDecision({ score: 10, bestStreak: 2, throws: 9, goals: 9 }, previous, 1_100_000).ok, false);
-  assert.equal(scoreDecision({ score: 11, bestStreak: 2, throws: 10, goals: 11 }, previous, 1_100_000).ok, false);
-  assert.equal(scoreDecision({ score: 12, bestStreak: 2, throws: 11, goals: 11 }, previous, 1_100_000).ok, false);
-});
-
-test("scoreDecision caps a first submission", () => {
-  assert.equal(scoreDecision({ score: 201, bestStreak: 1, throws: 201, goals: 201 }, null, 1_000_000).ok, false);
-  assert.equal(scoreDecision({ score: 20, bestStreak: 3, throws: 20, goals: 20 }, null, 1_000_000).ok, true);
+test("versions are compared by their numbers, not as text", () => {
+  assert.equal(versionAtLeast("0.1.24", "0.1.23"), true);
+  assert.equal(versionAtLeast("0.1.100", "0.1.23"), true);
+  assert.equal(versionAtLeast("0.1.9", "0.1.23"), false);
+  assert.equal(versionAtLeast("0.2.0", "0.1.99"), true);
+  assert.equal(versionAtLeast("", "0.1.23"), false);
+  assert.equal(versionAtLeast("garbage", "0.1.23"), false);
 });
 
 test("cleanNickname filters bad or empty names", () => {

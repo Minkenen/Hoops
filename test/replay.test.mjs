@@ -1,114 +1,145 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyReplayNetForce, hasClientGeometry, replayGeometry, simulateReplayShot, verifyReplay } from "../server/leaderboard/src/replay.js";
+import { verifyReplay, simulateShot, TICK_MS, MAX_SHOTS } from "../server/leaderboard/src/replay.js";
+import { soloCourt } from "../server/leaderboard/src/shots.js";
+import { buildReplay, findHand, playShot, randomHand } from "./helpers/client.mjs";
 
-const shot = (id, t, goal = false) => {
-  const right = id === 0;
-  const hoopY = 300 - (70 + (hash(`session_123:${id}`) % 100000) / 100000 * 190);
-  return { id, t, resultT: t + 1200, width: 800, height: 600, floorY: 300, x: right ? 700 : 100, y: 150, vx: 0, vy: -6, nx: right ? 0.875 : 0.125, ny: 0.25, gs: 1, hoopX: right ? 700 : 100, hoopY, hoopL: right ? 680 : 80, hoopR: right ? 720 : 120, goal };
-};
-const hash = (value) => { let h = 0; for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0; return Math.abs(h); };
+const SEED = "a-session-seed-from-the-server";
+const ID = "session_12345678";
 
-test("accepts an ordered, plausible replay", () => {
-  const result = verifyReplay({ sessionId: "session_123", seed: "session_123", goals: 1, shots: [shot(0, 0), shot(1, 1200, true)] });
-  assert.deepEqual(result, { ok: true, shots: 2, goals: 1 });
+test("an honest replay: every goal is confirmed and the counts follow the shots", () => {
+  const replay = buildReplay(ID, SEED, [{ goal: true }, { goal: false }, { goal: true }, { goal: true }, { goal: false }]);
+  const r = verifyReplay(replay, SEED);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual([r.throws, r.goals, r.unconfirmed, r.voided], [5, 3, 0, 0]);
+  assert.deepEqual(r.outcomes, [true, false, true, true, false]);
 });
 
-test("rejects duplicate or reordered shot ids", () => {
-  const result = verifyReplay({ sessionId: "session_123", shots: [shot(1, 0), shot(1, 1200)] });
-  assert.equal(result.ok, false);
+test("shots with a bank, a rim bounce or the board are confirmed too, not only clean ones", () => {
+  let withContact = 0;
+  for (let i = 0; i < 40; i++) {
+    const found = findHand(SEED, i, true);
+    if (found.hits > 0) withContact++;
+    const replay = buildReplay(ID, SEED, Array.from({ length: i + 1 }, (_, k) => (k === i ? { hand: found.hand } : { goal: false })));
+    const r = verifyReplay(replay, SEED);
+    assert.equal(r.ok, true);
+    assert.equal(r.outcomes[i], true, `shot ${i} (contact ${found.hits})`);
+  }
+  assert.ok(withContact > 5, `only ${withContact} of 40 goals touched something`);
 });
 
-test("rejects impossible timing and speed", () => {
-  assert.equal(verifyReplay({ sessionId: "session_123", shots: [shot(0, 0), shot(1, 100)] }).ok, false);
-  assert.equal(verifyReplay({ sessionId: "session_123", shots: [{ ...shot(0, 0), vx: 9999 }] }).ok, false);
+test("the court is never taken from the player: any court field is refused", () => {
+  const base = buildReplay(ID, SEED, [{ goal: true }]);
+  for (const extra of [{ hoopX: 100 }, { hoopY: 100 }, { hoopL: 1 }, { hoopR: 5000 }, { boardL: 0 }, { width: 800 }, { height: 600 }, { side: "left" }, { rimHeight: 100 }]) {
+    const forged = { ...base, shots: [{ ...base.shots[0], ...extra }] };
+    const r = verifyReplay(forged, SEED);
+    assert.equal(r.ok, false, JSON.stringify(extra));
+    assert.match(r.reason, /court data/);
+  }
 });
 
-test("rejects oversized replay geometry", () => {
-  assert.equal(verifyReplay({ sessionId: "session_123", seed: "session_123", shots: [{ ...shot(0, 0), width: 4800, hoopR: 1180 }] }).ok, false);
-  assert.equal(verifyReplay({ sessionId: "session_123", seed: "session_123", shots: [{ ...shot(0, 0), hoopL: 40, hoopR: 180 }] }).ok, false);
+test("the forged replay that used to pass is refused (a huge hoop, 200 goals)", () => {
+  const hash = (v) => { let h = 0; for (let i = 0; i < v.length; i++) h = (Math.imul(31, h) + v.charCodeAt(i)) | 0; return Math.abs(h); };
+  const W = 2000, H = 2000, shots = [];
+  for (let i = 0; i < 200; i++) {
+    const t = i * 800, side = hash(`${SEED}:${i}`) % 2 ? "right" : "left";
+    const rimH = 70 + (hash(`${SEED}:${i}`) % 100000) / 100000 * Math.max(10, Math.min(260, H * 0.6) - 70);
+    const floorY = 1800, hoopY = floorY - rimH, hoopX = side === "left" ? 500 : 1500;
+    shots.push({ id: i, t, resultT: t + 1500, width: W, height: H, floorY, x: hoopX, y: hoopY - 100, vx: 0, vy: 1, nx: hoopX / W, ny: (hoopY - 100) / H, gs: 1, hoopX, hoopY, hoopL: hoopX - 159, hoopR: hoopX + 159, goal: true });
+  }
+  assert.equal(verifyReplay({ sessionId: ID, seed: SEED, version: "0.1.23", goals: 200, shots }, SEED).ok, false);
 });
 
-test("rejects coordinates that disagree with normalized replay data", () => {
-  assert.equal(verifyReplay({ sessionId: "session_123", seed: "session_123", shots: [{ ...shot(0, 0), nx: 0.2 }] }).ok, false);
+test("a goal claimed for a shot that misses is not counted", () => {
+  const miss = findHand(SEED, 0, false);
+  const replay = { sessionId: ID, seed: SEED, version: "0.1.24", shots: [{ id: 0, t: 1000, resultT: Math.round(1000 + miss.ticks * TICK_MS), ...miss.hand, goal: true, void: false }] };
+  const r = verifyReplay(replay, SEED);
+  assert.equal(r.ok, true);
+  assert.deepEqual([r.throws, r.goals, r.unconfirmed], [1, 0, 1]);
 });
 
-test("rejects a score that does not match the replay", () => {
-  assert.equal(verifyReplay({ sessionId: "session_123", goals: 2, shots: [shot(0, 0, true)] }).ok, false);
+test("a goal at the wrong time is not counted (the shot says it ended long after the replay does)", () => {
+  const goal = findHand(SEED, 0, true);
+  const flight = goal.ticks * TICK_MS;
+  for (const bad of [flight * 3, flight + 5000, flight * 0.3]) {
+    const replay = { sessionId: ID, seed: SEED, version: "0.1.24", shots: [{ id: 0, t: 1000, resultT: Math.round(1000 + bad), ...goal.hand, goal: true, void: false }] };
+    const r = verifyReplay(replay, SEED);
+    assert.equal(r.ok, true);
+    assert.equal(r.goals, 0, `flight ${bad}`);
+  }
 });
 
-test("simulates free flight with replay timing", () => {
-  const result = simulateReplayShot({ ...shot(0, 0), resultT: 1200 });
-  assert.equal(result.flight, 1200);
-  assert.equal(typeof result.crossed, "boolean");
+test("a shot that would go in but is reported as a miss is a miss, never a goal", () => {
+  const goal = findHand(SEED, 0, true);
+  const replay = { sessionId: ID, seed: SEED, version: "0.1.24", shots: [{ id: 0, t: 1000, resultT: Math.round(1000 + goal.ticks * TICK_MS), ...goal.hand, goal: false, void: false }] };
+  const r = verifyReplay(replay, SEED);
+  assert.deepEqual([r.throws, r.goals], [1, 0]);
 });
 
-test("keeps the replay simulation bounded after floor and wall bounces", () => {
-  const result = simulateReplayShot({ ...shot(0, 0), x: 790, y: 290, vx: 40, vy: 20, resultT: 1200 });
-  assert.equal(result.flight, 1200);
-  assert.equal(typeof result.crossed, "boolean");
+test("the hoop of every shot is the seed's hoop: a goal for another seed's hoop is not confirmed", () => {
+  let notConfirmed = 0;
+  for (let i = 0; i < 25; i++) {
+    const found = findHand(SEED, i, true);
+    const replay = buildReplay(ID, SEED, Array.from({ length: i + 1 }, (_, k) => (k === i ? { hand: found.hand } : { goal: false })));
+    const r = verifyReplay(replay, "a-different-seed-entirely-x");
+    if (r.ok && r.goals === 0) notConfirmed++;
+  }
+  assert.ok(notConfirmed >= 22, `only ${notConfirmed} of 25 were refused with the wrong seed`);
 });
 
-test("replay simulation uses the shared ball radius and rim collisions", () => {
-  const result = simulateReplayShot({
-    ...shot(0, 0),
-    x: 100,
-    y: 200,
-    vx: 0,
-    vy: 2,
-    hoopX: 100,
-    hoopY: 300,
-    hoopL: 80,
-    hoopR: 120,
-    resultT: 250,
-  });
-  assert.equal(result.crossed, false);
-  assert.ok(result.bounces >= 1);
-  assert.ok(result.x !== 100 || result.vy < 0);
+test("impossible shots refuse the whole replay", () => {
+  const base = buildReplay(ID, SEED, [{ goal: true }, { goal: false }]);
+  const change = (patch, i = 0) => ({ ...base, shots: base.shots.map((s, k) => (k === i ? { ...s, ...patch } : s)) });
+  const bad = {
+    "in the air": change({ y: 100 }),
+    "too fast": change({ vx: 30, vy: -30 }),
+    "gravity 3": change({ gs: 3 }),
+    "screen 9000 wide": change({ artW: 9000 }),
+    "floor far off": change({ floorY: 10 }),
+    "ends before it starts": change({ resultT: 500 }),
+    "flies for a minute": change({ resultT: 100000 }),
+    "ids out of order": { ...base, shots: [base.shots[1], base.shots[0]] },
+    "times out of order": change({ t: 0 }, 1),
+    "shots 100 ms apart": { ...base, shots: [base.shots[0], { ...base.shots[1], t: base.shots[0].t + 100, resultT: base.shots[0].t + 100 + 1000 }] },
+    "no shots": { ...base, shots: [] },
+    "more than allowed": { ...base, shots: Array.from({ length: MAX_SHOTS + 1 }, (_, i) => ({ ...base.shots[1], id: i, t: 1000 + i * 1000, resultT: 1000 + i * 1000 + 800 })) },
+    "a shot that is not an object": { ...base, shots: [null] },
+    "a result that is not a boolean": change({ goal: "yes" }),
+  };
+  for (const [name, replay] of Object.entries(bad)) assert.equal(verifyReplay(replay, SEED).ok, false, name);
 });
 
-test("replay physics golden fixtures stay stable", () => {
-  const freeFlight = simulateReplayShot({
-    x: 200, y: 200, vx: 1, vy: 0, gs: 1, t: 0, resultT: 250,
-    width: 800, height: 600, floorY: 550, hoopX: 400, hoopY: 300,
-    hoopL: 380, hoopR: 420, boardL: 700, boardR: 720, boardT: 100, boardB: 200,
-  });
-  assert.deepEqual(freeFlight, {
-    crossed: false, flight: 250, bounces: 3,
-    x: 428.791134999999, y: 504.77262079999997,
-    vx: 0.7351650000000001, vy: -0.3877568000000007,
-  });
-
-  const cleanMake = simulateReplayShot({
-    x: 400, y: 200, vx: 0, vy: 0, gs: 1, t: 0, resultT: 250,
-    width: 800, height: 600, floorY: 550, hoopX: 400, hoopY: 300,
-    hoopL: 380, hoopR: 420, boardL: 430, boardR: 450, boardT: 250, boardB: 380,
-  });
-  assert.deepEqual(cleanMake, {
-    crossed: true, flight: 250, bounces: 0,
-    x: 400, y: 300.80000000000007, vx: 0, vy: 5.600000000000002,
-  });
+test("shots that something else touched (void) are not counted but keep the numbering", () => {
+  const replay = buildReplay(ID, SEED, [{ goal: true }, { goal: true, void: true }, { goal: true }]);
+  const r = verifyReplay(replay, SEED);
+  assert.equal(r.ok, true);
+  assert.deepEqual([r.throws, r.goals, r.voided], [2, 2, 1]);
 });
 
-test("server replay applies net force during net passage", () => {
-  const state = { x: 409, y: 318, vx: 0, vy: 1, r: 10.5 };
-  const shot = { hoopL: 380, hoopR: 420, hoopY: 300 };
-  const before = { ...state };
-  assert.equal(applyReplayNetForce(state, shot, 1), true);
-  assert.notEqual(state.vx, before.vx);
+test("a replay of voided shots only counts nothing", () => {
+  const replay = buildReplay(ID, SEED, [{ goal: true, void: true }]);
+  assert.equal(verifyReplay(replay, SEED).ok, false);
 });
 
-test("server derives deterministic geometry when replay omits client geometry", () => {
-  const geometry = replayGeometry("session_123", 0, 800, 600);
-  const result = verifyReplay({
-    sessionId: "session_123", seed: "session_123", goals: 0,
-    shots: [{ id: 0, t: 0, resultT: 1200, width: 800, height: 600, x: 400, y: 150, vx: 0, vy: -6, nx: 0.5, ny: 0.25, gs: 1, goal: false }],
-  });
-  assert.equal(result.ok, true);
-  assert.equal(geometry.hoopX, 656);
+test("a program is recognised: nearly no misses, an even pace", () => {
+  const wants = Array.from({ length: 36 }, () => ({ goal: true }));
+  const replay = buildReplay(ID, SEED, wants, { gap: 2000 });
+  const r = verifyReplay(replay, SEED);
+  assert.equal(r.ok, true);
+  assert.ok(r.suspicion.length >= 1, JSON.stringify(r.suspicion));
 });
 
-test("geometry migration detects only legacy client geometry fields", () => {
-  assert.equal(hasClientGeometry({ x: 1, y: 2, width: 800, height: 600 }), false);
-  assert.equal(hasClientGeometry({ x: 1, y: 2, floorY: 550 }), true);
+test("a person is not: mixed results at an uneven pace", () => {
+  const wants = Array.from({ length: 36 }, (_, i) => ({ goal: i % 3 !== 0 }));
+  const replay = buildReplay(ID, SEED, wants);
+  replay.shots.forEach((s, i) => { const jitter = (i * 7919) % 900; s.t += i * 311 + jitter; s.resultT += i * 311 + jitter; });
+  assert.deepEqual(verifyReplay(replay, SEED).suspicion, []);
+});
+
+test("the same hand gives the same result every time (the server's replay is deterministic)", () => {
+  const hand = randomHand();
+  const { hoop } = soloCourt(SEED, 3, hand);
+  const a = simulateShot(hand, hoop);
+  for (let i = 0; i < 5; i++) assert.deepEqual(simulateShot(hand, hoop), a);
+  assert.deepEqual(playShot(hand, hoop).outcome, a.outcome);
 });

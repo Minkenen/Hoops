@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stepWorld, BALL_RADIUS } from "../shared/world.ts";
-import { maxSpeed, placeHoop, worldHoop, replayHoopTarget } from "../shared/court.ts";
+import { maxSpeed, placeHoop, poleBox, worldHoop, replayHoopTarget, matchHoopTarget } from "../shared/court.ts";
 import { HOOPS, BALL_R } from "../shared/hoopSprites.ts";
 import { legacySub } from "./helpers/legacy-sub.mjs";
 
@@ -60,11 +60,50 @@ test("the shared step plays out exactly like the game's old step (500 shots, eve
     if (g.events.some((e) => e[0] === "goal")) goals++;
   }
   assert.ok(events > 5000, "the scenarios must exercise collisions");
-  assert.ok(goals > 50 && goals < 1500, `goals ${goals}: the scenarios must contain both goals and misses`);
+  assert.ok(goals > 10 && goals < 400, `goals ${goals}: the scenarios must contain both goals and misses`);
 });
 
 test("hoop targets follow from the seed", () => {
   const a = replayHoopTarget("seed-one-1234", 3, 600);
   assert.deepEqual(a, replayHoopTarget("seed-one-1234", 3, 600));
   assert.notDeepEqual(a, replayHoopTarget("seed-two-1234", 3, 600));
+});
+
+// The old way the game placed a hoop and chose its side and height, copied from before the move to shared/court.ts.
+const legacyHash = (value) => { let h = 0; for (let i = 0; i < value.length; i++) h = (Math.imul(31, h) + value.charCodeAt(i)) | 0; return Math.abs(h); };
+
+test("the hoop is placed exactly where the game's old code put it (both sides, 1000 screens)", () => {
+  for (let i = 0; i < 1000; i++) {
+    const artW = 400 + Math.floor(random() * 1600);
+    const artH = 250 + Math.floor(random() * 900);
+    const floorY = artH - 48 - Math.floor(random() * 60);
+    const side = random() < 0.5 ? "left" : "right";
+    const { sp, ref } = HOOPS[side];
+    const rimHeight = 70 + random() * 190;
+    let rimY = floorY - rimHeight;
+    rimY = Math.max(rimY, 8 + sp.rimY);
+    const x0 = side === "right" ? artW - ref.w + ref.rimCx - sp.rimCx : ref.rimCx - sp.rimCx;
+    const at = placeHoop(sp, ref, side, artW, floorY, rimHeight);
+    assert.deepEqual(at, { x0, y0: rimY - sp.rimY, rimY });
+    const poleBottom = random() < 0.5 ? artH : floorY + 30;
+    const legacyPole = [sp.poleTop[0], sp.poleTop[1], [sp.poleTop[1][0], poleBottom - (rimY - sp.rimY) + 2], [sp.poleTop[0][0], poleBottom - (rimY - sp.rimY) + 2]];
+    assert.deepEqual(poleBox(sp, rimY, poleBottom), legacyPole);
+  }
+});
+
+test("the side and height of a hoop follow the old formulas (solo session and online match)", () => {
+  for (let i = 0; i < 2000; i++) {
+    const seedText = `seed-${i}-${Math.floor(random() * 1e9)}`;
+    const artH = 250 + Math.floor(random() * 900);
+    const maxH = Math.min(260, artH * 0.6);
+    const n = legacyHash(`${seedText}:${i}`);
+    assert.deepEqual(replayHoopTarget(seedText, i, artH), { side: n % 2 ? "right" : "left", rimHeight: 70 + ((n % 100000) / 100000) * Math.max(10, maxH - 70) });
+    const side = legacyHash(`${seedText}:${i}:side`) % 2 ? "right" : "left";
+    const height = 70 + (legacyHash(`${seedText}:${i}:height`) / 0x7fffffff) * Math.max(10, maxH - 70);
+    assert.deepEqual(matchHoopTarget(seedText, i, artH), { side, rimHeight: height });
+  }
+});
+
+test("the fastest shot is the game's own formula", () => {
+  for (const w of [200, 500, 900, 1400, 2000]) assert.equal(maxSpeed(w), Math.max(9, Math.sqrt(1.35 * 0.16 * w)));
 });

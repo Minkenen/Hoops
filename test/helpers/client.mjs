@@ -58,3 +58,17 @@ export function buildReplay(sessionId, seedStr, wants, { start = 1000, gap = 250
   });
   return { sessionId, seed: seedStr, version: "0.1.24", shots };
 }
+
+
+/** Finds a hand that scores (or not) in the court of an online match round. */
+export function findMatchHand(seedKey, round, wantGoal, { artW = 800, artH = 500, floorY = artH - 48, tries = 4000, far } = {}) {
+  for (let i = 0; i < tries; i++) {
+    const hand = randomHand(artW, artH, floorY);
+    const court = matchCourt(seedKey, round, hand);
+    const r = playShot(hand, court.hoop);
+    if ((r.outcome === "goal") !== wantGoal || r.outcome === "open") continue;
+    if (far !== undefined && (Math.abs(hand.x - court.ringX) > hand.artW * 0.55) !== far) continue;
+    return { hand, ...r };
+  }
+  throw new Error("no match hand found");
+}

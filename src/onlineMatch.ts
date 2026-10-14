@@ -94,11 +94,12 @@ export class OnlineMatch {
   private restSent = false;
   private beat = 0;
 
-  constructor(
-    init: OnlineMatchInit,
-    private conn: MultiplayerConnection | null,
-    private host: OnlineMatchHost,
-  ) {
+  private conn: MultiplayerConnection | null;
+  private host: OnlineMatchHost;
+
+  constructor(init: OnlineMatchInit, conn: MultiplayerConnection | null, host: OnlineMatchHost) {
+    this.conn = conn;
+    this.host = host;
     this.game = init.game;
     this.court = init.court;
     this.opponent = init.opponent;
