@@ -59,3 +59,21 @@ test("a long shot is far, a close one is not", () => {
   assert.equal(isFar({ ...good, x: c.ringX + 10 }, c.ringX), false);
   assert.equal(isFar({ ...good, x: c.ringX + good.artW * 0.6 }, c.ringX), true);
 });
+
+test("a hoop from the seed comes on the other side when the ball is too close to the seed's side (the game and the server use the same rule)", async () => {
+  const { hoopSide, replayHoopTarget } = await import("../shared/court.ts");
+  const L = HOOPS.left.ref.w;
+  const R = HOOPS.right.ref.w;
+  // find a session whose first shot has its hoop on the right
+  let seed = "s0";
+  for (let i = 0; replayHoopTarget(seed, 0, 500).side !== "right"; i++) seed = `s${i}`;
+  const near = { ...good, x: 800 - 30, y: 452 - BALL_R };
+  const far = { ...good, x: 300, y: 452 - BALL_R };
+  assert.equal(soloCourt(seed, 0, far).side, "right", "ball far away: the seed's side");
+  assert.equal(soloCourt(seed, 0, near).side, "left", "ball at the right wall: the hoop is on the left");
+  assert.equal(hoopSide("right", 800 - 30, 800, L, R), "left");
+  assert.equal(hoopSide("left", 30, 800, L, R), "right");
+  assert.equal(hoopSide("left", 400, 800, L, R), "left");
+  // a screen so narrow that the ball is too close to both sides: nothing to flip to, the seed's side stays
+  assert.equal(hoopSide("right", 80, 150, L, R), "right");
+});

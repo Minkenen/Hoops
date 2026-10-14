@@ -25,7 +25,7 @@ import { drawTrail, trailById, trailOwned, type TrailPoint } from "./trails";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
 import { currentReplayTarget, onReplaySession, replayResult, replayShot, replayVoid, setReplayIdleCheck } from "./replay";
-import { matchHoopTarget, placeHoop, poleBox } from "../shared/court.ts";
+import { hoopSide, matchHoopTarget, placeHoop, poleBox } from "../shared/court.ts";
 import { stepWorld, type WorldHoop } from "../shared/world.ts";
 import type { UI } from "./ui";
 import type { OnlineMatch, OpponentBall } from "./onlineMatch";
@@ -49,6 +49,8 @@ interface Ball {
 interface Hoop {
   sprite: HoopSprite;
   side: "left" | "right";
+  /** The side the seed gave this hoop (the hoop stands on the other side when the ball is too close to it), or null when it is not from a seed. */
+  seedSide: "left" | "right" | null;
   /** Solo: the number of the shot this hoop was made for, when its place follows from the server's seed (otherwise null). */
   replayIndex: number | null;
   x0: number;
@@ -909,9 +911,9 @@ export class Game {
     // Solo play with a server session: the hoop of every shot follows from the session's seed (so the server knows where it was).
     const soloTarget = this.onlineMatch === null ? currentReplayTarget(this.artH) : null;
     let side: "left" | "right";
+    const seedSide = forceSide ? null : (matchTarget ?? soloTarget)?.side ?? null;
     if (forceSide) side = forceSide;
-    else if (matchTarget) side = matchTarget.side;
-    else if (soloTarget) side = soloTarget.side;
+    else if (seedSide) side = hoopSide(seedSide, b.x, this.artW, this.refL.w, this.refR.w);
     else if (okRight && okLeft) side = Math.random() < 0.5 ? "left" : "right";
     else if (okRight) side = "right";
     else if (okLeft) side = "left";
@@ -927,6 +929,7 @@ export class Game {
     this.hoop = {
       sprite: sp,
       side,
+      seedSide,
       x0: hx0,
       y0: at.y0,
       rimY,
@@ -957,6 +960,13 @@ export class Game {
   /** A hoop that comes from the seed (online, or a solo session) may stand on the side the ball is next to: the ball glides out of its way, so a shot is always possible. */
   private keepBallClear(): void {
     if (this.ball.moving) return;
+    const h = this.hoop;
+    // A hoop from the seed comes on the other side when the ball is too close to its side (the server uses the same rule): the hoop moves, not the ball.
+    if (h && h.phase !== "out" && h.seedSide && hoopSide(h.seedSide, this.ball.x, this.artW, this.refL.w, this.refR.w) !== h.side) {
+      this.hoop = null;
+      this.showHoop();
+      return;
+    }
     const safe = this.clearX(this.ball.x);
     if (Math.abs(safe - this.ball.x) > 0.5) {
       this.nudgeX = safe;

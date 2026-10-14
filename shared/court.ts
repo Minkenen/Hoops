@@ -62,6 +62,22 @@ export function matchHoopTarget(seed: string, round: number, artH: number): Hoop
   };
 }
 
+/** How far from a hoop's side of the screen the ball must be, besides the hoop's own width, for a shot to be possible. */
+export const HOOP_CLEARANCE = 10.5 + 36;
+
+/**
+ * The side the hoop really stands on: the seed's side, unless the ball is too close to that side to shoot (then the hoop comes on the other side).
+ * The game and the server use this same rule with the ball's x, so the server knows where the hoop stood.
+ * `leftW` and `rightW` are the widths of the two hoops (their reference sprites).
+ */
+export function hoopSide(seedSide: Side, ballX: number, artW: number, leftW: number, rightW: number): Side {
+  const tooCloseRight = ballX >= artW - rightW - HOOP_CLEARANCE;
+  const tooCloseLeft = ballX <= leftW + HOOP_CLEARANCE;
+  if (seedSide === "right" && tooCloseRight && !tooCloseLeft) return "left";
+  if (seedSide === "left" && tooCloseLeft && !tooCloseRight) return "right";
+  return seedSide;
+}
+
 export interface HoopPlacement {
   x0: number;
   y0: number;

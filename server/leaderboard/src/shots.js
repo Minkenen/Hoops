@@ -1,7 +1,7 @@
 // What a shot can be, checked the same way for solo replays and online matches.
 // The ball is always shot from where it rests on the floor, with a speed the hand can give it: nothing about the court comes from the player.
 import { BALL_R, HOOPS } from "../../../shared/hoopSprites.ts";
-import { floorRange, matchHoopTarget, maxSpeed, placeHoop, replayHoopTarget, worldHoop } from "../../../shared/court.ts";
+import { floorRange, hoopSide, matchHoopTarget, maxSpeed, placeHoop, replayHoopTarget, worldHoop } from "../../../shared/court.ts";
 
 export const SHOT_NUMBERS = ["artW", "artH", "floorY", "x", "y", "vx", "vy", "gs"];
 const FLOOR_SLACK = 1.5;
@@ -25,20 +25,22 @@ export function shotProblem(shot) {
   return null;
 }
 
-function courtOf(target, artW, artH, floorY) {
-  const { sp, ref } = HOOPS[target.side];
-  const at = placeHoop(sp, ref, target.side, artW, floorY, target.rimHeight);
-  return { side: target.side, hoop: worldHoop(sp, at, artH, true), ringX: at.x0 + sp.rimCx };
+/** The hoop of a shot: the seed's hoop, on the other side when the ball is too close to the seed's side (the same rule the game uses). */
+function courtOf(target, artW, artH, floorY, ballX) {
+  const side = hoopSide(target.side, ballX, artW, HOOPS.left.ref.w, HOOPS.right.ref.w);
+  const { sp, ref } = HOOPS[side];
+  const at = placeHoop(sp, ref, side, artW, floorY, target.rimHeight);
+  return { side, hoop: worldHoop(sp, at, artH, true), ringX: at.x0 + sp.rimCx };
 }
 
 /** Solo: the court of shot number `index` in a session. */
 export function soloCourt(seed, index, shot) {
-  return courtOf(replayHoopTarget(seed, index, shot.artH), shot.artW, shot.artH, shot.floorY);
+  return courtOf(replayHoopTarget(seed, index, shot.artH), shot.artW, shot.artH, shot.floorY, shot.x);
 }
 
 /** An online match: the court of round `round` for a seed (turn games share one seed, Speedball gives each player their own). */
 export function matchCourt(seedKey, round, shot) {
-  return courtOf(matchHoopTarget(seedKey, round, shot.artH), shot.artW, shot.artH, shot.floorY);
+  return courtOf(matchHoopTarget(seedKey, round, shot.artH), shot.artW, shot.artH, shot.floorY, shot.x);
 }
 
 /** Is the shot from far away (the same rule the game uses for 21's two points)? */
