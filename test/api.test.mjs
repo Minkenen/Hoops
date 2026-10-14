@@ -279,3 +279,109 @@ test("a hidden player is not on the board, and the board shows scores from verif
   board = await world.call("GET", "/leaderboard?tab=global");
   assert.deepEqual(board.json.top.map((r) => r.name), ["Bravo"]);
 });
+
+// ---- what the account owns ----
+
+/** Lemon Squeezy, played by the test: which keys are good and what they unlock. */
+function licenseService(good) {
+  const calls = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes("api.lemonsqueezy.com")) return real(url, init);
+    const key = new URLSearchParams(String(init.body)).get("license_key");
+    calls.push(key);
+    if (key === "SERVICE-DOWN") return new Response("oops", { status: 503 });
+    const hit = good[key];
+    return new Response(JSON.stringify(hit ? { valid: true, meta: { store_id: 495291, product_id: hit } } : { valid: false }), { status: 200 });
+  };
+  return { calls, restore: () => { globalThis.fetch = real; } };
+}
+const ALL_ACCESS = 1430835;
+const STREET = 1431014;
+const putProfile = (world, token, licenses) => world.call("PUT", "/profile", { token, body: { v: 1, licenses } });
+
+test("a theme the account has a good license for is owned; made-up and wrong keys are not", async () => {
+  const ls = licenseService({ "GOOD-STREET": STREET, "GOOD-ALL": ALL_ACCESS });
+  try {
+    const world = await makeWorld();
+    const token = await world.addPlayer("p1");
+    assert.deepEqual((await world.call("GET", "/entitlements", { token })).json, { all: false, themes: [] });
+    await putProfile(world, token, [{ key: "GOOD-STREET" }, { key: "MADE-UP-KEY" }, { key: "" }, { nokey: 1 }, "text"]);
+    assert.deepEqual((await world.call("GET", "/entitlements", { token })).json, { all: false, themes: ["street"] });
+    await putProfile(world, token, [{ key: "GOOD-STREET" }, { key: "GOOD-ALL" }]);
+    assert.deepEqual((await world.call("GET", "/entitlements", { token })).json, { all: true, themes: ["street"] });
+  } finally { ls.restore(); }
+});
+
+test("editing the profile cannot unlock anything: only a key the license service accepts counts", async () => {
+  const ls = licenseService({});
+  try {
+    const world = await makeWorld();
+    const token = await world.addPlayer("p1");
+    await world.call("PUT", "/profile", { token, body: { v: 1, premium: true, owned: ["street", "arena"], entitlements: { all: true }, licenses: [{ key: "FAKE", unlock: "all", theme: "" }] } });
+    assert.deepEqual((await world.call("GET", "/entitlements", { token })).json, { all: false, themes: [] });
+  } finally { ls.restore(); }
+});
+
+test("one purchase cannot be shared: a key belongs to the first account that uses it", async () => {
+  const ls = licenseService({ "SHARED-KEY": ALL_ACCESS });
+  try {
+    const world = await makeWorld();
+    const a = await world.addPlayer("a");
+    const b = await world.addPlayer("b");
+    await putProfile(world, a, [{ key: "SHARED-KEY" }]);
+    assert.equal((await world.call("GET", "/entitlements", { token: a })).json.all, true);
+    await putProfile(world, b, [{ key: "SHARED-KEY" }]);
+    assert.equal((await world.call("GET", "/entitlements", { token: b })).json.all, false);
+    assert.equal((await world.call("GET", "/entitlements", { token: a })).json.all, true);
+    assert.ok((await world.rows("SELECT * FROM cheat_flags WHERE kind = 'license_shared'")).length >= 1);
+  } finally { ls.restore(); }
+});
+
+test("the license service is asked once a day per key, not on every call", async () => {
+  const ls = licenseService({ "ONCE-A-DAY": STREET });
+  const realNow = Date.now;
+  try {
+    const world = await makeWorld();
+    const token = await world.addPlayer("p1");
+    await putProfile(world, token, [{ key: "ONCE-A-DAY" }]);
+    for (let i = 0; i < 5; i++) await world.call("GET", "/entitlements", { token });
+    assert.equal(ls.calls.length, 1);
+    Date.now = () => realNow() + 25 * 3_600_000;
+    await world.call("GET", "/entitlements", { token });
+    assert.equal(ls.calls.length, 2);
+  } finally { Date.now = realNow; ls.restore(); }
+});
+
+test("a refunded license stops counting at the next check, and a service that is down changes nothing", async () => {
+  const good = { "REFUNDED-LATER": STREET };
+  const ls = licenseService(good);
+  const realNow = Date.now;
+  try {
+    const world = await makeWorld();
+    const token = await world.addPlayer("p1");
+    await putProfile(world, token, [{ key: "REFUNDED-LATER" }]);
+    assert.deepEqual((await world.call("GET", "/entitlements", { token })).json.themes, ["street"]);
+    delete good["REFUNDED-LATER"];
+    Date.now = () => realNow() + 25 * 3_600_000;
+    assert.deepEqual((await world.call("GET", "/entitlements", { token })).json.themes, []);
+    // a service that is down: the last answer stays
+    good["SERVICE-DOWN"] = STREET;
+    await world.env.DB.prepare("DELETE FROM license_claims").run();
+    await putProfile(world, token, [{ key: "SERVICE-DOWN" }]);
+    const res = await world.call("GET", "/entitlements", { token });
+    assert.deepEqual(res.json, { all: false, themes: [] });
+  } finally { Date.now = realNow; ls.restore(); }
+});
+
+test("at most a dozen keys are looked at, and the answer needs a sign-in", async () => {
+  const ls = licenseService({});
+  try {
+    const world = await makeWorld();
+    const token = await world.addPlayer("p1");
+    await putProfile(world, token, Array.from({ length: 40 }, (_, i) => ({ key: `KEY-${i}` })));
+    await world.call("GET", "/entitlements", { token });
+    assert.equal(ls.calls.length, 12);
+    assert.equal((await world.call("GET", "/entitlements")).status, 401);
+  } finally { ls.restore(); }
+});

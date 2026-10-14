@@ -20,7 +20,7 @@ export async function makeWorld({ now = () => Date.now() } = {}) {
     async addPlayer(id, nickname = id) {
       await env.DB.prepare("INSERT INTO players (id, provider, provider_user_id_hash, nickname, nickname_lower, created_at) VALUES (?, 'google', ?, ?, ?, ?)").bind(id, `hash-${id}`, nickname, nickname.toLowerCase(), now()).run();
       const header = b64(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })));
-      const body = b64(Buffer.from(JSON.stringify({ playerId: id, exp: Math.floor(now() / 1000) + 3600 })));
+      const body = b64(Buffer.from(JSON.stringify({ playerId: id, exp: Math.floor(now() / 1000) + 30 * 86400 })));
       return `${header}.${body}.${await hmac(`${header}.${body}`)}`;
     },
     async call(method, path, { token, body, ip = "1.2.3.4", raw } = {}) {

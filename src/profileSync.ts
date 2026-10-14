@@ -133,8 +133,9 @@ export function startProfileSync(serverUrl: string, getUser: () => LbUser | null
     busy = true;
     try {
       if (doPull && (await pull(serverUrl, user))) onChange();
-      await applyServerEntitlements(serverUrl);
+      // first the account gets what this computer has (a license just activated), then what it owns is read back from the server
       await push(serverUrl, user);
+      await applyServerEntitlements(serverUrl);
     } catch {
       /* offline: try again next time */
     } finally {

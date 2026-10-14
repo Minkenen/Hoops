@@ -195,27 +195,53 @@ async function me(request: Request, env: Env): Promise<Response> {
   return json({ token: bearer(request), user: { id: player.id, nickname: player.nickname, color: player.color ?? null } });
 }
 
+const LICENSES_MAX = 12;
+const LICENSE_RECHECK_MS = 24 * 3_600_000;
+
+/**
+ * What the account owns: the license keys in the saved profile, each one checked with Lemon Squeezy (at most once a day per key)
+ * and bound to the first account that uses it, so one purchase cannot be shared between accounts.
+ */
 async function entitlements(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
   const row = await env.DB.prepare("SELECT data FROM profiles WHERE player_id = ?").bind(player.id).first<{ data: string }>();
   let licenses: unknown[] = [];
   try {
-    const profile = row ? JSON.parse(row.data) as { licenses?: unknown[] } : null;
+    const profile = row ? (JSON.parse(row.data) as { licenses?: unknown[] }) : null;
     licenses = Array.isArray(profile?.licenses) ? profile.licenses : [];
   } catch {
     licenses = [];
   }
-  const checked = await Promise.all(licenses.map(async (license) => {
-    const key = typeof (license as { key?: unknown })?.key === "string" ? String((license as { key: string }).key).trim() : "";
-    if (!key) return null;
-    const result = await lemon("validate", { license_key: key });
-    const match = result.valid === true ? licenseMatch(result.meta) : null;
-    return match ? { unlock: match.unlock, theme: match.theme } : null;
-  }));
-  const valid = checked.filter(Boolean);
-  await env.DB.prepare("INSERT INTO entitlement_checks (player_id, checked_at, valid_count, all_access) VALUES (?, ?, ?, ?)")
-    .bind(player.id, Date.now(), valid.length, valid.some((l) => l?.unlock === "all") ? 1 : 0).run();
-  return json({ all: valid.some((l) => l?.unlock === "all"), themes: valid.filter((l) => l?.unlock === "theme").map((l) => l?.theme).filter(Boolean) });
+  const keys = [...new Set(licenses.map((l) => (typeof (l as { key?: unknown })?.key === "string" ? String((l as { key: string }).key).trim() : "")).filter((k) => k.length > 0 && k.length <= 200))].slice(0, LICENSES_MAX);
+  const now = Date.now();
+  const valid: { unlock: "all" | "theme"; theme: string }[] = [];
+  for (const key of keys) {
+    const hash = await sha256(`license:${key}:${env.HASH_PEPPER}`);
+    await env.DB.prepare("INSERT OR IGNORE INTO license_claims (key_hash, player_id, claimed_at, valid, unlock, theme, checked_at) VALUES (?, ?, ?, 0, NULL, NULL, 0)").bind(hash, player.id, now).run();
+    const claim = await env.DB.prepare("SELECT player_id, valid, unlock, theme, checked_at FROM license_claims WHERE key_hash = ?").bind(hash).first<{ player_id: string; valid: number; unlock: string | null; theme: string | null; checked_at: number }>();
+    if (!claim) continue;
+    if (claim.player_id !== player.id) {
+      await flag(env, player.id, "license_shared", "A license key that belongs to another account was used.", "");
+      continue;
+    }
+    let ok = claim.valid === 1;
+    let unlock = claim.unlock;
+    let theme = claim.theme;
+    if (now - claim.checked_at > LICENSE_RECHECK_MS) {
+      const result = await lemon("validate", { license_key: key });
+      const match = result.valid === true ? licenseMatch(result.meta) : null;
+      // an answer that is not a clear yes or no (the license service is down) changes nothing
+      if (match || result.valid === false) {
+        ok = !!match;
+        unlock = match?.unlock ?? null;
+        theme = match?.theme ?? null;
+        await env.DB.prepare("UPDATE license_claims SET valid = ?, unlock = ?, theme = ?, checked_at = ? WHERE key_hash = ? AND player_id = ?").bind(ok ? 1 : 0, unlock, theme, now, hash, player.id).run();
+      }
+    }
+    if (ok && (unlock === "all" || unlock === "theme")) valid.push({ unlock, theme: theme ?? "" });
+  }
+  await env.DB.prepare("INSERT INTO entitlement_checks (player_id, checked_at, valid_count, all_access) VALUES (?, ?, ?, ?)").bind(player.id, now, valid.length, valid.some((l) => l.unlock === "all") ? 1 : 0).run();
+  return json({ all: valid.some((l) => l.unlock === "all"), themes: [...new Set(valid.filter((l) => l.unlock === "theme").map((l) => l.theme).filter(Boolean))] });
 }
 
 async function flag(env: Env, playerId: string | null, kind: string, detail: string, version: string): Promise<void> {

@@ -108,3 +108,14 @@ CREATE TABLE IF NOT EXISTS entitlement_checks (
   all_access INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS entitlement_checks_player_idx ON entitlement_checks(player_id, checked_at DESC);
+
+CREATE TABLE IF NOT EXISTS license_claims (
+  key_hash TEXT PRIMARY KEY,
+  player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  claimed_at INTEGER NOT NULL,
+  valid INTEGER NOT NULL DEFAULT 0,
+  unlock TEXT,
+  theme TEXT,
+  checked_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS license_claims_player_idx ON license_claims(player_id);
