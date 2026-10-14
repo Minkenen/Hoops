@@ -143,3 +143,16 @@ test("the same hand gives the same result every time (the server's replay is det
   for (let i = 0; i < 5; i++) assert.deepEqual(simulateShot(hand, hoop), a);
   assert.deepEqual(playShot(hand, hoop).outcome, a.outcome);
 });
+
+test("a phone in portrait (a narrow, tall screen) can have its goals counted, in both sizes of ball", () => {
+  for (const view of [{ artW: 195, artH: 422 }, { artW: 160, artH: 330 }, { artW: 195, artH: 190 }]) {
+    const wants = [true, false, true, true].map((goal, i) => {
+      const found = findHand(SEED, i, goal, { ...view, tries: 8000 });
+      return { hand: found.hand };
+    });
+    const replay = buildReplay(ID, SEED, wants);
+    const r = verifyReplay(replay, SEED);
+    assert.equal(r.ok, true, `${JSON.stringify(view)} ${JSON.stringify(r)}`);
+    assert.deepEqual([r.throws, r.goals, r.unconfirmed], [4, 3, 0], JSON.stringify(view));
+  }
+});

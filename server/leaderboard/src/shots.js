@@ -5,6 +5,8 @@ import { floorRange, matchHoopTarget, maxSpeed, placeHoop, replayHoopTarget, wor
 
 export const SHOT_NUMBERS = ["artW", "artH", "floorY", "x", "y", "vx", "vy", "gs"];
 const FLOOR_SLACK = 1.5;
+export const MIN_ART_W = 150;
+export const MIN_ART_H = 150;
 
 const finite = (v) => typeof v === "number" && Number.isFinite(v);
 
@@ -12,7 +14,8 @@ const finite = (v) => typeof v === "number" && Number.isFinite(v);
 export function shotProblem(shot) {
   if (!shot || typeof shot !== "object") return "Shot is not an object.";
   if (!SHOT_NUMBERS.every((key) => finite(shot[key]))) return "Shot numbers are invalid.";
-  if (shot.artW < 320 || shot.artW > 2000 || shot.artH < 200 || shot.artH > 1400) return "Shot dimensions are invalid.";
+  // a phone in portrait is about 160 to 200 wide in the game's own units (its pixels are two screen pixels big), a big desktop screen up to 2000
+  if (shot.artW < MIN_ART_W || shot.artW > 2000 || shot.artH < MIN_ART_H || shot.artH > 1400) return "Shot dimensions are invalid.";
   const floor = floorRange(shot.artH);
   if (shot.floorY < floor.min || shot.floorY > floor.max) return "Shot floor is invalid.";
   if (shot.x < BALL_R || shot.x > shot.artW - BALL_R) return "Shot start is outside the court.";
