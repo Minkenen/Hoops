@@ -723,32 +723,31 @@ export class Game {
     this.start();
   }
 
-  /** A see-through thumbstick seen from above over the held ball: the base sits on the ball, the nub follows the pull. */
+  /** A soft, see-through joystick like in a phone game, over the pressed spot: a round base and a glass thumb that follows the pull. */
   private drawGrip(ctx: CanvasRenderingContext2D, cx: number, cy: number, lx: number, ly: number): void {
-    const R = BALL_R + 8;
-    const px = Math.round(cx);
-    const py = Math.round(cy);
-    const disc = (x0: number, y0: number, r: number, inner: number, alpha: number, color: string): void => {
-      ctx.fillStyle = color;
-      ctx.globalAlpha = alpha;
-      for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
-        const d2 = x * x + y * y;
-        if (d2 <= r * r && d2 > inner * inner) ctx.fillRect(x0 + x, y0 + y, 1, 1);
-      }
-    };
+    const R = BALL_R + 9;
+    const k = (R - 8) / MAXPULL;
+    const nx = cx + lx * k;
+    const ny = cy + ly * k;
     ctx.save();
-    disc(px, py, R + 2, R, 0.55, "#0d0e12");
-    disc(px, py, R, 0, 0.22, "#ffffff");
-    disc(px, py, R, R - 2, 0.9, "#ffffff");
-    const k = (R - 7) / MAXPULL;
-    const nx = Math.round(px + lx * k);
-    const ny = Math.round(py + ly * k);
-    disc(nx, ny, 8, 7, 0.7, "#0d0e12");
-    disc(nx, ny, 7, 0, 0.75, "#ffffff");
-    ctx.fillStyle = "#ffffff";
-    ctx.globalAlpha = 1;
-    ctx.fillRect(nx - 4, ny - 4, 3, 2);
-    ctx.fillRect(nx - 4, ny - 2, 1, 2);
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    ctx.fill();
+    ctx.lineWidth = 0.7;
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.stroke();
+    ctx.shadowColor = "rgba(0,0,0,0.3)";
+    ctx.shadowBlur = 2 * this.S;
+    ctx.shadowOffsetY = 0.7 * this.S;
+    ctx.beginPath();
+    ctx.arc(nx, ny, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+    ctx.lineWidth = 0.7;
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    ctx.stroke();
     ctx.restore();
   }
 
