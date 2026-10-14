@@ -722,38 +722,30 @@ export class Game {
 
   /** A see-through thumbstick seen from above over the held ball: the base sits on the ball, the nub follows the pull. */
   private drawGrip(ctx: CanvasRenderingContext2D, cx: number, cy: number, lx: number, ly: number): void {
-    const R = BALL_R + 5;
+    const R = BALL_R + 8;
     const px = Math.round(cx);
     const py = Math.round(cy);
+    const disc = (x0: number, y0: number, r: number, inner: number, alpha: number, color: string): void => {
+      ctx.fillStyle = color;
+      ctx.globalAlpha = alpha;
+      for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
+        const d2 = x * x + y * y;
+        if (d2 <= r * r && d2 > inner * inner) ctx.fillRect(x0 + x, y0 + y, 1, 1);
+      }
+    };
     ctx.save();
-    ctx.fillStyle = "#0d0e12";
-    ctx.globalAlpha = 0.35;
-    for (let y = -R - 1; y <= R + 1; y++) for (let x = -R - 1; x <= R + 1; x++) {
-      const d2 = x * x + y * y;
-      if (d2 <= (R + 1) * (R + 1) && d2 > R * R) ctx.fillRect(px + x, py + y, 1, 1);
-    }
-    ctx.fillStyle = "#ffffff";
-    ctx.globalAlpha = 0.16;
-    for (let y = -R; y <= R; y++) for (let x = -R; x <= R; x++) if (x * x + y * y <= R * R) ctx.fillRect(px + x, py + y, 1, 1);
-    ctx.globalAlpha = 0.75;
-    for (let y = -R; y <= R; y++) for (let x = -R; x <= R; x++) {
-      const d2 = x * x + y * y;
-      if (d2 <= R * R && d2 > (R - 1.2) * (R - 1.2)) ctx.fillRect(px + x, py + y, 1, 1);
-    }
-    const k = (R - 5) / MAXPULL;
+    disc(px, py, R + 2, R, 0.55, "#0d0e12");
+    disc(px, py, R, 0, 0.22, "#ffffff");
+    disc(px, py, R, R - 2, 0.9, "#ffffff");
+    const k = (R - 7) / MAXPULL;
     const nx = Math.round(px + lx * k);
     const ny = Math.round(py + ly * k);
-    const nr = 5;
-    ctx.globalAlpha = 0.7;
-    for (let y = -nr; y <= nr; y++) for (let x = -nr; x <= nr; x++) if (x * x + y * y <= nr * nr) ctx.fillRect(nx + x, ny + y, 1, 1);
-    ctx.globalAlpha = 0.9;
-    for (let y = -nr; y <= nr; y++) for (let x = -nr; x <= nr; x++) {
-      const d2 = x * x + y * y;
-      if (d2 <= nr * nr && d2 > (nr - 1.2) * (nr - 1.2)) ctx.fillRect(nx + x, ny + y, 1, 1);
-    }
-    ctx.globalAlpha = 0.7;
-    ctx.fillRect(nx - 2, ny - 2, 2, 1);
-    ctx.fillRect(nx - 2, ny - 1, 1, 1);
+    disc(nx, ny, 8, 7, 0.7, "#0d0e12");
+    disc(nx, ny, 7, 0, 0.75, "#ffffff");
+    ctx.fillStyle = "#ffffff";
+    ctx.globalAlpha = 1;
+    ctx.fillRect(nx - 4, ny - 4, 3, 2);
+    ctx.fillRect(nx - 4, ny - 2, 1, 2);
     ctx.restore();
   }
 
