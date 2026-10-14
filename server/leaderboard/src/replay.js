@@ -3,8 +3,10 @@ const MAX_REPLAY_BYTES = 64_000;
 const MIN_SHOT_GAP_MS = 700;
 const MAX_SHOT_GAP_MS = 120_000;
 const MAX_SPEED = 2400;
-import { collideCircle, collidePolygon, hoopCrossing, stepBall } from "../../../shared/physics.ts";
+import { collideCircle, collidePolygon, hoopCrossing, netBallForce, stepBall } from "../../../shared/physics.ts";
 const BALL_RADIUS = 10.5;
+const NET_MASS = 30;
+const NET_MAX_ACCEL = 0.35;
 function hash(value) { let h = 0; for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0; return Math.abs(h); }
 
 export function simulateReplayShot(shot) {
@@ -20,6 +22,23 @@ export function simulateReplayShot(shot) {
     const beforeY = state.y;
     const inNet = state.x > shot.hoopL && state.x < shot.hoopR && state.y > shot.hoopY && state.y < shot.hoopY + 36;
     stepBall(state, { dt, radius: BALL_RADIUS, gravityScale: inNet ? 1.12 : 1 });
+    if (inNet) {
+      const netNodes = [0.15, 0.35, 0.5, 0.65, 0.85];
+      let ax = 0;
+      let ay = 0;
+      for (const fraction of netNodes) {
+        const force = netBallForce({ x: shot.hoopL, y: shot.hoopY + 18, vx: 0, vy: 0, offsetX: (shot.hoopR - shot.hoopL) * fraction, offsetY: 0 }, state);
+        ax += force.ballX / NET_MASS;
+        ay += force.ballY / NET_MASS;
+      }
+      const acceleration = Math.hypot(ax, ay);
+      if (acceleration > NET_MAX_ACCEL) {
+        ax *= NET_MAX_ACCEL / acceleration;
+        ay *= NET_MAX_ACCEL / acceleration;
+      }
+      state.vx += ax * dt;
+      state.vy += ay * dt;
+    }
     let { x, y, vx, vy } = state;
     if (x < 0 || x > shot.width) {
       x = Math.max(0, Math.min(shot.width, x));
