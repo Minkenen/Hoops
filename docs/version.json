@@ -1,15 +1,15 @@
 {
-  "version": "0.1.25",
+  "version": "0.1.26",
   "url": "https://minkenen.github.io/Hooperly/#download",
   "mac": "https://github.com/Minkenen/Hooperly/releases/latest/download/Hoops-macOS.dmg",
   "windows": "https://github.com/Minkenen/Hooperly/releases/latest/download/Hoops-Windows-setup.exe",
   "notes": [
-    "The Update button now installs the new version for you",
-    "Your game is now called Hooperly",
-    "The ball can return to its resting spot (Settings)",
+    "Goals from phones now count, and no goal is lost if something goes wrong",
+    "The ball moves out of the way when a hoop comes too close",
+    "The leaderboard is up to date the moment you open it",
     "A soft joystick shows where you pull the ball",
-    "Clearer digits and a calmer Play online row",
-    "All Access offer card, shown once a week",
-    "Leaderboard and profile in the browser version too"
+    "Clearer digits, and a calmer Play online row",
+    "The Fireball voice when the ball catches fire",
+    "Settings keep their scroll position"
   ]
 }
