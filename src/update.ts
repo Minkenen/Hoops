@@ -2,7 +2,7 @@
 // the button just opens the download.
 import { getVersion } from "@tauri-apps/api/app";
 
-const VERSION_URL = "https://minkenen.github.io/Hoops/version.json";
+const VERSION_URL = "https://minkenen.github.io/Hooperly/version.json";
 
 export interface UpdateInfo {
   version: string;
@@ -25,7 +25,7 @@ function newer(a: string, b: string): boolean {
 
 /** Only ever open our own pages from that file. */
 const trusted = (u: unknown): u is string =>
-  typeof u === "string" && /^https:\/\/(github\.com\/Minkenen\/Hooperly\/|minkenen\.github\.io\/Hooperly\/)/.test(u);
+  typeof u === "string" && /^https:\/\/(github\.com\/Minkenen\/(Hooperly|Hoops)\/|minkenen\.github\.io\/(Hooperly|Hoops)\/)/.test(u);
 
 export type UpdateCheck = { kind: "new"; info: UpdateInfo } | { kind: "latest"; current: string } | { kind: "error" };
 

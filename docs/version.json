@@ -1,8 +1,8 @@
 {
   "version": "0.1.24",
-  "url": "https://minkenen.github.io/Hoops/#download",
-  "mac": "https://github.com/Minkenen/Hoops/releases/latest/download/Hoops-macOS.dmg",
-  "windows": "https://github.com/Minkenen/Hoops/releases/latest/download/Hoops-Windows-setup.exe",
+  "url": "https://minkenen.github.io/Hooperly/#download",
+  "mac": "https://github.com/Minkenen/Hooperly/releases/latest/download/Hoops-macOS.dmg",
+  "windows": "https://github.com/Minkenen/Hooperly/releases/latest/download/Hoops-Windows-setup.exe",
   "notes": [
     "Hoops is now called Hooperly",
     "Online matches are now run by the server, so scores are fair",

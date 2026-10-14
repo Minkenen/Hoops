@@ -46,7 +46,7 @@ interface Env {
 
 type Provider = "google";
 
-const WEB_REDIRECT = "https://minkenen.github.io/Hoops/play/";
+const WEB_REDIRECT = "https://minkenen.github.io/Hooperly/play/";
 const LS_STORE_ID = 495291;
 /** Lemon Squeezy product ids (public, the license API needs no key). */
 const LICENSED: Record<number, { unlock: "all" | "theme"; theme: string }> = {
