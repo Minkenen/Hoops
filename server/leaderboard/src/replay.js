@@ -62,7 +62,10 @@ export function verifyReplay(input, seed) {
   let unconfirmed = 0;
   let claimedGoals = 0;
   let voided = 0;
+  let verified = 0;
   const outcomes = [];
+  /** Places in `outcomes` of goals in shots something else touched (a hero, the owl): the server cannot play them, so it believes the app within a limit. */
+  const trusted = [];
   const gaps = [];
   for (let index = 0; index < input.shots.length; index++) {
     const shot = input.shots[index];
@@ -78,8 +81,18 @@ export function verifyReplay(input, seed) {
     if (typeof shot.void !== "boolean" || typeof shot.goal !== "boolean") return bad("Replay result is invalid.");
     if (shot.void) {
       voided++;
+      // The server cannot play a shot something else than physics touched. It still has to be a shot a hand could make from the floor;
+      // a goal in it is believed within a limit that the caller sets (a share of the player's verified goals), so what the app counts and the board shows is the same.
+      if (finite(shot.resultT) && shot.resultT > shot.t && shot.resultT - shot.t <= MAX_FLIGHT_MS && !shotProblem(shot)) {
+        if (shot.goal) {
+          claimedGoals++;
+          trusted.push(outcomes.length);
+        }
+        outcomes.push(shot.goal);
+      }
       continue;
     }
+    verified++;
     if (!finite(shot.resultT)) return bad("Replay numbers are invalid.");
     const problem = shotProblem(shot);
     if (problem) return bad(`Replay: ${problem}`);
@@ -102,7 +115,7 @@ export function verifyReplay(input, seed) {
   const throws = outcomes.length;
   if (throws < 1) return bad("Replay has no counted shots.");
   const goals = outcomes.filter(Boolean).length;
-  return { ok: true, throws, goals, outcomes, unconfirmed, claimedGoals, voided, suspicion: suspicion(outcomes, gaps, unconfirmed, claimedGoals) };
+  return { ok: true, throws, goals, outcomes, unconfirmed, claimedGoals, voided, verified, trusted, suspicion: suspicion(outcomes, gaps, unconfirmed, claimedGoals) };
 }
 
 /** Signs that a replay was made by a program: very few misses over many shots, shots at exactly the same pace, goals the replay cannot reproduce. */

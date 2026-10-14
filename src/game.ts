@@ -1650,14 +1650,14 @@ export class Game {
     this.confetti.draw(ctx);
 
     if (this.ball.moving && this.crowd.shootAtHero(settings.crowd, b.x, b.y, BALL_R)) {
-      replayVoid(this.replayId);
+      replayVoid(this.replayId, false); // the ball flies on and may still score: that goal is recorded when it comes
       this.announce(recordHeroDown());
       play("boom", 0.9);
     }
     const swat = this.ball.moving ? this.crowd.guardianSwat(settings.crowd, b.x, b.y, BALL_R) : null;
     if (swat !== null) {
       // Night Owl bats it away: back where it came from, and it does not count
-      replayVoid(this.replayId);
+      replayVoid(this.replayId, false);
       b.vx = swat * Math.max(2.5, Math.abs(b.vx) * 0.9);
       b.vy = -Math.abs(b.vy) * 0.4 - 1.5;
       b.noScore = true;

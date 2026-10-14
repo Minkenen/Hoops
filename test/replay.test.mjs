@@ -109,16 +109,24 @@ test("impossible shots refuse the whole replay", () => {
   for (const [name, replay] of Object.entries(bad)) assert.equal(verifyReplay(replay, SEED).ok, false, name);
 });
 
-test("shots that something else touched (void) are not counted but keep the numbering", () => {
+test("a goal in a shot something else touched (void) is a trusted goal: counted as a throw and a goal, listed for the limit, numbering kept", () => {
   const replay = buildReplay(ID, SEED, [{ goal: true }, { goal: true, void: true }, { goal: true }]);
   const r = verifyReplay(replay, SEED);
   assert.equal(r.ok, true);
-  assert.deepEqual([r.throws, r.goals, r.voided], [2, 2, 1]);
+  assert.deepEqual([r.throws, r.goals, r.voided, r.verified, r.trusted], [3, 3, 1, 2, [1]]);
 });
 
-test("a replay of voided shots only counts nothing", () => {
-  const replay = buildReplay(ID, SEED, [{ goal: true, void: true }]);
-  assert.equal(verifyReplay(replay, SEED).ok, false);
+test("a void shot that is not a shot a hand could make is not counted at all", () => {
+  const replay = buildReplay(ID, SEED, [{ goal: true }, { goal: true, void: true }]);
+  replay.shots[1].vx = 500;
+  const r = verifyReplay(replay, SEED);
+  assert.deepEqual([r.throws, r.goals, r.voided, r.trusted], [1, 1, 1, []]);
+});
+
+test("a replay of only void shots still lists its goals as trusted (the server limits them by the player's verified goals)", () => {
+  const r = verifyReplay(buildReplay(ID, SEED, [{ goal: true, void: true }]), SEED);
+  assert.equal(r.ok, true);
+  assert.deepEqual([r.throws, r.goals, r.trusted], [1, 1, [0]]);
 });
 
 test("a program is recognised: nearly no misses, an even pace", () => {

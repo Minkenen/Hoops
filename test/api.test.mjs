@@ -462,3 +462,37 @@ test("the leaderboard score is the verified goals: a score the app reset or exag
   assert.equal(sc.json.counters.best_score, 3, "and an app that claims 99999 gets only what the server verified");
   assert.equal(sc.json.counters.goals, 3);
 });
+
+test("goals in shots a hero or the owl touched are counted (a quarter of the verified goals plus two), so the app and the board show the same", async () => {
+  const world = await makeWorld();
+  const token = await world.addPlayer("p1");
+  // a player with 100 verified goals: up to 27 trusted goals fit
+  await world.env.DB.prepare("INSERT INTO scores (player_id, best_score, best_streak, throws, goals, updated_at, streak, trusted) VALUES ('p1', 100, 5, 200, 100, 1, 0, 0)").run();
+  const wants = [{ goal: true }, { goal: false }, { goal: true, void: true }, { goal: true }, { goal: true, void: true }, { goal: false, void: true }];
+  const { s, up } = await upload(world, token, wants);
+  assert.equal(up.json.goals, 4, "2 verified goals and 2 trusted ones");
+  const sc = await score(world, token, s.sessionId, 104);
+  assert.equal(sc.json.counters.best_score, 104);
+  assert.equal(sc.json.counters.goals, 104);
+  assert.equal((await world.rows("SELECT trusted FROM scores WHERE player_id = 'p1'"))[0].trusted, 2);
+});
+
+test("trusted goals cannot build a score: a new player gets two, and nothing more until verified goals are there", async () => {
+  const world = await makeWorld();
+  const token = await world.addPlayer("p1");
+  const first = await upload(world, token, Array.from({ length: 5 }, () => ({ goal: true, void: true })));
+  assert.equal(first.up.json.goals, 2, "only 2 of 5 are believed");
+  await score(world, token, first.s.sessionId, 5);
+  await world.env.DB.prepare("DELETE FROM score_submissions").run();
+  const second = await upload(world, token, Array.from({ length: 5 }, () => ({ goal: true, void: true })));
+  assert.equal(second.up.json.goals, 0, "no more until there are verified goals");
+  const row = (await world.rows("SELECT best_score, goals, trusted FROM scores WHERE player_id = 'p1'"))[0];
+  assert.deepEqual([row.best_score, row.goals, row.trusted], [2, 2, 2]);
+  // verified goals make room again
+  await world.env.DB.prepare("DELETE FROM score_submissions").run();
+  const third = await upload(world, token, Array.from({ length: 8 }, () => ({ goal: true })));
+  await score(world, token, third.s.sessionId, 10);
+  await world.env.DB.prepare("DELETE FROM score_submissions").run();
+  const fourth = await upload(world, token, [{ goal: true, void: true }, { goal: true }]);
+  assert.equal(fourth.up.json.goals, 2, "10 verified goals now allow 4 trusted: this one fits");
+});

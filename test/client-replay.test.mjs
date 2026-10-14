@@ -74,7 +74,7 @@ test("the hoop made before the session arrived is not the seed's: that shot is n
   take(false);
   const r = verifyReplay(replay.replayPayload("0.1.24"), SEED);
   assert.equal(r.ok, true, JSON.stringify(r));
-  assert.deepEqual([r.throws, r.goals, r.voided], [2, 1, 1]);
+  assert.deepEqual([r.throws, r.goals, r.voided, r.trusted], [3, 2, 1, [0]]); // the goal in the shot at the wrong hoop is a trusted goal
 });
 
 test("a shot is not complete until it is decided: the replay waits for it", () => {
@@ -105,11 +105,26 @@ test("a shot something else touched is voided, and the numbering holds", () => {
   const found = findHand(SEED, 0, true);
   const id = replay.replayShot(found.hand, view, hoopForNextShot().index);
   clock.t += 500;
-  replay.replayVoid(id); // a guard batted it away / another screen took it
+  replay.replayVoid(id); // another screen took it: the shot ends here, a miss
   clock.t += 2500;
   take(true);
   const r = verifyReplay(replay.replayPayload("0.1.24"), SEED);
-  assert.deepEqual([r.ok, r.throws, r.voided], [true, 1, 1]);
+  assert.deepEqual([r.ok, r.throws, r.goals, r.voided], [true, 2, 1, 1]);
+});
+
+test("a hero or the owl met the ball but it flies on and scores: the goal is recorded (as a trusted goal), nothing is lost", () => {
+  replay.setReplaySession("session_id_000007", SEED);
+  const found = findHand(SEED, 0, true);
+  const id = replay.replayShot(found.hand, view, hoopForNextShot().index);
+  clock.t += 400;
+  replay.replayVoid(id, false); // met the hero in the air
+  assert.equal(replay.replayBusy(), true, "the shot is still not decided");
+  clock.t += found.ticks * TICK_MS;
+  replay.replayResult(id, true); // and it went in
+  clock.t += 2500;
+  const r = verifyReplay(replay.replayPayload("0.1.24"), SEED);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual([r.throws, r.goals, r.voided, r.trusted], [1, 1, 1, [0]]);
 });
 
 test("while the replay is on its way, shots are not recorded and hoops are free; after it, recording starts over", () => {

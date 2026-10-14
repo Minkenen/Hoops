@@ -179,12 +179,15 @@ export function replayResult(id: number, goal: boolean): void {
   }
 }
 
-/** Something other than the physics touched the ball (another screen took it, a guard batted it away): the shot is not counted. */
-export function replayVoid(id: number): void {
+/**
+ * Something other than the physics touched the ball (another screen took it, a hero or the owl met it): the server cannot play that shot, so it is marked.
+ * `decidedYet`: false when the ball is still flying and may yet score (the result is then recorded when it comes), true when the shot ends here.
+ */
+export function replayVoid(id: number, decidedYet = true): void {
   const shot = shots[id];
   if (shot) {
     shot.void = true;
-    if (shot.resultT === 0) shot.resultT = Math.max(shot.t + 1, Math.round(performance.now() - startedAt));
+    if (decidedYet && shot.resultT === 0) shot.resultT = Math.max(shot.t + 1, Math.round(performance.now() - startedAt));
     keep();
   }
 }
@@ -192,7 +195,13 @@ export function replayVoid(id: number): void {
 /** A shot is in the air or about to be decided: wait with sending. */
 export function replayBusy(): boolean {
   const last = shots[shots.length - 1];
-  return !!last && !last.void && last.resultT === 0;
+  if (!last || last.resultT !== 0) return false;
+  // a shot that was never decided must not hold everything back for ever
+  if (performance.now() - startedAt - last.t > 60_000) {
+    last.void = true;
+    return false;
+  }
+  return true;
 }
 
 export function replayPayload(version: string): ReplayPayload | null {

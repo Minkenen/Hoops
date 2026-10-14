@@ -335,8 +335,11 @@ async function score(request: Request, env: Env): Promise<Response> {
   }
   if (replay.used_at) return rejected("session_used", false, "That replay was already counted.");
   let outcomes: boolean[] = [];
+  let trustedGoals = 0;
   try {
-    outcomes = [...String((JSON.parse(replay.data) as { o: string }).o)].map((c) => c === "1");
+    const stored = JSON.parse(replay.data) as { o: string; t?: number };
+    trustedGoals = Number(stored.t) || 0;
+    outcomes = [...String(stored.o)].map((c) => c === "1");
   } catch {
     return rejected("bad_replay", false, "The stored replay could not be read.");
   }
@@ -344,7 +347,7 @@ async function score(request: Request, env: Env): Promise<Response> {
   if (sum.throws !== replay.shots || sum.goals !== replay.goals) return rejected("bad_replay", false, "The stored replay does not add up.");
 
   // The leaderboard score is the number of verified goals: what the app says its own (resettable) score is does not change it.
-  const credited = await creditReplay(env, player.id, sessionId, sum, MAX_SCORE, version, now);
+  const credited = await creditReplay(env, player.id, sessionId, sum, MAX_SCORE, version, now, trustedGoals);
   if (!credited) {
     await flag(env, player.id, "score_replay_race", "Replay session was already consumed.", version);
     return rejected("session_used", false, "That replay was already counted.");
@@ -358,19 +361,36 @@ async function score(request: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * Goals in shots something else touched (a hero, the owl) cannot be played by the server. They are believed within a limit: a quarter of the player's
+ * verified goals plus two, so what the app counts and what the board shows stay the same, and nobody can build a score out of them.
+ */
+async function limitTrusted(env: Env, playerId: string, decision: { goals: number; outcomes: boolean[]; trusted: number[] }): Promise<{ outcomes: boolean[]; goals: number; credited: number }> {
+  const outcomes = [...decision.outcomes];
+  if (!decision.trusted.length) return { outcomes, goals: decision.goals, credited: 0 };
+  const row = await env.DB.prepare("SELECT goals, trusted FROM scores WHERE player_id = ?").bind(playerId).first<{ goals: number; trusted: number }>();
+  const verifiedGoals = Math.max(0, (row?.goals || 0) - (row?.trusted || 0)) + (decision.goals - decision.trusted.length);
+  const room = Math.max(0, Math.floor(verifiedGoals / 4) + 2 - (row?.trusted || 0));
+  const credited = Math.min(room, decision.trusted.length);
+  decision.trusted.forEach((place, i) => {
+    outcomes[place] = i < credited;
+  });
+  return { outcomes, goals: outcomes.filter(Boolean).length, credited };
+}
+
+/**
  * Counts a verified replay for its player: marks it used (once, with a claim token) and adds its shots and goals.
  * `claimed` is the score the app said it had; a score can grow by at most the goals of the replay.
  * Returns false when the replay was already counted.
  */
-async function creditReplay(env: Env, playerId: string, sessionId: string, sum: ReturnType<typeof summarize>, claimed: number, version: string, now: number): Promise<boolean> {
+async function creditReplay(env: Env, playerId: string, sessionId: string, sum: ReturnType<typeof summarize>, claimed: number, version: string, now: number, trusted = 0): Promise<boolean> {
   const token = crypto.randomUUID();
   const mine = "EXISTS (SELECT 1 FROM replays WHERE session_id = ?11 AND claim = ?12)";
   const results = await env.DB.batch([
     env.DB.prepare("UPDATE replays SET used_at = ?, claim = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, token, sessionId, playerId),
     env.DB.prepare("UPDATE replay_sessions SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, sessionId, playerId),
     env.DB.prepare(
-      `INSERT INTO scores (player_id, best_score, best_streak, throws, goals, updated_at, version, streak)
-       SELECT ?1, MIN(?2, ?3), MAX(?4, ?5), ?6, ?3, ?7, ?8, CASE WHEN ?9 THEN ?6 ELSE ?10 END
+      `INSERT INTO scores (player_id, best_score, best_streak, throws, goals, updated_at, version, streak, trusted)
+       SELECT ?1, MIN(?2, ?3), MAX(?4, ?5), ?6, ?3, ?7, ?8, CASE WHEN ?9 THEN ?6 ELSE ?10 END, ?13
        WHERE ${mine}
        ON CONFLICT(player_id) DO UPDATE SET
          throws = scores.throws + ?6,
@@ -378,8 +398,9 @@ async function creditReplay(env: Env, playerId: string, sessionId: string, sum: 
          best_score = MIN(MAX(scores.best_score, ?2), scores.best_score + ?3),
          best_streak = MAX(scores.best_streak, ?4, scores.streak + ?5),
          streak = CASE WHEN ?9 THEN scores.streak + ?6 ELSE ?10 END,
+         trusted = scores.trusted + ?13,
          updated_at = ?7, version = ?8`,
-    ).bind(playerId, claimed, sum.goals, sum.bestRun, sum.lead, sum.throws, now, version, sum.all ? 1 : 0, sum.trail, sessionId, token),
+    ).bind(playerId, claimed, sum.goals, sum.bestRun, sum.lead, sum.throws, now, version, sum.all ? 1 : 0, sum.trail, sessionId, token, trusted),
     env.DB.prepare(
       `INSERT INTO weekly_scores (player_id, week, best_score, gained_score)
        SELECT ?1, ?2, MIN(?3, ?4), MIN(MIN(?3, ?4), ?5)
@@ -425,16 +446,17 @@ async function replay(request: Request, env: Env): Promise<Response> {
     return json({ error: "Replay rejected.", code: "replay_rejected", reason: decision.reason, retryable: false, kept }, 422);
   }
   if (decision.suspicion.length) await flag(env, player.id, "replay_suspicious", decision.suspicion.join("; "), version);
-  const data = JSON.stringify({ o: decision.outcomes.map((g: boolean) => (g ? "1" : "0")).join(""), u: decision.unconfirmed, v: decision.voided });
+  const limited = await limitTrusted(env, player.id, decision);
+  const data = JSON.stringify({ o: limited.outcomes.map((g: boolean) => (g ? "1" : "0")).join(""), u: decision.unconfirmed + (decision.trusted.length - limited.credited), v: decision.voided, t: limited.credited });
   const inserted = await env.DB.prepare(
     "INSERT OR IGNORE INTO replays (session_id, player_id, created_at, client_version, shots, goals, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
-  ).bind(sessionId, player.id, now, version || null, decision.throws, decision.goals, data).run();
+  ).bind(sessionId, player.id, now, version || null, decision.throws, limited.goals, data).run();
   if (inserted.meta.changes !== 1) {
     // the same upload again (a retry after a lost answer) is fine; anything else is not
     const existing = await env.DB.prepare("SELECT player_id, shots, goals, data FROM replays WHERE session_id = ?").bind(sessionId).first<{ player_id: string; shots: number; goals: number; data: string }>();
     if (!existing || existing.player_id !== player.id || existing.data !== data) return json({ error: "That replay session already has a replay.", code: "replay_exists", retryable: false }, 409);
   }
-  return json({ ok: true, verified: true, shots: decision.throws, goals: decision.goals, unconfirmed: decision.unconfirmed });
+  return json({ ok: true, verified: true, shots: decision.throws, goals: limited.goals, unconfirmed: decision.unconfirmed + (decision.trusted.length - limited.credited) });
 }
 
 /** A session is the seed for the hoops of the next shots. A few can be open at a time, and old unused ones are cleared away. */
@@ -493,14 +515,15 @@ export async function settleReplays(env: Env, playerId?: string, now = Date.now(
       else await env.DB.prepare("UPDATE replay_vault SET checked_at = ? WHERE session_id = ?").bind(now, row.session_id).run();
       continue;
     }
-    const data = JSON.stringify({ o: decision.outcomes.map((g: boolean) => (g ? "1" : "0")).join(""), u: decision.unconfirmed, v: decision.voided });
+    const limited = await limitTrusted(env, row.player_id, decision);
+    const data = JSON.stringify({ o: limited.outcomes.map((g: boolean) => (g ? "1" : "0")).join(""), u: decision.unconfirmed + (decision.trusted.length - limited.credited), v: decision.voided, t: limited.credited });
     const inserted = await env.DB.prepare("INSERT OR IGNORE INTO replays (session_id, player_id, created_at, client_version, shots, goals, data) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .bind(row.session_id, row.player_id, now, row.version, decision.throws, decision.goals, data).run();
+      .bind(row.session_id, row.player_id, now, row.version, decision.throws, limited.goals, data).run();
     if (inserted.meta.changes !== 1) {
       await finish("dead");
       continue;
     }
-    if (await creditReplay(env, row.player_id, row.session_id, summarize(decision.outcomes), MAX_SCORE, row.version || "", now)) {
+    if (await creditReplay(env, row.player_id, row.session_id, summarize(limited.outcomes), MAX_SCORE, row.version || "", now, limited.credited)) {
       credited++;
       await finish("credited");
     } else await finish("dead");
@@ -510,8 +533,9 @@ export async function settleReplays(env: Env, playerId?: string, now = Date.now(
     .bind(now - 15 * 60_000, ...bind).all<{ session_id: string; player_id: string; client_version: string | null; data: string }>();
   for (const row of loose.results) {
     try {
-      const outcomes = [...String((JSON.parse(row.data) as { o: string }).o)].map((c) => c === "1");
-      if (outcomes.length && (await creditReplay(env, row.player_id, row.session_id, summarize(outcomes), MAX_SCORE, row.client_version || "", now))) credited++;
+      const stored = JSON.parse(row.data) as { o: string; t?: number };
+      const outcomes = [...String(stored.o)].map((c) => c === "1");
+      if (outcomes.length && (await creditReplay(env, row.player_id, row.session_id, summarize(outcomes), MAX_SCORE, row.client_version || "", now, Number(stored.t) || 0))) credited++;
     } catch {
       /* not readable: leave it */
     }
