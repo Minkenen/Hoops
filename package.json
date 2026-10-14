@@ -10,7 +10,7 @@
     "tauri": "tauri",
     "build:web": "VITE_TARGET=web VITE_MULTIPLAYER=1 tsc && VITE_TARGET=web VITE_MULTIPLAYER=1 vite build",
     "test:physics": "node --experimental-strip-types --test test/physics.test.mjs",
-    "test:replay": "node --test test/replay.test.mjs"
+    "test:replay": "node --experimental-strip-types --test test/replay.test.mjs"
   },
   "dependencies": {
     "@fontsource/pixelify-sans": "^5.3.0",

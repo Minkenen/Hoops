@@ -3,7 +3,7 @@ const MAX_REPLAY_BYTES = 64_000;
 const MIN_SHOT_GAP_MS = 700;
 const MAX_SHOT_GAP_MS = 120_000;
 const MAX_SPEED = 2400;
-const G = 0.16;
+import { geff } from "../../../shared/physics.ts";
 function hash(value) { let h = 0; for (let i = 0; i < value.length; i++) h = Math.imul(31, h) + value.charCodeAt(i) | 0; return Math.abs(h); }
 
 export function simulateReplayShot(shot) {
@@ -19,7 +19,7 @@ export function simulateReplayShot(shot) {
   while (elapsed < flight) {
     const dt = Math.min(1, flight - elapsed);
     elapsed += dt;
-    vy += G * (shot.gs + (1 - shot.gs) * Math.max(0, Math.min(1, elapsed / 40))) * dt;
+    vy += geff(shot.gs, elapsed) * dt;
     x += vx * dt;
     y += vy * dt;
     if (x < 0 || x > shot.width) {
