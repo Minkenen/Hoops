@@ -56,8 +56,8 @@ export function hasReplaySession(): boolean {
 /** The shots are also kept on this computer until the server has them, so closing the app (or a crash) never loses goals. */
 function keep(): void {
   try {
-    if (!sessionId || !seed || !shots.length) localStorage.removeItem(KEEP_KEY);
-    else localStorage.setItem(KEEP_KEY, JSON.stringify({ sessionId, seed, shots }));
+    if (!sessionId || !seed) localStorage.removeItem(KEEP_KEY);
+    else localStorage.setItem(KEEP_KEY, JSON.stringify({ sessionId, seed, shots, savedAt: Date.now() }));
   } catch {
     /* storage can be full or off: the shots are still sent from memory */
   }
@@ -66,11 +66,14 @@ function keep(): void {
 /** Picks up shots from an earlier run that never reached the server (they go with the first upload). */
 function restore(): void {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEEP_KEY) ?? "null") as { sessionId?: string; seed?: string; shots?: ReplayShot[] } | null;
-    if (!saved || typeof saved.sessionId !== "string" || typeof saved.seed !== "string" || !Array.isArray(saved.shots) || !saved.shots.length) return;
+    const saved = JSON.parse(localStorage.getItem(KEEP_KEY) ?? "null") as { sessionId?: string; seed?: string; shots?: ReplayShot[]; savedAt?: number } | null;
+    if (!saved || typeof saved.sessionId !== "string" || typeof saved.seed !== "string" || !Array.isArray(saved.shots)) return;
+    // An empty session is only worth taking back while the server still has it (sessions last 6 hours); one with shots is always sent.
+    if (!saved.shots.length && (typeof saved.savedAt !== "number" || Date.now() - saved.savedAt > 4 * 3600_000)) return;
     sessionId = saved.sessionId;
     seed = saved.seed;
     shots = saved.shots.slice(0, MAX_SHOTS);
+    if (!shots.length) return;
     const last = shots[shots.length - 1];
     if (last.resultT === 0) {
       last.void = true; // it was in the air when the app closed

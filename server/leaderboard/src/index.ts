@@ -300,7 +300,8 @@ async function leaderboard(request: Request, env: Env, url: URL): Promise<Respon
 }
 
 const REPLAY_SESSION_MS = 6 * 3_600_000;
-const OPEN_SESSIONS_MAX = 5;
+// every start of the app (or a page visit) opens one; a low limit locked players out of counting their goals, so it is generous
+const OPEN_SESSIONS_MAX = 40;
 const SESSIONS_PER_DAY = 200;
 const REPLAYS_PER_DAY = 2000;
 const CLEANUP_MS = 24 * 3_600_000;

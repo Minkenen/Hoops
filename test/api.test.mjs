@@ -247,9 +247,9 @@ test("the seed in the replay is not trusted: the server uses its own", async () 
 test("sessions: a few can be open at a time, and a day has a limit", async () => {
   const world = await makeWorld();
   const token = await world.addPlayer("p1");
-  for (let i = 0; i < 5; i++) await newSession(world, token);
-  const sixth = await world.call("POST", "/replay/session", { token });
-  assert.equal(sixth.status, 429);
+  for (let i = 0; i < 40; i++) await newSession(world, token);
+  const over = await world.call("POST", "/replay/session", { token });
+  assert.equal(over.status, 429);
   const noToken = await world.call("POST", "/replay/session");
   assert.equal(noToken.status, 401);
 });
