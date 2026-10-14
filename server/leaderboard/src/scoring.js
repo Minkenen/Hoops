@@ -1,6 +1,6 @@
 // What a verified replay is worth. The numbers come from the replay the server played, never from what the app says about itself.
-export const SCORE_SYNC_MS = 30_000;
-export const IP_SYNC_MS = 10_000;
+export const SCORE_SYNC_MS = 3_000;
+export const IP_SYNC_MS = 2_000;
 export const WEEKLY_GAIN_CAP = 5000;
 export const MAX_SCORE = 100_000;
 

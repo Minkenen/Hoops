@@ -142,6 +142,7 @@ export class UI {
   private lbTab: LbTab = "global";
   private lbBoards: Partial<Record<LbTab, LbBoard>> = {};
   private lbBusy = false;
+  private boardRefreshing = false;
   /** Online multiplayer, mocked UI only (VITE_MULTIPLAYER_MOCK=1). */
   private mp = new MultiplayerMock({
     render: () => this.render(),
@@ -185,6 +186,10 @@ export class UI {
   })();
 
   constructor(private host: HTMLElement) {
+    // while the leaderboard window is open it keeps itself up to date
+    window.setInterval(() => {
+      if (this.view === "leaderboard" && !this.lbBusy) void this.refreshBoard();
+    }, 8_000);
     host.addEventListener("click", (e) => this.onClick(e));
     host.addEventListener("input", (e) => this.onInput(e));
     host.addEventListener("keydown", (e) => {
@@ -421,7 +426,23 @@ ${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>`
 
   openLeaderboard(): void {
     this.go("leaderboard");
-    void this.loadBoard();
+    void this.refreshBoard();
+  }
+
+  /** Sends the shots that are waiting, then reads the board: what you see is always up to date. */
+  private async refreshBoard(): Promise<void> {
+    if (this.boardRefreshing) return;
+    this.boardRefreshing = true;
+    try {
+      this.lbBusy = true;
+      this.render();
+      await backend.flush?.();
+    } catch {
+      /* read the board anyway */
+    } finally {
+      this.boardRefreshing = false;
+    }
+    await this.loadBoard();
   }
 
   private async loadBoard(): Promise<void> {

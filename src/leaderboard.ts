@@ -44,6 +44,8 @@ export interface LbBackend {
   /** Picks your ball colour (0 to 6). */
   setColor(color: number): Promise<LbUser>;
   load(tab: LbTab): Promise<LbBoard>;
+  /** Sends the shots that are waiting to the server right now (and waits for the answer, for a few seconds at most), so the board is up to date. */
+  flush?(): Promise<void>;
 }
 
 /** Letters, numbers, spaces, - and _, up to 18 characters. Returns null when the name is not good enough (fewer than 3 characters). */

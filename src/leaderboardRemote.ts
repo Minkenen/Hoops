@@ -79,6 +79,23 @@ export class RemoteLeaderboard implements LbBackend {
     return leaderboardLoad(this.serverUrl, tab);
   }
 
+  /** Sends what is waiting now and waits for it (up to 6 seconds): the leaderboard window calls it before it reads the board. */
+  async flush(): Promise<void> {
+    if (!this.me) return;
+    const until = Date.now() + 6_000;
+    while ((this.syncing || replayBusy()) && Date.now() < until) await new Promise((r) => window.setTimeout(r, 150));
+    if (this.syncing || Date.now() >= until) return;
+    this.syncing = true;
+    this.lastSync = Date.now();
+    try {
+      await this.sync();
+    } catch {
+      /* the shots are kept and sent next time */
+    } finally {
+      this.syncing = false;
+    }
+  }
+
   /** Sends the shots of this session and then the score. The score is only counted by the server together with a replay it has verified. */
   submitScore(force = false): void {
     if (!this.me || this.syncing) return;
