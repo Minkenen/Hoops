@@ -86,6 +86,7 @@ const TOUCH_WEB = import.meta.env.VITE_TARGET === "web" && window.matchMedia("(p
 /** On a touch screen the ball never rests closer to an edge than this (in art pixels), so there is room to pull it back. */
 const EDGE_ROOM = 38;
 const REST_SPOT_KEY = "hoops.restspot";
+const PLAY_SPOT_KEY = "hoops.playspot";
 const HOLD_K = 0.16;
 const HOLD_DAMP = 0.8;
 const THROW_CAP = 8;
@@ -702,7 +703,18 @@ export class Game {
     this.stopBeat();
     this.beat = window.setInterval(() => void setCapture(true), 1000);
     if (!this.drag.move) {
-      this.showHoop();
+      // Starting from the resting spot: the ball first goes to where it lay when the last game ended, and the hoop is placed for that spot.
+      const playX = settings.restSpot && !this.onlineMatch && !this.hoop ? this.spotX(PLAY_SPOT_KEY) : null;
+      if (playX !== null && Math.abs(playX - this.ball.x) > 2) {
+        const here = this.ball.x;
+        this.ball.x = playX;
+        this.showHoop();
+        this.ball.x = here;
+        this.nudgeX = playX;
+        this.glidePlay = true;
+      } else {
+        this.showHoop();
+      }
       play("stretch");
     }
     this.start();
@@ -1013,8 +1025,9 @@ export class Game {
     }
     if (this.nudgeX !== null) {
       // A finger needs room to pull the ball back (and the "ball returns to its spot" option): ease the resting ball sideways.
-      if (dr || b.moving) {
+      if ((dr && !this.glidePlay) || b.moving) {
         this.nudgeX = null;
+        this.glidePlay = false;
       } else {
         const dx = this.nudgeX - b.x;
         const step = Math.abs(dx) < 0.4 ? dx : dx * 0.12;
@@ -1022,6 +1035,7 @@ export class Game {
         b.ang += step / BALL_R;
         if (Math.abs(this.nudgeX - b.x) < 0.01) {
           this.nudgeX = null;
+          this.glidePlay = false;
           this.syncHit();
         }
       }
@@ -1133,27 +1147,35 @@ export class Game {
   /** The ball was thrown with Shift while no hoop was up: where it stops is the spot it should come back to. */
   private userPlaced = false;
 
-  /** The resting spot is saved as a share of the width, per screen. */
-  private saveRestSpot(): void {
+  /** The ball is gliding to the spot where it lay when the last game ended (it keeps gliding while it is held for aiming). */
+  private glidePlay = false;
+
+  /** A spot (the resting one, or where the ball lay in the last game) is saved as a share of the width, per screen. */
+  private saveSpot(key: string): void {
     const nx = (this.ball.x - BALL_R) / Math.max(1, this.artW - BALL_R * 2);
     try {
-      localStorage.setItem(REST_SPOT_KEY, JSON.stringify({ mon: this.me.index, nx: clamp(nx, 0, 1) }));
+      localStorage.setItem(key, JSON.stringify({ mon: this.me.index, nx: clamp(nx, 0, 1) }));
     } catch {
       /* ignore */
     }
   }
 
-  /** With the option on and no hoop up, the resting ball glides back to its spot. */
+  /** The saved spot as an x position on this screen, or null. */
+  private spotX(key: string): number | null {
+    try {
+      const s = JSON.parse(localStorage.getItem(key) ?? "null") as { mon?: number; nx?: number } | null;
+      if (!s || s.mon !== this.me.index || typeof s.nx !== "number") return null;
+      return BALL_R + clamp(s.nx, 0, 1) * (this.artW - BALL_R * 2);
+    } catch {
+      return null;
+    }
+  }
+
+  /** With the option on and no hoop up, the resting ball glides back to its resting spot. */
   private returnToSpot(): void {
     if (!settings.restSpot || this.onlineMatch || this.hoop || this.drag || this.ball.moving) return;
-    try {
-      const s = JSON.parse(localStorage.getItem(REST_SPOT_KEY) ?? "null") as { mon?: number; nx?: number } | null;
-      if (!s || s.mon !== this.me.index || typeof s.nx !== "number") return;
-      const x = BALL_R + clamp(s.nx, 0, 1) * (this.artW - BALL_R * 2);
-      if (Math.abs(x - this.ball.x) > 2) this.nudgeX = x;
-    } catch {
-      /* ignore */
-    }
+    const x = this.spotX(REST_SPOT_KEY);
+    if (x !== null && Math.abs(x - this.ball.x) > 2) this.nudgeX = x;
   }
 
   private rest(now: number): void {
@@ -1174,12 +1196,13 @@ export class Game {
       this.shot = false;
       // HORSE and 21: one ball, so the other player carries on from where it stopped
       if (this.onlineMatch && this.onlineMatch.game !== "speed") this.onlineMatch.sendRest(this.ballNx());
+      if (settings.restSpot && !this.onlineMatch && this.hoop) this.saveSpot(PLAY_SPOT_KEY);
       const soon = now + 600;
       this.hideAt = this.hideAt === null ? now + 700 : Math.min(this.hideAt, soon);
     }
     if (this.userPlaced) {
       this.userPlaced = false;
-      this.saveRestSpot();
+      this.saveSpot(REST_SPOT_KEY);
     } else {
       this.returnToSpot();
     }
