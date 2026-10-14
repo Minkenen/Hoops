@@ -1,35 +1,49 @@
 # Anti-cheat status
 
-This file is intentionally conservative. A point is `DONE` only when the
-server, client, and tests support it. Otherwise it remains `NOT DONE`.
+Every line below is backed by a test (`npm test`, 112 tests) unless it says otherwise.
 
-1. Shared physics module: `DONE` for deterministic free-flight. The client and
-   Worker import `shared/physics.ts`, and `test/physics-differential.test.mjs`
-   compares 2,000 deterministic shots including final position and velocity.
-   Collision parity remains part of point 2.
-2. Server physics matching the client: `NOT DONE`. Ring, net, ball-radius,
-   and polygon collision golden tests are still missing.
-3. Server-owned geometry: `PARTIAL`. The server derives seed-based hoop,
-   board, and floor geometry when a replay omits client geometry. Legacy
-   payloads still use their supplied geometry during the migration window;
-   new clients must stop sending those fields before this can be `DONE`.
-4. Replay-bound score totals: `DONE` for the lifetime-delta check. Server-
-   derived score/streak calculation is `NOT DONE`.
-5. New replay session and hoop: `NOT DONE`. A new session is fetched after
-   submission, but the active hoop is not yet rebuilt from the new seed.
-6. Server-selected starting player: `DONE` in source for the new protocol.
-7. Server-owned multiplayer state: `PARTIAL`. Turn, score, letters, result,
-   and match-over state are tracked in source; authoritative physics and
-   server-clock flight timing are still missing.
-8. Client protocol/error handling: `PARTIAL`. Protocol version 2 is defined,
-   but the user-facing update message and complete `match_over` handling need
-   the 0.1.24 client release.
-9. Replay/session cleanup: `DONE` in source. Old rows are removed during
-   session creation and open sessions are rate-limited per account.
-10. Remaining client trust: `NOT DONE`. The client still supplies shot timing,
-    initial velocity, and some geometry until shared physics is complete.
+| # | Point | Status |
+|---|-------|--------|
+| T1 | One shared ball step and court placement (`shared/world.ts`, `shared/court.ts`) used by the game and the server | DONE. 500 shots compared frame by frame against a frozen copy of the old step; hoop placement compared on 1000 screens |
+| T2 | Server takes no court data from the player; a replay shot that carries any is refused | DONE |
+| T3 | Server replays every claimed goal; a goal counts only if the replay is a goal at about the same time; misses are never turned into goals | DONE (20 deliberate faults in the verifier were all caught by the tests) |
+| T4 | Scores and counters come from the verified replay, not from the player | DONE (`/score` takes only session id, score, version; weekly gain cap; best score at most previous + replay goals) |
+| T5 | New replay session after each submission; the hoop is rebuilt from the new seed | DONE |
+| T6 | Server picks the starting player; hoops of a match come from the room seed | DONE |
+| T7 | Server keeps the whole match (turn, shots, score, letters, winner, rest, forfeit) and plays every shot itself | DONE |
+| T8 | App follows `match_state`, shows a clear message for an old protocol or a refused shot | DONE (protocol 3, `/mp/version`) |
+| T9 | Cleanup of old replays and sessions (on session creation and hourly cron) | DONE |
+| T10 | Remaining client-trusted inputs | see below |
+| E | A license key belongs to the first account that uses it; Lemon Squeezy is asked at most once a day per key | DONE |
 
-## Deployment note
+## End-to-end check
 
-Protocol-2 source changes must ship with the matching client. Do not deploy
-the protocol-2 Worker alone while released clients are still on 0.1.23.
+The real game was driven in a browser against a local worker: the app's own
+physics produced shots, the server replayed them. 15 counted shots, 11 goals,
+0 goals the server could not reproduce. (3 shots from a warm-up were voided
+by the app, as designed.)
+
+## What a cheater can still do (T10)
+
+The server cannot see the player's hand, so these stay trusted within limits:
+
+- The *hand*: start position, speed and spin of each shot. A program can aim
+  perfectly (an aimbot) as long as every shot is a speed a real hand could make
+  (`maxSpeed`). Defence: accuracy above 92 % over 30+ shots and perfectly even
+  pace are flagged as suspicious.
+- Window size and floor height, within fixed ranges.
+- Which shots are marked void (multi-monitor handoff, swats, hero shots). Void
+  shots count nothing, so this can only cost the player points.
+- Timing between shots (at least 700 ms apart, at most 2 min).
+- The net cloth is not replayed. Measured: goal outcomes agree in 248 of 248
+  goals with and without it; timing differs by up to 3 ticks, inside the
+  allowed margin.
+
+## Deploying
+
+The server (protocol 3), the 0.1.24 app and the rebuilt web client must go out
+together; the old 0.1.23 app cannot talk to the new worker.
+
+Migrations 0009 and 0010 were already applied by hand on the live database:
+record them in `d1_migrations` instead of running them again. 0011 and 0012
+are new.
