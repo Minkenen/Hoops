@@ -170,7 +170,7 @@ test("a player who already has a score on the server and a replay with more shot
   await world.env.DB.prepare("INSERT INTO scores (player_id, best_score, best_streak, throws, goals, updated_at, streak) VALUES ('p1', 40, 9, 500, 200, 1, 3)").run();
   const { s } = await upload(world, token, [{ goal: true }, { goal: true }, { goal: false }, { goal: true }]);
   const sc = await score(world, token, s.sessionId, 41);
-  assert.deepEqual(sc.json.counters, { best_score: 41, best_streak: 9, throws: 504, goals: 203 });
+  assert.deepEqual(sc.json.counters, { best_score: 43, best_streak: 9, throws: 504, goals: 203 }); // 40 + the 3 verified goals
   const streak = (await world.rows("SELECT streak FROM scores"))[0].streak;
   assert.equal(streak, 1); // the replay ended with a miss and then a goal
 });
@@ -448,4 +448,17 @@ test("a verified replay nobody claimed with a score is counted by the hourly job
   assert.equal(later.credited, 1);
   assert.deepEqual((await world.rows("SELECT goals, throws FROM scores WHERE player_id = 'p1'")).map((r) => [r.goals, r.throws])[0], [2, 3]);
   assert.equal((await settleReplays(world.env, "p1", Date.now() + 30 * 60_000)).credited, 0);
+});
+
+test("the leaderboard score is the verified goals: a score the app reset or exaggerates changes nothing", async () => {
+  const world = await makeWorld();
+  const token = await world.addPlayer("p1");
+  const first = await upload(world, token, [{ goal: true }, { goal: true }, { goal: false }]);
+  assert.equal((await score(world, token, first.s.sessionId, 0)).json.counters.best_score, 2, "an app that reset its score to 0 still gets its goals");
+  world.advance?.();
+  await world.env.DB.prepare("DELETE FROM score_submissions").run();
+  const second = await upload(world, token, [{ goal: true }, { goal: false }]);
+  const sc = await score(world, token, second.s.sessionId, 99999);
+  assert.equal(sc.json.counters.best_score, 3, "and an app that claims 99999 gets only what the server verified");
+  assert.equal(sc.json.counters.goals, 3);
 });

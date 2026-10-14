@@ -342,7 +342,8 @@ async function score(request: Request, env: Env): Promise<Response> {
   const sum = summarize(outcomes);
   if (sum.throws !== replay.shots || sum.goals !== replay.goals) return rejected("bad_replay", false, "The stored replay does not add up.");
 
-  const credited = await creditReplay(env, player.id, sessionId, sum, claimed, version, now);
+  // The leaderboard score is the number of verified goals: what the app says its own (resettable) score is does not change it.
+  const credited = await creditReplay(env, player.id, sessionId, sum, MAX_SCORE, version, now);
   if (!credited) {
     await flag(env, player.id, "score_replay_race", "Replay session was already consumed.", version);
     return rejected("session_used", false, "That replay was already counted.");
