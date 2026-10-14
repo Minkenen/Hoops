@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyReplayNetForce, simulateReplayShot, verifyReplay } from "../server/leaderboard/src/replay.js";
+import { applyReplayNetForce, replayGeometry, simulateReplayShot, verifyReplay } from "../server/leaderboard/src/replay.js";
 
 const shot = (id, t, goal = false) => {
   const right = id === 0;
@@ -96,4 +96,14 @@ test("server replay applies net force during net passage", () => {
   const before = { ...state };
   assert.equal(applyReplayNetForce(state, shot, 1), true);
   assert.notEqual(state.vx, before.vx);
+});
+
+test("server derives deterministic geometry when replay omits client geometry", () => {
+  const geometry = replayGeometry("session_123", 0, 800, 600);
+  const result = verifyReplay({
+    sessionId: "session_123", seed: "session_123", goals: 0,
+    shots: [{ id: 0, t: 0, resultT: 1200, width: 800, height: 600, x: 400, y: 150, vx: 0, vy: -6, nx: 0.5, ny: 0.25, gs: 1, goal: false }],
+  });
+  assert.equal(result.ok, true);
+  assert.equal(geometry.hoopX, 656);
 });

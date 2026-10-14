@@ -9,8 +9,10 @@ server, client, and tests support it. Otherwise it remains `NOT DONE`.
    Collision parity remains part of point 2.
 2. Server physics matching the client: `NOT DONE`. Ring, net, ball-radius,
    and polygon collision golden tests are still missing.
-3. Server-owned geometry: `NOT DONE`. Replay validation still receives some
-   geometry from the client and only applies plausibility checks.
+3. Server-owned geometry: `PARTIAL`. The server derives seed-based hoop,
+   board, and floor geometry when a replay omits client geometry. Legacy
+   payloads still use their supplied geometry during the migration window;
+   new clients must stop sending those fields before this can be `DONE`.
 4. Replay-bound score totals: `DONE` for the lifetime-delta check. Server-
    derived score/streak calculation is `NOT DONE`.
 5. New replay session and hoop: `NOT DONE`. A new session is fetched after

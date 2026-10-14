@@ -79,6 +79,18 @@ function expectedRimHeight(seed, index, height) {
   return 70 + (hash(`${seed}:${index}`) % 100000) / 100000 * Math.max(10, max - 70);
 }
 
+export function replayGeometry(seed, index, width, height) {
+  const side = expectedSide(seed, index);
+  const center = side === "right" ? width * 0.82 : width * 0.18;
+  const rimWidth = Math.max(20, width * 0.05);
+  const floorY = height - Math.max(18, height * 0.08);
+  const hoopY = floorY - expectedRimHeight(seed, index, height);
+  const boardWidth = Math.max(34, width * 0.08);
+  const boardHeight = Math.max(70, height * 0.24);
+  const boardCenter = side === "right" ? center + rimWidth * 0.9 : center - rimWidth * 0.9;
+  return { hoopX: center, hoopY, hoopL: center - rimWidth / 2, hoopR: center + rimWidth / 2, floorY, boardL: boardCenter - boardWidth / 2, boardR: boardCenter + boardWidth / 2, boardT: hoopY - boardHeight / 2, boardB: hoopY + boardHeight / 2 };
+}
+
 export function verifyReplay(input) {
   if (!input || typeof input !== "object") return { ok: false, reason: "Invalid replay." };
   if (typeof input.sessionId !== "string" || !/^[a-zA-Z0-9_-]{8,80}$/.test(input.sessionId)) return { ok: false, reason: "Invalid replay session." };
@@ -94,24 +106,27 @@ export function verifyReplay(input) {
     if (!Number.isFinite(shot.t) || shot.t < 0 || shot.t <= previousTime) return { ok: false, reason: "Replay times are out of order." };
     if (previousTime >= 0 && (shot.t - previousTime < MIN_SHOT_GAP_MS || shot.t - previousTime > MAX_SHOT_GAP_MS)) return { ok: false, reason: "Replay shot timing is impossible." };
     previousTime = shot.t;
+    if (!Number.isFinite(shot.width) || !Number.isFinite(shot.height) || shot.width < 100 || shot.height < 100 || shot.width > 2_000 || shot.height > 2_000) return { ok: false, reason: "Replay dimensions are invalid." };
+    const geometry = replayGeometry(input.seed, shot.id, shot.width, shot.height);
+    const hasClientGeometry = [shot.floorY, shot.hoopX, shot.hoopY, shot.hoopL, shot.hoopR].every(Number.isFinite);
+    const physicsShot = hasClientGeometry ? { ...geometry, ...shot } : { ...shot, ...geometry };
     for (const key of ["x", "y", "vx", "vy"]) if (!Number.isFinite(shot[key]) || Math.abs(shot[key]) > MAX_SPEED * 2) return { ok: false, reason: "Replay physics are impossible." };
     const speed = Math.hypot(shot.vx, shot.vy);
     if (speed > MAX_SPEED) return { ok: false, reason: "Replay shot speed is impossible." };
     if (!Number.isFinite(shot.nx) || !Number.isFinite(shot.ny) || shot.nx < 0 || shot.nx > 1 || shot.ny < 0 || shot.ny > 1) return { ok: false, reason: "Replay coordinates are invalid." };
-    if (!Number.isFinite(shot.width) || !Number.isFinite(shot.height) || shot.width < 100 || shot.height < 100 || shot.width > 2_000 || shot.height > 2_000) return { ok: false, reason: "Replay dimensions are invalid." };
-    if (shot.x < 0 || shot.x > shot.width || shot.y < 0 || shot.y > shot.floorY || Math.abs(shot.nx - shot.x / shot.width) > 0.002 || Math.abs(shot.ny - shot.y / shot.height) > 0.002) return { ok: false, reason: "Replay coordinates do not match the shot." };
-    if (!Number.isFinite(shot.floorY) || shot.floorY <= shot.hoopY || shot.floorY > shot.height + 40) return { ok: false, reason: "Replay floor data is invalid." };
-    if (![shot.resultT, shot.gs, shot.hoopX, shot.hoopY, shot.hoopL, shot.hoopR].every(Number.isFinite) || shot.resultT <= shot.t || shot.resultT - shot.t > 30_000 || shot.gs < 0.25 || shot.gs > 2.5 || shot.hoopL >= shot.hoopR || shot.hoopX < shot.hoopL || shot.hoopX > shot.hoopR) return { ok: false, reason: "Replay hoop data is invalid." };
-    const hoopWidth = (shot.hoopR - shot.hoopL) / shot.width;
-    const hoopY = shot.hoopY / shot.height;
-    const hoopCenter = shot.hoopX / shot.width;
+    if (shot.x < 0 || shot.x > shot.width || shot.y < 0 || shot.y > physicsShot.floorY || Math.abs(shot.nx - shot.x / shot.width) > 0.002 || Math.abs(shot.ny - shot.y / shot.height) > 0.002) return { ok: false, reason: "Replay coordinates do not match the shot." };
+    if (physicsShot.floorY <= physicsShot.hoopY || physicsShot.floorY > shot.height + 40) return { ok: false, reason: "Replay floor data is invalid." };
+    if (![shot.resultT, shot.gs, physicsShot.hoopX, physicsShot.hoopY, physicsShot.hoopL, physicsShot.hoopR].every(Number.isFinite) || shot.resultT <= shot.t || shot.resultT - shot.t > 30_000 || shot.gs < 0.25 || shot.gs > 2.5 || physicsShot.hoopL >= physicsShot.hoopR || physicsShot.hoopX < physicsShot.hoopL || physicsShot.hoopX > physicsShot.hoopR) return { ok: false, reason: "Replay hoop data is invalid." };
+    const hoopWidth = (physicsShot.hoopR - physicsShot.hoopL) / shot.width;
+    const hoopY = physicsShot.hoopY / shot.height;
+    const hoopCenter = physicsShot.hoopX / shot.width;
     if (hoopWidth < 0.045 || hoopWidth > 0.16 || hoopCenter < 0.08 || hoopCenter > 0.92 || hoopY < 0.05 || hoopY > 0.9) return { ok: false, reason: "Replay hoop geometry is implausible." };
-    if (shot.goal && !simulateReplayShot(shot).crossed) return { ok: false, reason: "Replay goal is not physically possible." };
-    const center = shot.hoopX / shot.width;
+    if (shot.goal && !simulateReplayShot(physicsShot).crossed) return { ok: false, reason: "Replay goal is not physically possible." };
+    const center = physicsShot.hoopX / shot.width;
     const side = center < 0.5 ? "left" : "right";
     if (side !== expectedSide(input.seed, shot.id)) return { ok: false, reason: "Replay hoop side does not match the session." };
-    const expectedY = shot.floorY - expectedRimHeight(input.seed, shot.id, shot.height);
-    if (Math.abs(shot.hoopY - expectedY) > 4) return { ok: false, reason: "Replay hoop height does not match the session." };
+    const expectedY = physicsShot.floorY - expectedRimHeight(input.seed, shot.id, shot.height);
+    if (Math.abs(physicsShot.hoopY - expectedY) > 4) return { ok: false, reason: "Replay hoop height does not match the session." };
     if (typeof shot.goal !== "boolean") return { ok: false, reason: "Replay result is invalid." };
     if (shot.goal) goals++;
   }
