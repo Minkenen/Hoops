@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { simulateReplayShot, verifyReplay } from "../server/leaderboard/src/replay.js";
+import { applyReplayNetForce, simulateReplayShot, verifyReplay } from "../server/leaderboard/src/replay.js";
 
 const shot = (id, t, goal = false) => {
   const right = id === 0;
@@ -88,4 +88,12 @@ test("replay physics golden fixtures stay stable", () => {
     crossed: true, flight: 250, bounces: 0,
     x: 400, y: 300.80000000000007, vx: 0, vy: 5.600000000000002,
   });
+});
+
+test("server replay applies net force during net passage", () => {
+  const state = { x: 409, y: 318, vx: 0, vy: 1, r: 10.5 };
+  const shot = { hoopL: 380, hoopR: 420, hoopY: 300 };
+  const before = { ...state };
+  assert.equal(applyReplayNetForce(state, shot, 1), true);
+  assert.notEqual(state.vx, before.vx);
 });
