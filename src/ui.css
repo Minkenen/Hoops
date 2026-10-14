@@ -1,7 +1,7 @@
 #ui{
   --panel:#f4f2ee;--text:#1c1c22;--mut:#5f6571;--btn:#dfe3e8;--acc:#ee7a24;--o:#1c1c22;
   --h:rgba(255,255,255,.9);--trk:#c4c9d2;
-  font-family:'Pixelify Sans',ui-monospace,monospace;color:var(--text);font-size:14px;line-height:1.35;
+  font-family:'Hooperly Digits','Pixelify Sans',ui-monospace,monospace;color:var(--text);font-size:14px;line-height:1.35;
 }
 @media (prefers-color-scheme: dark){
   #ui{--panel:#2a2d36;--text:#f2f4f7;--mut:#aeb4be;--btn:#3a3e48;--trk:#4a4f5a;--o:#0d0e12}
@@ -82,7 +82,7 @@
 #ui .donate-footer b{display:block;color:var(--acc);font-size:15px;font-weight:500;margin-top:3px}
 
 .ach-toast{position:fixed;left:50%;top:84px;margin-left:-150px;min-width:300px;display:flex;gap:12px;align-items:center;padding:10px 16px 10px 12px;
-  background:#2a2d36;color:#f2f4f7;font-family:'Pixelify Sans',ui-monospace,monospace;pointer-events:none;z-index:99;
+  background:#2a2d36;color:#f2f4f7;font-family:'Hooperly Digits','Pixelify Sans',ui-monospace,monospace;pointer-events:none;z-index:99;
   box-shadow:-2px 0 0 #0d0e12,2px 0 0 #0d0e12,0 -2px 0 #0d0e12,0 2px 0 #0d0e12,-4px 0 0 rgba(255,255,255,.9),4px 0 0 rgba(255,255,255,.9),0 -4px 0 rgba(255,255,255,.9),0 4px 0 rgba(255,255,255,.9);
   animation:achIn .45s steps(8) both,achOut .35s steps(6) 3.2s both}
 .ach-toast canvas{width:36px;height:36px;image-rendering:pixelated;background:#3a3e48;padding:6px;box-sizing:content-box}

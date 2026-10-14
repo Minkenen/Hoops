@@ -1,5 +1,6 @@
 import "@fontsource/pixelify-sans/400.css";
 import "@fontsource/pixelify-sans/500.css";
+import "./fonts.css";
 import "./styles.css";
 import "./ui.css";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
