@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { makeWorld } from "./helpers/api.mjs";
 import { buildReplay, findHand } from "./helpers/client.mjs";
 import { cleanupReplays } from "../server/leaderboard/src/index.ts";
+import { soloCourt } from "../server/leaderboard/src/shots.js";
 
 const V = "0.1.24";
 
@@ -226,8 +227,17 @@ test("the seed in the replay is not trusted: the server uses its own", async () 
   const world = await makeWorld();
   const token = await world.addPlayer("p1");
   const s = await newSession(world, token);
-  // a replay played in the court of another seed: its goals are not the server's goals
-  const wrongSeed = buildReplay(s.sessionId, "not-the-servers-seed-at-all", Array.from({ length: 6 }, () => ({ goal: true })));
+  // a replay played in the court of another seed (one whose hoops are all somewhere else): its goals are not the server's goals
+  let wrongSeed;
+  for (let k = 0; !wrongSeed; k++) {
+    const candidate = buildReplay(s.sessionId, `not-the-servers-seed-${k}`, Array.from({ length: 6 }, () => ({ goal: true })));
+    const elsewhere = candidate.shots.every((shot, i) => {
+      const mine = soloCourt(candidate.seed, i, shot).hoop;
+      const real = soloCourt(s.seed, i, shot).hoop;
+      return Math.abs(mine.x0 - real.x0) > 40 || Math.abs(mine.rimY - real.rimY) > 40;
+    });
+    if (elsewhere) wrongSeed = candidate;
+  }
   const up = await world.call("POST", "/replay", { token, body: wrongSeed });
   assert.equal(up.status, 200);
   // a few of them may happen to score in the server's court too, but not all six
