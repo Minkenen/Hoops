@@ -1,0 +1,14 @@
+{
+  "version": "0.1.24",
+  "url": "https://minkenen.github.io/Hoops/#download",
+  "notes": [
+    "Hoops is now called Hooperly",
+    "Online matches are now run by the server, so scores are fair",
+    "The leaderboard checks every goal against a replay",
+    "Main menu redesign with Play online up top",
+    "Profile with name and ball colour",
+    "57 achievements in 9 groups",
+    "Pixel Discord button and bug report button",
+    "Turn feedback and a new lobby for online games"
+  ]
+}
