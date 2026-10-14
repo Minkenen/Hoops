@@ -396,3 +396,16 @@ test("at most a dozen keys are looked at, and the answer needs a sign-in", async
     assert.equal((await world.call("GET", "/entitlements")).status, 401);
   } finally { ls.restore(); }
 });
+
+test("the websocket gate passes the app's protocol on to the room (the room refuses a connection without it)", async () => {
+  const world = await makeWorld();
+  const token = await world.addPlayer("p1", "Player One");
+  const seen = [];
+  world.env.MP = { idFromName: () => "hub", get: () => ({ fetch: async (request) => { seen.push(new URL(request.url)); return new Response("ok"); } }) };
+  const worker = (await import("../server/leaderboard/src/index.ts")).default;
+  const res = await worker.fetch(new Request(`https://hoops.test/mp/ws?mode=room&create=1&game=speed&protocol=3&token=${token}`, { headers: { upgrade: "websocket", "cf-connecting-ip": "1.2.3.4" } }), world.env);
+  assert.equal(res.status, 200);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].searchParams.get("protocol"), "3");
+  assert.equal(seen[0].searchParams.get("mode"), "room");
+});

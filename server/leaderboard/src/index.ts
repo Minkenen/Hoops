@@ -1064,6 +1064,8 @@ async function mpWs(request: Request, env: Env, url: URL): Promise<Response> {
   const next = new URL("https://mp.local/ws");
   next.searchParams.set("mode", mode);
   next.searchParams.set("game", game);
+  // the room checks the protocol itself, so it has to be told which one the app speaks
+  next.searchParams.set("protocol", url.searchParams.get("protocol") || "");
   if (code) next.searchParams.set("code", code);
   if (create) next.searchParams.set("create", "1");
   return hub.fetch(
