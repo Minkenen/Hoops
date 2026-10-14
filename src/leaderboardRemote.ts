@@ -101,6 +101,8 @@ export class RemoteLeaderboard implements LbBackend {
   }
 
   private retryTimer = 0;
+  /** How many times in a row the server refused the same replay without keeping it. */
+  private refusals = 0;
   private retryLater(): void {
     window.clearTimeout(this.retryTimer);
     this.retryTimer = window.setTimeout(() => this.submitScore(true), SYNC_MS + 5_000);
@@ -120,8 +122,16 @@ export class RemoteLeaderboard implements LbBackend {
       const upload = await fetch(`${this.serverUrl}/replay`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
       if (!upload.ok) {
         // a server problem: keep the shots and try again; a refusal of this replay: start a new session
-        if (upload.status >= 500 || upload.status === 429) this.retryLater();
-        else await this.newSession();
+        if (upload.status >= 500 || upload.status === 429) {
+          this.retryLater();
+          return;
+        }
+        // The server keeps a replay it cannot count right now in its vault and counts it later (`kept`); only then is it let go here.
+        const answer = (await upload.json().catch(() => ({}))) as { kept?: boolean; code?: string };
+        if (answer.kept === true || answer.code === "bad_session" || answer.code === "session_used" || ++this.refusals > 4) {
+          this.refusals = 0;
+          await this.newSession();
+        } else this.retryLater();
         return;
       }
       const result = await leaderboardSubmitScore(this.serverUrl, getScore(), payload.sessionId);

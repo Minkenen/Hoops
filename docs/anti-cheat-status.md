@@ -47,3 +47,9 @@ together; the old 0.1.23 app cannot talk to the new worker.
 Migrations 0009 and 0010 were already applied by hand on the live database:
 record them in `d1_migrations` instead of running them again. 0011 and 0012
 are new.
+
+## A goal is never lost (the safety net)
+
+- The app keeps the shots it has not delivered on the computer (`localStorage`) until the server has them; closing the app does not lose them.
+- A replay the server cannot count right now (a rule that was too strict, an expired session) is kept in the server's vault (`replay_vault`, migration 0013) instead of being thrown away; the app lets it go only after the server says it is kept.
+- Every hour, and when a player opens a new session, the server checks the vault again with the current rules and counts what passes. Verified replays nobody claimed with a score are counted the same way. Counting is once only (a claim token).

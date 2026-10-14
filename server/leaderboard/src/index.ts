@@ -1,6 +1,6 @@
 import { MIN_CLIENT_VERSION, NICKNAME_TAKEN_ERROR, defaultNickname, nicknameDecision, nicknameLower, versionAtLeast, weekKey } from "./logic.js";
 import { MAX_REPLAY_BYTES, verifyReplay } from "./replay.js";
-import { IP_SYNC_MS, SCORE_SYNC_MS, WEEKLY_GAIN_CAP, claimedScore, summarize } from "./scoring.js";
+import { IP_SYNC_MS, MAX_SCORE, SCORE_SYNC_MS, WEEKLY_GAIN_CAP, claimedScore, summarize } from "./scoring.js";
 import { advance, createMatch, forfeit, nextDue, rest as matchRest, snapshot, startShot } from "./match.js";
 
 interface D1Result {
@@ -85,6 +85,7 @@ const bad = (message: string, status = 400): Response => json({ error: message }
 export default {
   /** Clears away unused replays and old records every hour (see the cron in wrangler.toml). */
   async scheduled(_event: unknown, env: Env): Promise<void> {
+    await settleReplays(env);
     await cleanupReplays(env);
   },
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -341,11 +342,30 @@ async function score(request: Request, env: Env): Promise<Response> {
   const sum = summarize(outcomes);
   if (sum.throws !== replay.shots || sum.goals !== replay.goals) return rejected("bad_replay", false, "The stored replay does not add up.");
 
+  const credited = await creditReplay(env, player.id, sessionId, sum, claimed, version, now);
+  if (!credited) {
+    await flag(env, player.id, "score_replay_race", "Replay session was already consumed.", version);
+    return rejected("session_used", false, "That replay was already counted.");
+  }
+  await env.DB.batch([
+    env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`ip:${ip}`, now),
+    env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`player:${player.id}`, now),
+  ]);
+  const row = await env.DB.prepare("SELECT best_score, best_streak, throws, goals FROM scores WHERE player_id = ?").bind(player.id).first<{ best_score: number; best_streak: number; throws: number; goals: number }>();
+  return json({ ok: true, verified: true, counters: row });
+}
+
+/**
+ * Counts a verified replay for its player: marks it used (once, with a claim token) and adds its shots and goals.
+ * `claimed` is the score the app said it had; a score can grow by at most the goals of the replay.
+ * Returns false when the replay was already counted.
+ */
+async function creditReplay(env: Env, playerId: string, sessionId: string, sum: ReturnType<typeof summarize>, claimed: number, version: string, now: number): Promise<boolean> {
   const token = crypto.randomUUID();
   const mine = "EXISTS (SELECT 1 FROM replays WHERE session_id = ?11 AND claim = ?12)";
   const results = await env.DB.batch([
-    env.DB.prepare("UPDATE replays SET used_at = ?, claim = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, token, sessionId, player.id),
-    env.DB.prepare("UPDATE replay_sessions SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, sessionId, player.id),
+    env.DB.prepare("UPDATE replays SET used_at = ?, claim = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, token, sessionId, playerId),
+    env.DB.prepare("UPDATE replay_sessions SET used_at = ? WHERE session_id = ? AND player_id = ? AND used_at IS NULL").bind(now, sessionId, playerId),
     env.DB.prepare(
       `INSERT INTO scores (player_id, best_score, best_streak, throws, goals, updated_at, version, streak)
        SELECT ?1, MIN(?2, ?3), MAX(?4, ?5), ?6, ?3, ?7, ?8, CASE WHEN ?9 THEN ?6 ELSE ?10 END
@@ -357,7 +377,7 @@ async function score(request: Request, env: Env): Promise<Response> {
          best_streak = MAX(scores.best_streak, ?4, scores.streak + ?5),
          streak = CASE WHEN ?9 THEN scores.streak + ?6 ELSE ?10 END,
          updated_at = ?7, version = ?8`,
-    ).bind(player.id, claimed, sum.goals, sum.bestRun, sum.lead, sum.throws, now, version, sum.all ? 1 : 0, sum.trail, sessionId, token),
+    ).bind(playerId, claimed, sum.goals, sum.bestRun, sum.lead, sum.throws, now, version, sum.all ? 1 : 0, sum.trail, sessionId, token),
     env.DB.prepare(
       `INSERT INTO weekly_scores (player_id, week, best_score, gained_score)
        SELECT ?1, ?2, MIN(?3, ?4), MIN(MIN(?3, ?4), ?5)
@@ -365,18 +385,9 @@ async function score(request: Request, env: Env): Promise<Response> {
        ON CONFLICT(player_id, week) DO UPDATE SET
          gained_score = MIN(weekly_scores.gained_score + MAX(0, MIN(MAX(weekly_scores.best_score, ?3), weekly_scores.best_score + ?4) - weekly_scores.best_score), ?5),
          best_score = MIN(MAX(weekly_scores.best_score, ?3), weekly_scores.best_score + ?4)`,
-    ).bind(player.id, weekKey(now), claimed, sum.goals, WEEKLY_GAIN_CAP, sessionId, token),
+    ).bind(playerId, weekKey(now), claimed, sum.goals, WEEKLY_GAIN_CAP, sessionId, token),
   ]);
-  if (results[0].meta.changes !== 1) {
-    await flag(env, player.id, "score_replay_race", "Replay session was already consumed.", version);
-    return rejected("session_used", false, "That replay was already counted.");
-  }
-  await env.DB.batch([
-    env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`ip:${ip}`, now),
-    env.DB.prepare("INSERT OR REPLACE INTO score_submissions (key, updated_at) VALUES (?, ?)").bind(`player:${player.id}`, now),
-  ]);
-  const row = await env.DB.prepare("SELECT best_score, best_streak, throws, goals FROM scores WHERE player_id = ?").bind(player.id).first<{ best_score: number; best_streak: number; throws: number; goals: number }>();
-  return json({ ok: true, verified: true, counters: row });
+  return results[0].meta.changes === 1;
 }
 
 /** The app uploads the shots of a session. The server plays them again; a goal counts only if the replay of the shot is a goal too. */
@@ -401,11 +412,15 @@ async function replay(request: Request, env: Env): Promise<Response> {
     return json({ error: "Replay session not found.", code: "bad_session", retryable: false }, 422);
   }
   if (session.used_at) return json({ error: "That replay session is already used.", code: "session_used", retryable: false }, 409);
-  if (now - session.created_at > REPLAY_SESSION_MS) return json({ error: "Replay session expired.", code: "session_expired", retryable: false }, 422);
+  if (now - session.created_at > REPLAY_SESSION_MS) {
+    const kept = await keepInVault(env, player.id, sessionId, text, "session_expired", version, now);
+    return json({ error: "Replay session expired.", code: "session_expired", retryable: false, kept }, 422);
+  }
   const decision = verifyReplay(body, session.seed);
   if (!decision.ok) {
     await flag(env, player.id, "replay", decision.reason, version);
-    return json({ error: "Replay rejected.", code: "replay_rejected", reason: decision.reason, retryable: false }, 422);
+    const kept = await keepInVault(env, player.id, sessionId, text, decision.reason, version, now);
+    return json({ error: "Replay rejected.", code: "replay_rejected", reason: decision.reason, retryable: false, kept }, 422);
   }
   if (decision.suspicion.length) await flag(env, player.id, "replay_suspicious", decision.suspicion.join("; "), version);
   const data = JSON.stringify({ o: decision.outcomes.map((g: boolean) => (g ? "1" : "0")).join(""), u: decision.unconfirmed, v: decision.voided });
@@ -424,6 +439,7 @@ async function replay(request: Request, env: Env): Promise<Response> {
 async function replaySession(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
   const now = Date.now();
+  await settleReplays(env, player.id, now);
   await cleanupReplays(env, now);
   const day = await env.DB.prepare("SELECT COUNT(*) AS n FROM replay_sessions WHERE player_id = ? AND created_at > ?").bind(player.id, now - 86_400_000).first<{ n: number }>();
   if ((day?.n || 0) >= SESSIONS_PER_DAY) return bad("Too many replay sessions today.", 429);
@@ -435,12 +451,79 @@ async function replaySession(request: Request, env: Env): Promise<Response> {
   return json({ sessionId, seed, expiresAt: now + REPLAY_SESSION_MS });
 }
 
+const VAULT_PER_PLAYER = 40;
+const VAULT_DAYS = 30;
+
+/** A replay the server cannot count right now is kept, so it can be checked again later: a player never loses goals because of a rule that was too strict. */
+async function keepInVault(env: Env, playerId: string, sessionId: string, payload: string, reason: string, version: string, now: number): Promise<boolean> {
+  const held = await env.DB.prepare("SELECT COUNT(*) AS n FROM replay_vault WHERE player_id = ? AND status = 'held'").bind(playerId).first<{ n: number }>();
+  if ((held?.n || 0) >= VAULT_PER_PLAYER) return false;
+  const res = await env.DB.prepare("INSERT OR IGNORE INTO replay_vault (session_id, player_id, created_at, reason, version, payload) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(sessionId, playerId, now, reason.slice(0, 200), version || null, payload).run();
+  return res.meta.changes === 1 || Boolean(await env.DB.prepare("SELECT 1 AS x FROM replay_vault WHERE session_id = ? AND player_id = ?").bind(sessionId, playerId).first());
+}
+
+/**
+ * Counts what was kept: replays in the vault that now pass the check (after a fix), and verified replays that nobody claimed with a score.
+ * Runs every hour and when a player starts a new replay session (`playerId`: only that player).
+ */
+export async function settleReplays(env: Env, playerId?: string, now = Date.now()): Promise<{ credited: number }> {
+  let credited = 0;
+  const who = playerId ? " AND player_id = ?" : "";
+  const bind = playerId ? [playerId] : [];
+  const held = await env.DB.prepare(`SELECT session_id, player_id, created_at, version, payload FROM replay_vault WHERE status = 'held'${who} ORDER BY created_at LIMIT 40`)
+    .bind(...bind).all<{ session_id: string; player_id: string; created_at: number; version: string | null; payload: string }>();
+  for (const row of held.results) {
+    const session = await env.DB.prepare("SELECT player_id, seed, used_at FROM replay_sessions WHERE session_id = ?").bind(row.session_id).first<{ player_id: string; seed: string; used_at: number | null }>();
+    const finish = (status: string) => env.DB.prepare("UPDATE replay_vault SET status = ?, checked_at = ? WHERE session_id = ?").bind(status, now, row.session_id).run();
+    if (!session || session.player_id !== row.player_id || session.used_at) {
+      await finish("dead");
+      continue;
+    }
+    let decision: ReturnType<typeof verifyReplay> | null = null;
+    try {
+      decision = verifyReplay(JSON.parse(row.payload), session.seed);
+    } catch {
+      decision = null;
+    }
+    if (!decision || !decision.ok) {
+      if (now - row.created_at > VAULT_DAYS * 86_400_000) await finish("dead");
+      else await env.DB.prepare("UPDATE replay_vault SET checked_at = ? WHERE session_id = ?").bind(now, row.session_id).run();
+      continue;
+    }
+    const data = JSON.stringify({ o: decision.outcomes.map((g: boolean) => (g ? "1" : "0")).join(""), u: decision.unconfirmed, v: decision.voided });
+    const inserted = await env.DB.prepare("INSERT OR IGNORE INTO replays (session_id, player_id, created_at, client_version, shots, goals, data) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(row.session_id, row.player_id, now, row.version, decision.throws, decision.goals, data).run();
+    if (inserted.meta.changes !== 1) {
+      await finish("dead");
+      continue;
+    }
+    if (await creditReplay(env, row.player_id, row.session_id, summarize(decision.outcomes), MAX_SCORE, row.version || "", now)) {
+      credited++;
+      await finish("credited");
+    } else await finish("dead");
+  }
+  // verified replays that were uploaded but never claimed (the app dropped them or lost the connection): count them before the cleanup removes them
+  const loose = await env.DB.prepare(`SELECT session_id, player_id, client_version, data FROM replays WHERE used_at IS NULL AND created_at < ?${who} ORDER BY created_at LIMIT 40`)
+    .bind(now - 15 * 60_000, ...bind).all<{ session_id: string; player_id: string; client_version: string | null; data: string }>();
+  for (const row of loose.results) {
+    try {
+      const outcomes = [...String((JSON.parse(row.data) as { o: string }).o)].map((c) => c === "1");
+      if (outcomes.length && (await creditReplay(env, row.player_id, row.session_id, summarize(outcomes), MAX_SCORE, row.client_version || "", now))) credited++;
+    } catch {
+      /* not readable: leave it */
+    }
+  }
+  return { credited };
+}
+
 /** Removes replays and sessions that were never used, and old records. Runs on a schedule and whenever a session is made. */
 export async function cleanupReplays(env: Env, now = Date.now()): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM replays WHERE used_at IS NULL AND created_at < ?").bind(now - CLEANUP_MS),
     env.DB.prepare("DELETE FROM replays WHERE used_at IS NOT NULL AND used_at < ?").bind(now - 7 * CLEANUP_MS),
-    env.DB.prepare("DELETE FROM replay_sessions WHERE created_at < ?").bind(now - CLEANUP_MS),
+    env.DB.prepare("DELETE FROM replay_sessions WHERE created_at < ? AND session_id NOT IN (SELECT session_id FROM replay_vault WHERE status = 'held')").bind(now - CLEANUP_MS),
+    env.DB.prepare("DELETE FROM replay_vault WHERE status != 'held' AND checked_at < ?").bind(now - 14 * CLEANUP_MS),
     env.DB.prepare("DELETE FROM score_submissions WHERE updated_at < ?").bind(now - CLEANUP_MS),
     env.DB.prepare("DELETE FROM entitlement_checks WHERE checked_at < ?").bind(now - 30 * CLEANUP_MS),
   ]);

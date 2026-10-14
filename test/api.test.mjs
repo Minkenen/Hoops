@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeWorld } from "./helpers/api.mjs";
 import { buildReplay, findHand } from "./helpers/client.mjs";
-import { cleanupReplays } from "../server/leaderboard/src/index.ts";
+import { cleanupReplays, settleReplays } from "../server/leaderboard/src/index.ts";
 import { soloCourt } from "../server/leaderboard/src/shots.js";
 
 const V = "0.1.24";
@@ -408,4 +408,44 @@ test("the websocket gate passes the app's protocol on to the room (the room refu
   assert.equal(seen.length, 1);
   assert.equal(seen[0].searchParams.get("protocol"), "3");
   assert.equal(seen[0].searchParams.get("mode"), "room");
+});
+
+test("a replay the server refuses is kept in the vault, and counted later when it passes (a goal is never lost)", async () => {
+  const world = await makeWorld();
+  const token = await world.addPlayer("p1");
+  const s = await newSession(world, token);
+  const goodOnes = buildReplay(s.sessionId, s.seed, [{ goal: true }, { goal: true }, { goal: false }, { goal: true }]);
+  // the same replay, from a screen the server does not accept (as the old, too strict rule did with phones)
+  const refused = { ...goodOnes, shots: goodOnes.shots.map((shot) => ({ ...shot, artW: 40 })) };
+  const up = await world.call("POST", "/replay", { token, body: refused });
+  assert.equal(up.status, 422);
+  assert.equal(up.json.kept, true, "the answer says the replay is kept");
+  const held = await world.rows("SELECT status, reason FROM replay_vault WHERE session_id = ?", s.sessionId);
+  assert.deepEqual(held.map((r) => r.status), ["held"]);
+  // nothing is counted yet
+  assert.equal((await world.rows("SELECT * FROM scores")).length, 0);
+  // the rule is fixed: the same replay, now valid, is in the vault (simulated by putting the valid one there)
+  await world.env.DB.prepare("UPDATE replay_vault SET payload = ? WHERE session_id = ?").bind(JSON.stringify(goodOnes), s.sessionId).run();
+  const r1 = await settleReplays(world.env, "p1");
+  assert.equal(r1.credited, 1);
+  const score = (await world.rows("SELECT best_score, goals, throws FROM scores WHERE player_id = 'p1'"))[0];
+  assert.deepEqual([score.goals, score.throws, score.best_score], [3, 4, 3]);
+  assert.deepEqual((await world.rows("SELECT status FROM replay_vault")).map((r) => r.status), ["credited"]);
+  // counting twice is not possible
+  const r2 = await settleReplays(world.env, "p1");
+  assert.equal(r2.credited, 0);
+  assert.equal((await world.rows("SELECT goals FROM scores WHERE player_id = 'p1'"))[0].goals, 3);
+});
+
+test("a verified replay nobody claimed with a score is counted by the hourly job, not thrown away", async () => {
+  const world = await makeWorld();
+  const token = await world.addPlayer("p1");
+  const s = await newSession(world, token);
+  const up = await world.call("POST", "/replay", { token, body: buildReplay(s.sessionId, s.seed, [{ goal: true }, { goal: true }, { goal: false }]) });
+  assert.equal(up.status, 200);
+  assert.equal((await settleReplays(world.env, "p1")).credited, 0, "a fresh one is left for the app to claim");
+  const later = await settleReplays(world.env, "p1", Date.now() + 20 * 60_000);
+  assert.equal(later.credited, 1);
+  assert.deepEqual((await world.rows("SELECT goals, throws FROM scores WHERE player_id = 'p1'")).map((r) => [r.goals, r.throws])[0], [2, 3]);
+  assert.equal((await settleReplays(world.env, "p1", Date.now() + 30 * 60_000)).credited, 0);
 });

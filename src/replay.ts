@@ -28,7 +28,8 @@ export interface ReplayPayload {
   shots: ReplayShot[];
 }
 
-const startedAt = performance.now();
+let startedAt = performance.now();
+const KEEP_KEY = "hoops.replay.keep";
 const MAX_SHOTS = 200;
 let sessionId = "";
 let seed = "";
@@ -52,10 +53,42 @@ export function hasReplaySession(): boolean {
   return !!sessionId && !!seed;
 }
 
+/** The shots are also kept on this computer until the server has them, so closing the app (or a crash) never loses goals. */
+function keep(): void {
+  try {
+    if (!sessionId || !seed || !shots.length) localStorage.removeItem(KEEP_KEY);
+    else localStorage.setItem(KEEP_KEY, JSON.stringify({ sessionId, seed, shots }));
+  } catch {
+    /* storage can be full or off: the shots are still sent from memory */
+  }
+}
+
+/** Picks up shots from an earlier run that never reached the server (they go with the first upload). */
+function restore(): void {
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEEP_KEY) ?? "null") as { sessionId?: string; seed?: string; shots?: ReplayShot[] } | null;
+    if (!saved || typeof saved.sessionId !== "string" || typeof saved.seed !== "string" || !Array.isArray(saved.shots) || !saved.shots.length) return;
+    sessionId = saved.sessionId;
+    seed = saved.seed;
+    shots = saved.shots.slice(0, MAX_SHOTS);
+    const last = shots[shots.length - 1];
+    if (last.resultT === 0) {
+      last.void = true; // it was in the air when the app closed
+      last.resultT = last.t + 1;
+    }
+    // times run on from where the earlier run stopped
+    startedAt = performance.now() - (Math.max(last.t, last.resultT) + 5_000);
+  } catch {
+    /* unreadable: start fresh */
+  }
+}
+restore();
+
 export function setReplaySession(serverSessionId: string, serverSeed: string): void {
   sessionId = serverSessionId;
   seed = serverSeed;
   shots = [];
+  keep();
   onSession?.();
 }
 
@@ -63,6 +96,7 @@ export function resetReplay(): void {
   sessionId = "";
   seed = "";
   shots = [];
+  keep();
 }
 
 export function replaySubmitting(on: boolean): void {
@@ -76,6 +110,7 @@ export function replayShot(hand: { x: number; y: number; vx: number; vy: number;
   if (last && !last.void && last.resultT === 0) last.void = true; // the shot before was never decided
   const id = shots.length;
   shots.push({ id, t: Math.round(performance.now() - startedAt), resultT: 0, ...view, ...hand, goal: false, void: hoopIndex !== id });
+  keep();
   return id;
 }
 
@@ -85,6 +120,7 @@ export function replayResult(id: number, goal: boolean): void {
   if (shot && shot.resultT === 0) {
     shot.goal = goal;
     shot.resultT = Math.max(shot.t + 1, Math.round(performance.now() - startedAt));
+    keep();
   }
 }
 
@@ -94,6 +130,7 @@ export function replayVoid(id: number): void {
   if (shot) {
     shot.void = true;
     if (shot.resultT === 0) shot.resultT = Math.max(shot.t + 1, Math.round(performance.now() - startedAt));
+    keep();
   }
 }
 
