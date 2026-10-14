@@ -499,6 +499,10 @@ interface MpRoom {
   expiresAt: number;
   startsAt?: number;
   seed?: string;
+  turnPlayerId?: string;
+  scores: Map<string, number>;
+  letters: Map<string, number>;
+  over?: boolean;
 }
 
 interface MpClientMessage {
@@ -549,6 +553,8 @@ export class MultiplayerHub {
       players: new Map(),
       createdAt: now,
       expiresAt: now + MP_ROOM_TTL_MS,
+      scores: new Map(),
+      letters: new Map(),
     };
     this.rooms.set(room.id, room);
     this.codeToRoom.set(code, room.id);
@@ -624,6 +630,10 @@ export class MultiplayerHub {
         if (room.players.size === 2 && [...room.players.values()].every((p) => p.ready && p.connected)) {
           room.startsAt = Date.now() + 3000;
           room.seed = room.seed || crypto.randomUUID();
+          room.turnPlayerId = room.game === "speed" ? undefined : [...room.players.keys()][0];
+          room.scores = new Map([...room.players.keys()].map((id) => [id, 0]));
+          room.letters = new Map([...room.players.keys()].map((id) => [id, 0]));
+          room.over = false;
           broadcast(room, "start_countdown", { startsAt: room.startsAt, seed: room.seed, countdownSeconds: 3, game: room.game, court: room.court });
         }
         break;
@@ -636,6 +646,7 @@ export class MultiplayerHub {
         break;
       }
       case "match_event": {
+        if (room.over || !room.startsAt || Date.now() < room.startsAt) return sendError(ws, msg, "not_started", "The match has not started yet.");
         const event = payload.event;
         const seq = Number(payload.seq);
         if (!event || typeof event !== "object" || !Number.isInteger(seq) || seq <= player.matchSeq || seq > player.matchSeq + 1) return sendError(ws, msg, "bad_match_event", "Match event was out of order.");
@@ -647,6 +658,7 @@ export class MultiplayerHub {
           : (kind === "shot" ? (previous === "none" || previous === "rest") : kind === "result" ? previous === "shot" : previous === "result");
         if (!allowed) return sendError(ws, msg, "bad_match_event", "Match event was not valid for the current turn.");
         if (kind === "shot") {
+          if (room.game !== "speed" && room.turnPlayerId !== player.id) return sendError(ws, msg, "wrong_turn", "It is not your turn.");
           if (!Number.isInteger((event as Record<string, unknown>).shotId) || Number((event as Record<string, unknown>).shotId) < 0) return sendError(ws, msg, "bad_match_event", "Shot id was invalid.");
           const numeric = ["x", "y", "vx", "vy", "width", "height", "floorY", "gs", "hoopX", "hoopY", "hoopL", "hoopR", "boardL", "boardR", "boardT", "boardB"];
           if (!numeric.every((key) => typeof (event as Record<string, unknown>)[key] === "number" && Number.isFinite((event as Record<string, unknown>)[key]))) return sendError(ws, msg, "bad_match_event", "Shot physics were invalid.");
@@ -659,10 +671,23 @@ export class MultiplayerHub {
           if ((event as Record<string, unknown>).shotId !== player.activeShot.shotId) return sendError(ws, msg, "bad_match_event", "Match result did not match the active shot.");
           const expectedGoal = simulateReplayShot({ ...player.activeShot, t: 0, resultT, goal: false }).crossed;
           if ((event as Record<string, unknown>).goal !== expectedGoal) return sendError(ws, msg, "bad_match_event", "Server rejected the reported result.");
+          const goal = expectedGoal;
+          if (room.game === "speed" && goal) room.scores.set(player.id, (room.scores.get(player.id) || 0) + 1);
+          if (room.game === "t21" && goal) room.scores.set(player.id, (room.scores.get(player.id) || 0) + ((event as Record<string, unknown>).far === true ? 2 : 1));
+          if (room.game === "horse" && !goal) room.letters.set(player.id, (room.letters.get(player.id) || 0) + 1);
+          (event as Record<string, unknown>).score = room.scores.get(player.id) || 0;
+          (event as Record<string, unknown>).letters = room.letters.get(player.id) || 0;
+          const finished = room.game === "speed" ? (room.scores.get(player.id) || 0) >= 10 : room.game === "t21" ? (room.scores.get(player.id) || 0) >= 21 : (room.letters.get(player.id) || 0) >= 5;
+          if (finished) room.over = true;
           player.activeShot = undefined;
         }
         if (kind === "result" && (typeof (event as Record<string, unknown>).goal !== "boolean" || typeof (event as Record<string, unknown>).far !== "boolean")) return sendError(ws, msg, "bad_match_event", "Match result was invalid.");
         if (kind === "rest" && (typeof (event as Record<string, unknown>).nx !== "number" || Number((event as Record<string, unknown>).nx) < 0 || Number((event as Record<string, unknown>).nx) > 1)) return sendError(ws, msg, "bad_match_event", "Rest position was invalid.");
+        if (kind === "rest" && room.game !== "speed") {
+          const peer = peerOf(room, player.id);
+          if (!peer) return sendError(ws, msg, "bad_match_event", "The opponent is missing.");
+          room.turnPlayerId = peer.id;
+        }
         player.matchSeq = seq;
         player.matchEvent = room.game === "speed" && kind === "result" ? "none" : kind as "shot" | "result" | "rest";
         const peer = peerOf(room, player.id);
@@ -710,6 +735,8 @@ export class MultiplayerHub {
       players: new Map([[player.id, { id: player.id, nickname: player.nickname, ready: false, connected: true, role: "offerer", socket, matchSeq: -1, matchEvent: "none" }]]),
       createdAt: now,
       expiresAt: now + MP_ROOM_TTL_MS,
+      scores: new Map(),
+      letters: new Map(),
     };
     this.rooms.set(room.id, room);
     this.quickWaiting.set(game, { player, socket, room });
