@@ -74,6 +74,9 @@ interface Drag {
   move: boolean;
   tx: number;
   ty: number;
+  /** Where the ball lay when it was pressed: the thumbstick stays there even if the ball glides away to its play spot. */
+  hx: number;
+  hy: number;
 }
 
 const SUB = 4;
@@ -686,7 +689,7 @@ export class Game {
       this.shot = false;
       this.slowSlide = false;
     }
-    this.drag = { gx: e.clientX, gy: e.clientY, lx: 0, ly: 0, power: 0, move: e.shiftKey, tx: this.ball.x, ty: this.ball.y };
+    this.drag = { gx: e.clientX, gy: e.clientY, lx: 0, ly: 0, power: 0, move: e.shiftKey, tx: this.ball.x, ty: this.ball.y, hx: this.ball.x, hy: this.ball.y };
     this.cv.setPointerCapture(e.pointerId);
     this.clearHold();
     if (e.pointerType === "touch") {
@@ -1701,7 +1704,7 @@ export class Game {
       const l = Math.hypot(d.lx, d.ly) || 1;
       drawAim(ctx, settings.arrow, b.x, b.y, -d.lx / l, -d.ly / l, d.power, Math.abs(d.ly / l), this.vmax);
     }
-    if (d && !d.move) this.drawGrip(ctx, b.x, b.y, d.lx, d.ly);
+    if (d && !d.move) this.drawGrip(ctx, d.hx, d.hy, d.lx, d.ly);
 
     if (this.bubble) {
       const dur = settings.bubble * 1000;
