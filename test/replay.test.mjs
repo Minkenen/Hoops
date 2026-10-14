@@ -66,3 +66,26 @@ test("replay simulation uses the shared ball radius and rim collisions", () => {
   assert.ok(result.bounces >= 1);
   assert.ok(result.x !== 100 || result.vy < 0);
 });
+
+test("replay physics golden fixtures stay stable", () => {
+  const freeFlight = simulateReplayShot({
+    x: 200, y: 200, vx: 1, vy: 0, gs: 1, t: 0, resultT: 250,
+    width: 800, height: 600, floorY: 550, hoopX: 400, hoopY: 300,
+    hoopL: 380, hoopR: 420, boardL: 700, boardR: 720, boardT: 100, boardB: 200,
+  });
+  assert.deepEqual(freeFlight, {
+    crossed: false, flight: 250, bounces: 3,
+    x: 428.791134999999, y: 504.77262079999997,
+    vx: 0.7351650000000001, vy: -0.3877568000000007,
+  });
+
+  const cleanMake = simulateReplayShot({
+    x: 400, y: 200, vx: 0, vy: 0, gs: 1, t: 0, resultT: 250,
+    width: 800, height: 600, floorY: 550, hoopX: 400, hoopY: 300,
+    hoopL: 380, hoopR: 420, boardL: 430, boardR: 450, boardT: 250, boardB: 380,
+  });
+  assert.deepEqual(cleanMake, {
+    crossed: true, flight: 250, bounces: 0,
+    x: 400, y: 300.80000000000007, vx: 0, vy: 5.600000000000002,
+  });
+});
