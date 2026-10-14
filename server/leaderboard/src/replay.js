@@ -7,7 +7,6 @@ import { shotProblem, soloCourt } from "./shots.js";
 export const MAX_SHOTS = 200;
 export const MAX_REPLAY_BYTES = 64_000;
 export const MIN_SHOT_GAP_MS = 700;
-const MAX_SHOT_GAP_MS = 120_000;
 const MAX_FLIGHT_MS = 30_000;
 /** The game steps 60 times a second, 4 sub-steps of 0.3125 each. */
 export const TICK_MS = 1000 / 60;
@@ -72,7 +71,8 @@ export function verifyReplay(input, seed) {
     for (const key of Object.keys(shot)) if (!SHOT_FIELDS.includes(key)) return bad("Replay shots must not carry court data.");
     if (shot.id !== index) return bad("Replay shots are out of order.");
     if (!finite(shot.t) || shot.t < 0 || shot.t <= previousTime) return bad("Replay times are out of order.");
-    if (previousTime >= 0 && (shot.t - previousTime < MIN_SHOT_GAP_MS || shot.t - previousTime > MAX_SHOT_GAP_MS)) return bad("Replay shot timing is impossible.");
+    // shots cannot be closer than a throw takes; a long pause between two shots is fine (a player goes away and comes back)
+    if (previousTime >= 0 && shot.t - previousTime < MIN_SHOT_GAP_MS) return bad("Replay shot timing is impossible.");
     if (previousTime >= 0) gaps.push(shot.t - previousTime);
     previousTime = shot.t;
     if (typeof shot.void !== "boolean" || typeof shot.goal !== "boolean") return bad("Replay result is invalid.");

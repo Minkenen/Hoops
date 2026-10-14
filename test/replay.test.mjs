@@ -156,3 +156,16 @@ test("a phone in portrait (a narrow, tall screen) can have its goals counted, in
     assert.deepEqual([r.throws, r.goals, r.unconfirmed], [4, 3, 0], JSON.stringify(view));
   }
 });
+
+test("a long pause between two shots is fine (a player goes away and comes back); shots too close together are not", () => {
+  const replay = buildReplay(ID, SEED, [{ goal: true }, { goal: false }, { goal: true }], { gap: 2000 });
+  replay.shots[1].t += 400_000;
+  replay.shots[1].resultT += 400_000;
+  replay.shots[2].t += 900_000;
+  replay.shots[2].resultT += 900_000;
+  const r = verifyReplay(replay, SEED);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(r.outcomes, [true, false, true]);
+  const tooFast = buildReplay(ID, SEED, [{ goal: true }, { goal: true }], { gap: 300 });
+  assert.equal(verifyReplay(tooFast, SEED).ok, false);
+});
