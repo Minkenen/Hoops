@@ -24,7 +24,7 @@ import { themeById } from "./themes";
 import { drawTrail, trailById, trailOwned, type TrailPoint } from "./trails";
 import { BALL_FRAMES, BALL_R, BALL_SPRITE_SIZE, type HoopSprite, BASE_CENTER, OLD_BOARD, makeBallFrames, makeHoopSprite, makePoleSprite } from "./sprites";
 import { queueLeaderboardScoreSync } from "./leaderboardSync";
-import { currentReplayTarget, onReplaySession, replayResult, replayShot, replayVoid } from "./replay";
+import { currentReplayTarget, onReplaySession, replayResult, replayShot, replayVoid, setReplayIdleCheck } from "./replay";
 import { matchHoopTarget, placeHoop, poleBox } from "../shared/court.ts";
 import { stepWorld, type WorldHoop } from "../shared/world.ts";
 import type { UI } from "./ui";
@@ -172,6 +172,7 @@ export class Game {
   ) {
     this.cv = cv;
     onReplaySession(() => this.onNewReplaySession());
+    setReplayIdleCheck(() => !this.hoop);
     setAchievementListener((list) => this.announce(list));
     touchDay();
     addToSet("themes", settings.theme);

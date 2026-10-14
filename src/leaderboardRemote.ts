@@ -11,7 +11,7 @@ import {
 } from "./ipc";
 import { syncNow } from "./profileSync";
 import { leaderboardSessionToken } from "./ipc";
-import { hasReplaySession, replayBusy, replayPayload, replaySubmitting, resetReplay, setReplaySession } from "./replay";
+import { type ReplayPayload, dropPending, hasReplaySession, pendingReplays, replayBusy, replayIdle, replayPayload, replaySubmitting, resetReplay, rotateReplay, setReplaySession } from "./replay";
 import type { LbBackend, LbBoard, LbProviderId, LbTab, LbUser } from "./leaderboard";
 
 const SYNC_MS = 30_000;
@@ -126,45 +126,82 @@ export class RemoteLeaderboard implements LbBackend {
   }
 
   private async sync(): Promise<void> {
+    const token = await leaderboardSessionToken();
+    if (!token) return;
+    // 1. shots that wait from earlier (a lost connection, a restart)
+    for (const waiting of pendingReplays()) if (!(await this.deliver(waiting, token))) return;
     if (!hasReplaySession()) {
       await this.prepareReplaySession();
       return;
     }
+    if (replayBusy() || !replayPayload(__APP_VERSION__)) return;
+    // 2. the shots of now: wait until no hoop is up, then switch to a fresh session at once, so no shot is ever recorded in a gap
+    for (let i = 0; i < 30 && !replayIdle(); i++) await new Promise((r) => window.setTimeout(r, 250));
+    const fresh = await this.fetchSession(token);
+    if (fresh) {
+      const payload = rotateReplay(fresh.sessionId, fresh.seed, __APP_VERSION__);
+      if (payload) await this.deliver(payload, token);
+      return;
+    }
+    // no new session to be had: send the shots as they are and hold recording while they are on their way
     const payload = replayPayload(__APP_VERSION__);
     if (!payload) return;
     replaySubmitting(true);
     try {
-      const token = await leaderboardSessionToken();
-      if (!token) return;
-      const upload = await fetch(`${this.serverUrl}/replay`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
-      if (!upload.ok) {
-        // a server problem: keep the shots and try again; a refusal of this replay: start a new session
-        if (upload.status >= 500 || upload.status === 429) {
-          this.retryLater();
-          return;
-        }
-        // The server keeps a replay it cannot count right now in its vault and counts it later (`kept`); only then is it let go here.
-        const answer = (await upload.json().catch(() => ({}))) as { kept?: boolean; code?: string };
-        if (answer.kept === true || answer.code === "bad_session" || answer.code === "session_used" || ++this.refusals > 4) {
-          this.refusals = 0;
-          await this.newSession();
-        } else this.retryLater();
-        return;
+      if (await this.deliver(payload, token)) {
+        resetReplay();
+        await this.prepareReplaySession();
       }
-      const result = await leaderboardSubmitScore(this.serverUrl, getScore(), payload.sessionId);
-      if (!result) return;
-      if (result.verified) await this.newSession();
-      else if (result.retryable) this.retryLater();
-      else await this.newSession(); // the server will not count this replay: do not carry it around
     } finally {
       replaySubmitting(false);
     }
   }
 
-  /** The shots are counted (or can never be): a new session starts, and the next hoop is built from its seed. */
-  private async newSession(): Promise<void> {
-    resetReplay();
-    await this.prepareReplaySession();
+  /**
+   * Sends one replay and then its score. Returns true when it is finished (counted, kept by the server, or can never be counted),
+   * false when it must be tried again later. Anything not finished stays in the waiting list.
+   */
+  private async deliver(payload: ReplayPayload, token: string): Promise<boolean> {
+    const upload = await fetch(`${this.serverUrl}/replay`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+    if (!upload.ok) {
+      if (upload.status >= 500 || upload.status === 429) {
+        this.retryLater();
+        return false;
+      }
+      // The server keeps a replay it cannot count right now in its vault and counts it later (`kept`); only then is it let go here.
+      const answer = (await upload.json().catch(() => ({}))) as { kept?: boolean; code?: string };
+      if (answer.kept === true || answer.code === "bad_session" || answer.code === "session_used" || ++this.refusals > 4) {
+        this.refusals = 0;
+        dropPending(payload.sessionId);
+        return true;
+      }
+      this.retryLater();
+      return false;
+    }
+    const result = await leaderboardSubmitScore(this.serverUrl, getScore(), payload.sessionId);
+    if (!result) return false;
+    if (result.verified) {
+      dropPending(payload.sessionId);
+      return true;
+    }
+    if (result.retryable) {
+      this.retryLater();
+      return false;
+    }
+    // the server will not count it as a score now; it keeps a verified replay nobody claimed and counts it itself
+    dropPending(payload.sessionId);
+    return true;
+  }
+
+  private async fetchSession(token: string): Promise<{ sessionId: string; seed: string } | null> {
+    try {
+      const response = await fetch(`${this.serverUrl}/replay/session`, { method: "POST", headers: { authorization: `Bearer ${token}`, accept: "application/json" } });
+      if (!response.ok) return null;
+      const data = (await response.json()) as { sessionId?: string; seed?: string };
+      return data.sessionId && data.seed ? { sessionId: data.sessionId, seed: data.seed } : null;
+    } catch {
+      return null;
+    }
   }
 
   async prepareReplaySession(): Promise<void> {

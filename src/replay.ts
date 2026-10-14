@@ -102,6 +102,58 @@ export function resetReplay(): void {
   keep();
 }
 
+const PENDING_KEY = "hoops.replay.pending";
+/** Shots that have left their session and wait to be delivered (kept on this computer until the server has them). */
+let pending: ReplayPayload[] = [];
+try {
+  const saved = JSON.parse(localStorage.getItem(PENDING_KEY) ?? "[]") as ReplayPayload[];
+  if (Array.isArray(saved)) pending = saved.filter((p) => p && typeof p.sessionId === "string" && Array.isArray(p.shots));
+} catch {
+  /* nothing waiting */
+}
+function savePending(): void {
+  try {
+    if (pending.length) localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+    else localStorage.removeItem(PENDING_KEY);
+  } catch {
+    /* storage can be full or off */
+  }
+}
+export function pendingReplays(): ReplayPayload[] {
+  return pending.slice();
+}
+export function dropPending(id: string): void {
+  pending = pending.filter((p) => p.sessionId !== id);
+  savePending();
+}
+
+let idleCheck: (() => boolean) | null = null;
+/** The game says when no hoop is up: the session is changed then, so the next hoop already comes from the new seed. */
+export function setReplayIdleCheck(f: () => boolean): void {
+  idleCheck = f;
+}
+export function replayIdle(): boolean {
+  return idleCheck ? idleCheck() : true;
+}
+
+/**
+ * The shots of now go to the waiting list and recording carries on at once in a new session: there is no gap in which a shot could be recorded
+ * against a hoop that does not come from the seed (and so would not count). Returns the shots that were taken out.
+ */
+export function rotateReplay(newSessionId: string, newSeed: string, version: string): ReplayPayload | null {
+  const payload = replayPayload(version);
+  if (!payload) return null;
+  pending.push(payload);
+  if (pending.length > 20) pending.shift();
+  savePending();
+  sessionId = newSessionId;
+  seed = newSeed;
+  shots = [];
+  keep();
+  onSession?.();
+  return payload;
+}
+
 export function replaySubmitting(on: boolean): void {
   submitting = on;
 }

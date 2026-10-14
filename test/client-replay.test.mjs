@@ -139,3 +139,29 @@ test("at most 200 shots are recorded in a session; the hoop is then free until t
   assert.equal(replay.replayShot({ x: 5, y: 5, vx: 0, vy: 0, gs: 1 }, view, 200), -1);
   assert.equal(verifyReplay(replay.replayPayload("0.1.24"), SEED).ok, true);
 });
+
+test("the session is changed at once, so the shot right after is recorded against the new seed's hoop and counts (no gap, no void shot)", () => {
+  replay.resetReplay();
+  replay.setReplaySession("session_id_000020", SEED);
+  const first = [true, false, true];
+  for (const goal of first) take(goal);
+  // the new session is in hand: the shots of now are taken out and recording carries on in the new one
+  const SEED2 = SEED + "-next";
+  const out = replay.rotateReplay("session_id_000021", SEED2, "0.1.25");
+  assert.equal(out.sessionId, "session_id_000020");
+  assert.deepEqual(verifyReplay(out, SEED).outcomes, first);
+  assert.deepEqual(replay.pendingReplays().map((p) => p.sessionId), ["session_id_000020"], "waits in the list until it is delivered");
+  // the very next shot uses the new seed's hoop (index 0 of the new session) and is not void
+  const target = replay.currentReplayTarget(view.artH);
+  assert.equal(target.index, 0);
+  const found = findHand(SEED2, 0, true);
+  const id = replay.replayShot(found.hand, view, 0);
+  clock.t += found.ticks * TICK_MS;
+  replay.replayResult(id, true);
+  clock.t += 2500;
+  const r = verifyReplay(replay.replayPayload("0.1.25"), SEED2);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual([r.goals, r.voided], [1, 0]);
+  replay.dropPending("session_id_000020");
+  assert.deepEqual(replay.pendingReplays(), []);
+});
