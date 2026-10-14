@@ -713,7 +713,7 @@ export class Game {
         this.ball.x = playX;
         this.showHoop();
         this.ball.x = here;
-        this.nudgeX = playX;
+        this.nudgeX = this.clearX(playX);
         this.glidePlay = true;
       } else {
         this.showHoop();
@@ -939,6 +939,25 @@ export class Game {
     };
     this.hideAt = null;
     play("appear");
+    this.keepBallClear();
+  }
+
+  /** The nearest spot for the ball at which the hoop that is up is not too close to it. */
+  private clearX(x: number): number {
+    const h = this.hoop;
+    if (!h || h.phase === "out") return x;
+    const gap = BALL_R + 36;
+    return h.side === "right" ? Math.min(x, this.artW - this.refR.w - gap - 2) : Math.max(x, this.refL.w + gap + 2);
+  }
+
+  /** A hoop that comes from the seed (online, or a solo session) may stand on the side the ball is next to: the ball glides out of its way, so a shot is always possible. */
+  private keepBallClear(): void {
+    if (this.ball.moving) return;
+    const safe = this.clearX(this.ball.x);
+    if (Math.abs(safe - this.ball.x) > 0.5) {
+      this.nudgeX = safe;
+      this.glidePlay = true;
+    }
   }
 
   start(): void {
@@ -1237,6 +1256,7 @@ export class Game {
     } else {
       this.returnToSpot();
     }
+    this.keepBallClear();
     this.syncHit();
     if (!this.introDone) {
       this.introDone = true;
