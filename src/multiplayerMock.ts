@@ -153,12 +153,14 @@ export class MultiplayerMock {
       case "game":
         if (this.screen !== "start" && !this.isHost) return;
         this.game = v as GameId;
+        this.me = this.opp = false; // a change takes everybody's "ready" back
         this.conn?.send("set_game", { game: this.game });
         this.host.render();
         break;
       case "court":
         if (!this.isHost) return;
         this.court = v as MpCourt;
+        this.me = this.opp = false;
         this.conn?.send("set_court", { court: this.court });
         this.host.render();
         break;
@@ -335,8 +337,12 @@ export class MultiplayerMock {
         this.game = m.payload.game;
         this.court = m.payload.court;
         this.players = m.payload.players;
-        this.me = this.players.find((p) => p.nickname === this.host.nickname())?.ready ?? this.me;
-        this.opp = this.players.some((p) => p.nickname !== this.host.nickname() && p.ready);
+        {
+          // who is who comes from the player ids (names can be the same or change); the server's word on "ready" always wins
+          const mine = this.players.find((p) => (this.myId ? p.id === this.myId : p.nickname === this.host.nickname()));
+          this.me = mine?.ready ?? false;
+          this.opp = this.players.some((p) => p !== mine && p.ready);
+        }
         if (this.screen !== "created" && this.screen !== "found" && this.screen !== "quick") this.host.render();
         break;
       case "start_countdown":

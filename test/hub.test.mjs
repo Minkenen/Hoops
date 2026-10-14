@@ -222,3 +222,22 @@ test("an old app cannot connect to a protocol 3 room, and a new one can ask whic
   const res2 = hub.connect(new Request("https://x/ws?mode=quick&game=speed&protocol=2", { headers: { "x-player-id": "a", "x-player-nickname": "Alpha" } }), new URL("https://x/ws?mode=quick&game=speed&protocol=2"));
   assert.equal(res2.status, 426);
 });
+
+test("when the host changes the court or the game, everybody is taken back to not ready, and the lobby says so", async () => {
+  const clock = clockAndTimers();
+  try {
+    const r = startRoom("speed");
+    await r.say(r.B, "ready", { ready: true });
+    assert.equal(r.A.last("lobby_state").payload.players.find((p) => p.id === "b").ready, true);
+    await r.say(r.A, "set_court", { court: "Street" });
+    const afterCourt = r.B.last("lobby_state").payload;
+    assert.ok(afterCourt.players.every((p) => p.ready === false), "court change keeps nobody ready");
+    await r.say(r.B, "ready", { ready: true });
+    await r.say(r.A, "set_game", { game: "horse" });
+    assert.ok(r.A.last("lobby_state").payload.players.every((p) => p.ready === false), "game change keeps nobody ready");
+    // a guest cannot change the rules, and that changes nobody's ready either
+    await r.say(r.B, "ready", { ready: true });
+    await r.say(r.B, "set_court", { court: "Arena" });
+    assert.equal(r.A.last("lobby_state").payload.players.find((p) => p.id === "b").ready, true);
+  } finally { clock.restore(); }
+});
