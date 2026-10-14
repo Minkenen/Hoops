@@ -7,6 +7,11 @@ import { collideCircle, collidePolygon, hoopCrossing, netBallForce, stepBall } f
 const BALL_RADIUS = 10.5;
 const NET_MASS = 30;
 const NET_MAX_ACCEL = 0.35;
+const CLIENT_GEOMETRY_FIELDS = ["floorY", "hoopX", "hoopY", "hoopL", "hoopR", "boardL", "boardR", "boardT", "boardB"];
+
+export function hasClientGeometry(shot) {
+  return CLIENT_GEOMETRY_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(shot, field));
+}
 
 export function applyReplayNetForce(state, shot, dt) {
   if (!(state.x > shot.hoopL && state.x < shot.hoopR && state.y > shot.hoopY && state.y < shot.hoopY + 36)) return false;

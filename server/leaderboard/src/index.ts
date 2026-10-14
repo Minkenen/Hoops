@@ -1,5 +1,5 @@
 import { MIN_CLIENT_VERSION, NICKNAME_TAKEN_ERROR, defaultNickname, nicknameDecision, nicknameLower, scoreDecision, versionAtLeast, weekKey } from "./logic.js";
-import { MAX_REPLAY_BYTES, simulateReplayShot, verifyReplay } from "./replay.js";
+import { MAX_REPLAY_BYTES, hasClientGeometry, simulateReplayShot, verifyReplay } from "./replay.js";
 
 interface D1Database {
   prepare(query: string): D1PreparedStatement;
@@ -319,6 +319,10 @@ async function replay(request: Request, env: Env): Promise<Response> {
   const length = Number(request.headers.get("content-length") || 0);
   if (length > MAX_REPLAY_BYTES) return bad("Replay is too large.", 413);
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (versionAtLeast(typeof body?.version === "string" ? body.version : "", "0.1.24") && Array.isArray(body?.shots) && body.shots.some((shot) => shot && typeof shot === "object" && hasClientGeometry(shot))) {
+    await flag(env, player.id, "replay_geometry", "This client version must use server-owned replay geometry.", typeof body?.version === "string" ? body.version : "");
+    return bad("Please update the game before submitting this replay.", 422);
+  }
   const decision = verifyReplay(body);
   if (!decision.ok) {
     await flag(env, player.id, "replay", decision.reason, typeof body?.version === "string" ? body.version : "");

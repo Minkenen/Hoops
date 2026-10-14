@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyReplayNetForce, replayGeometry, simulateReplayShot, verifyReplay } from "../server/leaderboard/src/replay.js";
+import { applyReplayNetForce, hasClientGeometry, replayGeometry, simulateReplayShot, verifyReplay } from "../server/leaderboard/src/replay.js";
 
 const shot = (id, t, goal = false) => {
   const right = id === 0;
@@ -106,4 +106,9 @@ test("server derives deterministic geometry when replay omits client geometry", 
   });
   assert.equal(result.ok, true);
   assert.equal(geometry.hoopX, 656);
+});
+
+test("geometry migration detects only legacy client geometry fields", () => {
+  assert.equal(hasClientGeometry({ x: 1, y: 2, width: 800, height: 600 }), false);
+  assert.equal(hasClientGeometry({ x: 1, y: 2, floorY: 550 }), true);
 });
