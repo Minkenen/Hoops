@@ -85,6 +85,7 @@ const SLIDE_GRAB = 1.2;
 const TOUCH_WEB = import.meta.env.VITE_TARGET === "web" && window.matchMedia("(pointer: coarse)").matches;
 /** On a touch screen the ball never rests closer to an edge than this (in art pixels), so there is room to pull it back. */
 const EDGE_ROOM = 38;
+const REST_SPOT_KEY = "hoops.restspot";
 const HOLD_K = 0.16;
 const HOLD_DAMP = 0.8;
 const THROW_CAP = 8;
@@ -821,6 +822,7 @@ export class Game {
       }
     }
     this.capThrow();
+    this.userPlaced = !this.hoop || this.hoop.phase === "out";
     b.gs = 1;
     b.t = 999;
     b.scored = false;
@@ -1010,7 +1012,7 @@ export class Game {
       this.ghostBuf.length = 0;
     }
     if (this.nudgeX !== null) {
-      // A finger needs room to pull the ball back: ease a ball that stopped by an edge a little inwards.
+      // A finger needs room to pull the ball back (and the "ball returns to its spot" option): ease the resting ball sideways.
       if (dr || b.moving) {
         this.nudgeX = null;
       } else {
@@ -1090,6 +1092,7 @@ export class Game {
           this.hoop = null;
           this.keepCourt = false;
           this.syncHit();
+          this.returnToSpot();
         }
       }
       // in an online match the court stays up all the time
@@ -1127,6 +1130,31 @@ export class Game {
   }
 
   private nudgeX: number | null = null;
+  /** The ball was thrown with Shift while no hoop was up: where it stops is the spot it should come back to. */
+  private userPlaced = false;
+
+  /** The resting spot is saved as a share of the width, per screen. */
+  private saveRestSpot(): void {
+    const nx = (this.ball.x - BALL_R) / Math.max(1, this.artW - BALL_R * 2);
+    try {
+      localStorage.setItem(REST_SPOT_KEY, JSON.stringify({ mon: this.me.index, nx: clamp(nx, 0, 1) }));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** With the option on and no hoop up, the resting ball glides back to its spot. */
+  private returnToSpot(): void {
+    if (!settings.restSpot || this.onlineMatch || this.hoop || this.drag || this.ball.moving) return;
+    try {
+      const s = JSON.parse(localStorage.getItem(REST_SPOT_KEY) ?? "null") as { mon?: number; nx?: number } | null;
+      if (!s || s.mon !== this.me.index || typeof s.nx !== "number") return;
+      const x = BALL_R + clamp(s.nx, 0, 1) * (this.artW - BALL_R * 2);
+      if (Math.abs(x - this.ball.x) > 2) this.nudgeX = x;
+    } catch {
+      /* ignore */
+    }
+  }
 
   private rest(now: number): void {
     const b = this.ball;
@@ -1148,6 +1176,12 @@ export class Game {
       if (this.onlineMatch && this.onlineMatch.game !== "speed") this.onlineMatch.sendRest(this.ballNx());
       const soon = now + 600;
       this.hideAt = this.hideAt === null ? now + 700 : Math.min(this.hideAt, soon);
+    }
+    if (this.userPlaced) {
+      this.userPlaced = false;
+      this.saveRestSpot();
+    } else {
+      this.returnToSpot();
     }
     this.syncHit();
     if (!this.introDone) {

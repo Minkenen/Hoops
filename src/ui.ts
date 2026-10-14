@@ -804,6 +804,7 @@ ${this.donateHtml()}
 ${this.row("Confetti", this.sld("confetti", 0, 300, 10), "How much when you score")}
 ${this.row("Score bubble", this.sld("bubble", 1, 5, 0.5), "How long it stays")}
 ${this.row("Keep the court open", this.tog("stayOpen"), "Click outside the ball or press Esc to close")}
+${this.row("Ball returns to its spot", this.tog("restSpot"), "At rest, it goes back to where you left it with Shift")}
 <button class="pb full" data-a="firetest" style="margin-top:6px">Light or put out the ball</button>
 ${import.meta.env.DEV ? `<button class="pb full" data-a="resetpremium">Lock premium again (dev)</button>` : ""}`;
     } else if (t === "sound") {

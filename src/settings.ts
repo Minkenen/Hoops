@@ -29,6 +29,8 @@ export interface Settings {
   /** The crowd that was showing before it was switched off from the menu, so "Half" and "Full" can bring it back. */
   crowdBack: CrowdStyle;
   stayOpen: boolean;
+  /** At rest (no hoop), the ball goes back to the spot where it was last left with Shift. */
+  restSpot: boolean;
   sfxBounce: boolean;
   sfxShoot: boolean;
   sfxGoal: boolean;
@@ -59,6 +61,7 @@ const DEFAULTS: Settings = {
   crowdRow: false,
   crowdBack: "stands",
   stayOpen: false,
+  restSpot: false,
   sfxBounce: true,
   sfxShoot: true,
   sfxGoal: true,
