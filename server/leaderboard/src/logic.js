@@ -1,4 +1,4 @@
-export const MIN_CLIENT_VERSION = "0.1.23";
+export const MIN_CLIENT_VERSION = "0.1.24";
 export function versionAtLeast(version, minimum = MIN_CLIENT_VERSION) {
   const parse = (value) => String(value).split(".").map((part) => Number(part)).length === 3 && String(value).split(".").every((part) => /^\d+$/.test(part)) ? String(value).split(".").map(Number) : null;
   const a = parse(version); const b = parse(minimum);
