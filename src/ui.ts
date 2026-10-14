@@ -159,6 +159,7 @@ export class UI {
   private updateBusy = false;
   /** Is the big All Access card shown in Appearance? It comes forward once a week (or never again after the cross). */
   private aaBig = false;
+  private lastScrollKey = "";
   /** The new version is being downloaded and installed (percent, or null when the size is not known). */
   private installing = false;
   private installPct: number | null = null;
@@ -1286,7 +1287,20 @@ ${rows}
     if (this.premiumDialog) html += this.premiumDialogHtml();
     if (this.trailPop) html += this.trailPopHtml();
     if (this.toastMsg) html += `<div class="px toast">${this.toastMsg}</div>`;
+    // Keep the scroll position when the same window is drawn again (a click on a setting redraws it), so it does not jump to the top.
+    const scrollKey = `${this.view}:${this.view === "settings" ? this.setTab : ""}`;
+    const scrolls = new Map<number, number>();
+    if (scrollKey === this.lastScrollKey) {
+      this.host.querySelectorAll<HTMLElement>("*").forEach((el, i) => {
+        if (el.scrollTop > 0) scrolls.set(i, el.scrollTop);
+      });
+    }
+    this.lastScrollKey = scrollKey;
     this.host.innerHTML = html;
+    if (scrolls.size) {
+      const all = this.host.querySelectorAll<HTMLElement>("*");
+      for (const [i, top] of scrolls) if (all[i]) all[i].scrollTop = top;
+    }
     const pv = this.host.querySelector<HTMLCanvasElement>("#prev");
     if (pv) new Preview(pv);
     this.host.querySelectorAll<HTMLCanvasElement>("canvas[data-prev]").forEach((cv) => new Preview(cv, { mode: cv.dataset.prev as CrowdMode, slide: true }));
