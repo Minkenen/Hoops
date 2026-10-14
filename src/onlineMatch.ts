@@ -297,31 +297,33 @@ export class OnlineMatch {
 
   private onPeerEvent(d: unknown): void {
     if (typeof d !== "object" || d === null) return;
-    const m = d as { type?: string; payload?: Record<string, unknown> };
+    const m = d as { type?: string; shotId?: unknown; goal?: unknown; far?: unknown; nx?: unknown; score?: unknown; letters?: unknown };
     if (m.type === "result" && !this.over) {
-      const shotId = m.payload?.shotId;
+      if (this.game !== "speed" && (this.turn !== "opp" || this.peerBusy)) return;
+      const shotId = m.shotId;
       if (typeof shotId !== "number" || !Number.isInteger(shotId) || shotId !== this.peerShotId || shotId <= this.peerResultId) return;
       this.peerResultId = shotId;
-      const goal = m.payload?.goal === true;
-      this.apply("opp", goal, m.payload?.far === true);
-      if (typeof m.payload?.score === "number") this.scoreOpp = m.payload.score;
-      if (typeof m.payload?.letters === "number") this.lettersOpp = m.payload.letters;
+      const goal = m.goal === true;
+      this.apply("opp", goal, m.far === true);
+      if (typeof m.score === "number") this.scoreOpp = m.score;
+      if (typeof m.letters === "number") this.lettersOpp = m.letters;
       this.checkEnd();
       if (this.game !== "speed") { this.peerBusy = true; window.clearTimeout(this.busyTimer); }
       this.host.toast(goal ? `${this.opponent} scored` : `${this.opponent} missed`);
       this.host.peerShotEnded(goal);
       this.host.changed();
     } else if (m.type === "shot" && !this.over) {
-      const shotId = m.payload?.shotId;
+      if (this.game !== "speed" && this.turn !== "opp") return;
+      const shotId = m.shotId;
       if (typeof shotId !== "number" || !Number.isInteger(shotId) || shotId <= this.peerShotId) return;
       this.peerShotId = shotId;
       this.host.peerShotStarted();
       this.host.changed();
-    } else if (m.type === "rest" && m.payload && typeof m.payload.nx === "number") {
+    } else if (m.type === "rest" && typeof m.nx === "number") {
       if (this.game === "speed" || this.turn !== "opp" || !this.peerBusy) return;
       window.clearTimeout(this.busyTimer); this.peerBusy = false;
       if (!this.over) this.turn = "me";
-      this.host.peerRest(m.payload.nx); this.host.changed();
+      this.host.peerRest(m.nx); this.host.changed();
     }
   }
 

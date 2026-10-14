@@ -265,7 +265,9 @@ async function score(request: Request, env: Env): Promise<Response> {
   const version = typeof body?.version === "string" ? body.version.slice(0, 20) : "";
   const replaySessionId = typeof body?.replaySessionId === "string" ? body.replaySessionId : "";
   const replay = replaySessionId ? await env.DB.prepare("SELECT player_id, shots, goals FROM replays WHERE session_id = ? AND used_at IS NULL").bind(replaySessionId).first<{ player_id: string; shots: number; goals: number }>() : null;
-  if (!replay || replay.player_id !== player.id || Number(body?.throws) !== replay.shots || Number(body?.goals) !== replay.goals) {
+  const expectedThrows = (previous?.throws || 0) + (replay?.shots || 0);
+  const expectedGoals = (previous?.goals || 0) + (replay?.goals || 0);
+  if (!replay || replay.player_id !== player.id || Number(body?.throws) !== expectedThrows || Number(body?.goals) !== expectedGoals) {
     await flag(env, player.id, "score_replay", "Score was not linked to a verified replay.", version);
     return json({ ok: true });
   }
