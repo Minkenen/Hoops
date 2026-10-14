@@ -341,6 +341,11 @@ async function replay(request: Request, env: Env): Promise<Response> {
 async function replaySession(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
   const now = Date.now();
+  // Keep abandoned verification payloads from accumulating indefinitely.
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM replays WHERE created_at < ?").bind(now - 7 * 86_400_000),
+    env.DB.prepare("DELETE FROM replay_sessions WHERE created_at < ?").bind(now - 7 * 86_400_000),
+  ]);
   const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM replay_sessions WHERE player_id = ? AND created_at > ?").bind(player.id, now - 86_400_000).first<{ n: number }>();
   if ((recent?.n || 0) >= 100) return bad("Too many replay sessions today.", 429);
   const sessionId = crypto.randomUUID();
