@@ -26,6 +26,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIzNDE1QjJEOEUxQkY5MUEKUldRYStSdU9MVnRCczEzOFJBaWlKL0M1RmhYb1hkYlJVcjBrRER6dUZpdC93SnlROTJXQkpveTMK",
+      "endpoints": [
+        "https://minkenen.github.io/Hooperly/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

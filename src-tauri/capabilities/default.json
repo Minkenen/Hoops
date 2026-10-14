@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the overlay windows",
-  "windows": ["overlay-*"],
+  "windows": [
+    "overlay-*"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-hide",
@@ -13,6 +15,8 @@
     "autostart:allow-is-enabled",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
-    "global-shortcut:allow-is-registered"
+    "global-shortcut:allow-is-registered",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

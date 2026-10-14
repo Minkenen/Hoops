@@ -51,3 +51,33 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
   const r = await checkForUpdateDetailed();
   return r.kind === "new" ? r.info : null;
 }
+
+/**
+ * Downloads and installs the new version in place, then restarts the app (Tauri updater, signed packages from latest.json).
+ * Returns false when it could not be done (no signed package for this system, offline ...): the caller then opens the download page.
+ */
+export async function installUpdate(onProgress: (percent: number | null) => void): Promise<boolean> {
+  try {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const found = await check();
+    if (!found) return false;
+    let total = 0;
+    let done = 0;
+    await found.downloadAndInstall((ev) => {
+      if (ev.event === "Started") {
+        total = ev.data.contentLength ?? 0;
+        onProgress(total ? 0 : null);
+      } else if (ev.event === "Progress") {
+        done += ev.data.chunkLength;
+        onProgress(total ? Math.min(100, Math.round((done / total) * 100)) : null);
+      } else if (ev.event === "Finished") {
+        onProgress(100);
+      }
+    });
+    const { relaunch } = await import("@tauri-apps/plugin-process");
+    await relaunch();
+    return true;
+  } catch {
+    return false;
+  }
+}

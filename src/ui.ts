@@ -20,7 +20,7 @@ import { type CrowdMode, Preview, setPreviewOverride } from "./preview";
 import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
 import { ALL_ACCESS_PRICE, ALL_ACCESS_VALUE, PRICE_VALUE, THEMES, type ThemeId, themeById } from "./themes";
 import { ACHIEVEMENTS, achievementsDone, getStats, mark, recordOnlineMatch } from "./stats";
-import { type UpdateInfo, checkForUpdateDetailed } from "./update";
+import { type UpdateInfo, checkForUpdateDetailed, installUpdate } from "./update";
 import { backend, cleanNickname, LEADERBOARD_ON, type LbBoard, type LbEntry, type LbProviderId, type LbTab } from "./leaderboard";
 import { BALL_SKINS, BASE_SKINS, COURT_SKINS, CROWD_STYLES } from "./skins";
 
@@ -159,6 +159,13 @@ export class UI {
   private updateBusy = false;
   /** Is the big All Access card shown in Appearance? It comes forward once a week (or never again after the cross). */
   private aaBig = false;
+  /** The new version is being downloaded and installed (percent, or null when the size is not known). */
+  private installing = false;
+  private installPct: number | null = null;
+
+  private installLabel(): string {
+    return this.installPct === null ? "Updating…" : `Updating… ${this.installPct}%`;
+  }
   /** A trail that was just earned: the box that offers to use it. */
   private trailPop: Trail | null = null;
   private trailPopTimer = 0;
@@ -764,7 +771,7 @@ ${
       `<button class="pb full mi${extra}" data-a="${action}">${menuIcon(icon as never)}<span>${label}</span><small>${hint}</small></button>`;
     return `<div class="px menu" data-hit style="left:${Math.max(8, left)}px;bottom:${bottom}px;width:${W}px">
 <div class="row" style="padding:2px 0"><span class="lb hn">Score</span><b class="score">${getScore()}</b></div>
-${this.update ? `<button class="pb buy full" data-a="update">Update available: v${this.update.version}</button>${this.update.notes.length ? `<div class="notes"><div class="hn">What's new</div><ul>${this.update.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}` : ""}
+${this.update ? `<button class="pb buy full" data-a="update"${this.installing ? " disabled" : ""}>${this.installing ? this.installLabel() : `Update available: v${this.update.version}`}</button>${this.update.notes.length ? `<div class="notes"><div class="hn">What's new</div><ul>${this.update.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}` : ""}
 ${MULTIPLAYER_MOCK ? `<button class="pb full mi playrow" data-a="online">${menuIcon("online")}<span>Play online</span><small class="beta">BETA</small></button>` : ""}
 <div class="sec">You</div>
 ${LEADERBOARD_ON && backend.user() ? item("profile", "prof", "Profile", "›") : ""}
@@ -824,7 +831,7 @@ ${this.row("Basketball court", this.tog("court"), "Shown while aiming")}
 <div class="row"><div><div class="lb">Ball see-through at rest</div><div class="hn">So you can see what is behind it</div></div><div class="st-fade"><canvas data-art="fade" width="40" height="22"></canvas>${this.sld("ballFade", 0, 0.8, 0.05)}</div></div>
 <button class="pb full" data-a="cos" style="margin-top:6px">Edit appearance…</button>`;
     } else {
-      pane = `${WEB ? "" : this.row("Updates", `<button class="pb${this.update ? " buy" : ""}" data-a="${this.update ? "update" : "chkupdate"}"${this.updateBusy ? " disabled" : ""}>${this.updateBusy ? "Checking…" : this.update ? `Get v${this.update.version}` : "Check for updates"}</button>`, this.updateNote || `Hooperly v${__APP_VERSION__}`)}
+      pane = `${WEB ? "" : this.row("Updates", `<button class="pb${this.update ? " buy" : ""}" data-a="${this.update ? "update" : "chkupdate"}"${this.updateBusy || this.installing ? " disabled" : ""}>${this.updateBusy ? "Checking…" : this.installing ? this.installLabel() : this.update ? `Get v${this.update.version}` : "Check for updates"}</button>`, this.updateNote || `Hooperly v${__APP_VERSION__}`)}
 ${WEB ? "" : this.row("Start automatically", this.tog("autostart"), "When your computer starts")}
 ${WEB ? "" : this.row("Over fullscreen apps", this.tog("fullscreen"), "Games and video")}
 ${WEB ? "" : this.row("Menu shortcut", SHORTCUT)}
@@ -1650,12 +1657,31 @@ ${rows}
         this.render();
         break;
       case "update":
-        if (this.update) {
+        if (this.update && !this.installing) {
           const url = this.update.url;
-          void openExternal(url).catch(() => {
-            window.open(url, "_blank", "noopener,noreferrer");
+          const openPage = (): void => {
+            void openExternal(url).catch(() => {
+              window.open(url, "_blank", "noopener,noreferrer");
+            });
+            this.close();
+          };
+          if (WEB) {
+            openPage();
+            break;
+          }
+          // The app downloads and installs the new version itself, then restarts; if that cannot be done the download page opens.
+          this.installing = true;
+          this.installPct = null;
+          this.render();
+          void installUpdate((pct) => {
+            this.installPct = pct;
+            this.render();
+          }).then((ok) => {
+            if (ok) return;
+            this.installing = false;
+            this.render();
+            openPage();
           });
-          this.close();
         }
         break;
       case "close":
