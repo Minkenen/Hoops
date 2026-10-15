@@ -452,7 +452,7 @@ export class MultiplayerMock {
     switch (this.screen) {
       case "start":
         return `<div class="h4" style="margin-top:0">Game</div>${this.modes()}${this.rule()}
-<button class="pb pri mp-big" data-a="mp:quick">${this.ball("you", 32)}<span><b>Quick match</b><small>Play a random player now</small></span></button>
+<button class="pb mp-big" data-a="mp:quick">${this.ball("you", 32)}<span><b>Quick match</b><small>Play a random player now</small></span></button>
 <button class="pb mp-big" data-a="mp:friend">${this.ball("opp", 32)}<span><b>Play with friend</b><small>Make a room code or join one</small></span></button>
 <button class="pb full" data-a="back" style="text-align:center;margin-top:8px">Back</button>
 <div class="mp-note">Peer-to-peer match. A small server only helps players find each other.</div>`;
