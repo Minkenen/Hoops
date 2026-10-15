@@ -167,7 +167,10 @@ export class Preview {
         R(0.9, 0.925, 0.07, 0.04, "#fff");
       }
     }
-    const e = Math.pow(1 - p, 2.2);
+    // a soft start and stop, and the court and hoop fade with the slide so nothing pops in or out
+    const e = 1 - p * p * (3 - 2 * p);
+    const fade = this.opts?.slide ? Math.min(1, p * 1.5) : 1;
+    c.globalAlpha = fade;
     if (!noCourt && p > 0 && (settings.court || this.opts) && this.court) {
       const top = FLOOR - Math.round(this.court.cy) + Math.round(e * (H - (FLOOR - this.court.cy)));
       this.crowd.setBall(BALL_X, FLOOR + e * H, FLOOR - 10.5);
@@ -185,6 +188,7 @@ export class Preview {
       if (crowdStyle === "arena") this.crowd.arenaFloor(c, now, W, top, this.court.h);
     }
     // the hoop slides in from the side with the court
+    c.globalAlpha = fade;
     c.save();
     c.translate(-Math.round(e * (sp.w + 8)), 0);
     c.drawImage(this.pole!, -sp.shiftX, y0 - sp.shiftY);
@@ -205,13 +209,14 @@ export class Preview {
         c.fillRect(BALL_X + x + off, FLOOR - 1 + y, 1, 1);
       }
     }
-    if (mode) c.globalAlpha = 0.5 + 0.5 * p;
+    c.globalAlpha = mode ? 0.5 + 0.5 * p : 1;
     if (this.ball) c.drawImage(this.ball, bx, by);
-    c.globalAlpha = 1;
+    c.globalAlpha = fade;
     c.save();
     c.translate(-Math.round(e * (sp.w + 8)), 0);
     this.net?.draw(c, "front");
     c.drawImage(sp.front, 0, y0);
     c.restore();
+    c.globalAlpha = 1;
   }
 }
