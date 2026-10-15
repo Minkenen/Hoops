@@ -132,16 +132,12 @@ export class Preview {
     c.fillStyle = "#c9d3e3";
     c.fillRect(0, 0, W, H);
     if (noCourt) {
-      // no court: the hoop and the ball sit right on top of the desktop, a window behind them
-      const g = c.createLinearGradient(0, 0, W, H);
-      g.addColorStop(0, "#3b5b8c");
-      g.addColorStop(1, "#6b4a8c");
+      // no court: the hoop and the ball sit on a plain dark gray gradient
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, "#3a3d46");
+      g.addColorStop(1, "#1a1c22");
       c.fillStyle = g;
       c.fillRect(0, 0, W, H);
-      c.fillStyle = "rgba(255,255,255,0.3)";
-      c.fillRect(Math.round(W * 0.46), 24, Math.round(W * 0.38), Math.round(H * 0.3));
-      c.fillStyle = "rgba(13,14,18,0.45)";
-      c.fillRect(Math.round(W * 0.46), 24, Math.round(W * 0.38), 6);
     }
     const e = Math.pow(1 - p, 3);
     if (!noCourt && p > 0 && (settings.court || this.opts) && this.court) {
