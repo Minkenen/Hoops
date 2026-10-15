@@ -182,7 +182,9 @@ export class Preview {
         c.rect(0, clipTop, W, top + 1 - clipTop);
         c.clip();
       }
+      c.globalAlpha = Math.min(1, p * 3);
       this.crowd.draw(c, crowdStyle, now, W, top + 1, fill);
+      c.globalAlpha = 1;
       if (clipped) c.restore();
       c.drawImage(this.court.canvas, 0, top);
       if (crowdStyle === "arena") this.crowd.arenaFloor(c, now, W, top, this.court.h);

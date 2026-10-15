@@ -1613,7 +1613,10 @@ export class Game {
         ctx.rect(0, clipTop, this.artW, courtTop + 1 - clipTop);
         ctx.clip();
       }
+      // a quick fade so the crowd does not pop in and out
+      ctx.globalAlpha = Math.min(1, (this.onlineMatch || this.keepCourt ? 1 : ch.p) * 3);
       this.crowd.draw(ctx, settings.crowd, now, this.artW, courtTop + 1, this.crowdFill());
+      ctx.globalAlpha = 1;
       if (row || half) ctx.restore();
       ctx.drawImage(cs.canvas, ch.side === "right" ? this.artW - cs.w : 0, courtTop);
       if (settings.crowd === "arena") this.crowd.arenaFloor(ctx, now, this.artW, courtTop, cs.h);
