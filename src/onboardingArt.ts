@@ -1,11 +1,11 @@
 // The small looping pictures of the onboarding steps (plain HTML and CSS, no files): a shot with the joystick, logging in, a video in fullscreen,
 // two players in a room, the leaderboard, the shortcut. They are drawn by the rules in the `.od` part of ui.css.
 
-/** Welcome: the ball is pulled back with the joystick, flies into the hoop, goal. */
+import welcomeClip from "./assets/welcome.mp4?url";
+
+/** Welcome: a real recording of the game, the ball is pulled back, flies into the hoop and scores. */
 export function shotDemo(): string {
-  return `<div class="od od-shot"><div class="od-gr"></div><div class="od-hoop"></div><div class="od-bd"></div><div class="od-rim"></div><div class="od-net"></div>
-<span class="od-tip">Pull back, then let go</span><div class="od-base"></div><div class="od-ball"><i></i></div><div class="od-nub"></div><div class="od-goal">GOAL!</div>
-<div class="od-cf"><i style="left:78%;top:40%;background:#ee7a24;--x:-30px;--y:30px"></i><i style="left:80%;top:38%;background:#f6c744;--x:26px;--y:34px"></i><i style="left:76%;top:42%;background:#5de06a;--x:-10px;--y:44px"></i><i style="left:82%;top:40%;background:#35d4ff;--x:36px;--y:20px"></i></div></div>`;
+  return `<div class="od od-clip"><video src="${welcomeClip}" autoplay loop muted playsinline disablepictureinpicture></video></div>`;
 }
 
 /** Start automatically: the computer logs in and the ball is already there. */

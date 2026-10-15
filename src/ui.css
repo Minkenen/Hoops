@@ -451,3 +451,5 @@
 #ui .ob-grid6{grid-template-columns:repeat(6,1fr)}
 #ui .ob-grid6 .wide{grid-column:span 3}
 #ui .ob-grid6 .narrow{grid-column:span 2}
+#ui .od-clip{height:auto;background:#000}
+#ui .od-clip video{display:block;width:100%;height:auto;image-rendering:pixelated}
