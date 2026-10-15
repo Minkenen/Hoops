@@ -34,10 +34,10 @@ export interface PreviewOptions {
   override?: { ballSkin: string; courtSkin: string; crowd: string };
 }
 
-// the loop of a sliding preview, in ms: in 400 (like the game), stay, out 250, a pause
-const IN = 400;
-const STAY = 2400;
-const OUT = 250;
+// the loop of a sliding preview, in ms: in, stay, out, a pause (slower than the game so the small picture reads smoothly)
+const IN = 800;
+const STAY = 2200;
+const OUT = 500;
 const GAP = 1000;
 
 /** Live preview of the scene (crowd, court, hoop, ball) for the Appearance window. */
@@ -167,7 +167,7 @@ export class Preview {
         R(0.9, 0.925, 0.07, 0.04, "#fff");
       }
     }
-    const e = Math.pow(1 - p, 3);
+    const e = Math.pow(1 - p, 2.2);
     if (!noCourt && p > 0 && (settings.court || this.opts) && this.court) {
       const top = FLOOR - Math.round(this.court.cy) + Math.round(e * (H - (FLOOR - this.court.cy)));
       this.crowd.setBall(BALL_X, FLOOR + e * H, FLOOR - 10.5);
