@@ -25,10 +25,11 @@ export function onlineDemo(): string {
   return `<div class="od od-room"><div class="od-pc od-a"><div class="od-pgr"></div><span class="od-nm">You</span><span class="od-bl"></span><span class="od-rd">Ready</span></div><div class="od-link"></div><div class="od-vs">VS</div><div class="od-pc od-b"><div class="od-pgr"></div><span class="od-nm">Friend</span><span class="od-bl"></span><span class="od-rd">Ready</span></div><div class="od-code">YSC-R2W</div></div>`;
 }
 
-/** The leaderboard: a new name climbs up the board. */
+/** The leaderboard: a new name climbs up the board (made-up players and scores). */
 export function boardDemo(): string {
-  const row = (n: number, c: string, name: string, score: number): string => `<div class="od-rw od-r${n}"><span>${n}</span><span class="od-dot" style="background:${c}"></span>${name}<b>${score}</b></div>`;
-  return `<div class="od od-board">${row(1, "#a24ad9", "Hoopsnr1", 702)}${row(2, "#8a8e96", "Beenana", 158)}${row(3, "#3a8bd9", "BobSvamp", 112)}${row(4, "#3ab36a", "Pontus", 103)}<div class="od-rw od-me"><span>?</span><span class="od-dot" style="background:#ee7a24;box-shadow:0 0 0 2px #1c1c22"></span><span class="od-name">Your name</span><b>0</b></div></div>`;
+  const sw = (a: string, b: string): string => `<span class="od-sw"><i class="od-s1">${a}</i><i class="od-s2">${b}</i></span>`;
+  const row = (cls: string, rank: string, c: string, name: string, score: string): string => `<div class="od-rw ${cls}">${rank}<span class="od-dot" style="background:${c}"></span>${name}<b>${score}</b></div>`;
+  return `<div class="od od-board">${row("od-r1", "<span>1</span>", "#a24ad9", "PixelPro", "480")}${row("od-r2", "<span>2</span>", "#8a8e96", "HoopHero", "320")}${row("od-r3", sw("3", "4"), "#3a8bd9", "NetNinja", "120")}${row("od-r4", sw("4", "5"), "#3ab36a", "RimRider", "95")}${row("od-me", sw("5", "3"), "#ee7a24", `<span class="od-name">Your name</span>`, "150")}</div>`;
 }
 
 /** All set: the shortcut is pressed and the menu comes up. `keys` are the keys of the shortcut. */

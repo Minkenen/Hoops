@@ -456,3 +456,9 @@
 #ui .ob-grid6 .narrow{grid-column:span 2}
 #ui .od-clip{height:auto;background:#000}
 #ui .od-clip video{display:block;width:100%;height:auto;image-rendering:pixelated}
+#ui .od-sw{position:relative;display:inline-block;width:10px;height:1em}
+#ui .od-sw i{position:absolute;left:0;top:0;font-style:normal}
+#ui .od-s1{animation:od-sa 7s infinite}
+#ui .od-s2{animation:od-sb 7s infinite}
+@keyframes od-sa{0%,33%{opacity:1}34%,100%{opacity:0}}
+@keyframes od-sb{0%,33%{opacity:0}34%,100%{opacity:1}}
