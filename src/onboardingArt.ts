@@ -28,7 +28,7 @@ export function onlineDemo(): string {
 /** The leaderboard: a new name climbs up the board. */
 export function boardDemo(): string {
   const row = (n: number, c: string, name: string, score: number): string => `<div class="od-rw od-r${n}"><span>${n}</span><span class="od-dot" style="background:${c}"></span>${name}<b>${score}</b></div>`;
-  return `<div class="od od-board">${row(1, "#a24ad9", "Hoopsnr1", 702)}${row(2, "#8a8e96", "Beenana", 158)}${row(3, "#3a8bd9", "BobSvamp", 112)}${row(4, "#3ab36a", "Pontus", 103)}<div class="od-rw od-me"><span>?</span><span class="od-dot" style="background:#e8392b"></span><span class="od-name">Your name</span><b>0</b></div></div>`;
+  return `<div class="od od-board">${row(1, "#a24ad9", "Hoopsnr1", 702)}${row(2, "#8a8e96", "Beenana", 158)}${row(3, "#3a8bd9", "BobSvamp", 112)}${row(4, "#3ab36a", "Pontus", 103)}<div class="od-rw od-me"><span>?</span><span class="od-dot" style="background:#ee7a24;box-shadow:0 0 0 2px #1c1c22"></span><span class="od-name">Your name</span><b>0</b></div></div>`;
 }
 
 /** All set: the shortcut is pressed and the menu comes up. `keys` are the keys of the shortcut. */
