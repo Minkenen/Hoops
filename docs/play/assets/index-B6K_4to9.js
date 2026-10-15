@@ -7,7 +7,7 @@
 <button class="pb full" data-a="mp:cancel" style="text-align:center;margin-top:12px">Cancel</button>`;case`found`:return`<div class="mp-c" style="margin:14px 0"><span class="mp-pill"><i></i>Player found</span>
 <div class="mp-vs"><div class="mp-pl">${this.ball(`you`,48)}<b>${e}</b></div><div class="mp-vsx">VS</div><div class="mp-pl">${this.ball(`opp`,48)}<b>${this.peerName}</b></div></div>
 <div class="hn">${this.direct?`Direct link ready with ${this.peerName}`:`Connecting directly to ${this.peerName}…`}</div><div class="hn" style="margin-top:4px">${Hl[this.game].name} · ${Hl[this.game].tag}</div></div>
-<button class="pb pri mp-big" data-a="mp:lobby" style="justify-content:center"><span><b>Continue to lobby</b></span></button>`;case`friend`:return`<button class="pb pri mp-big" data-a="mp:create">${this.ball(`you`,32)}<span><b>Create a room</b><small>You get a code to share</small></span></button>
+<button class="pb pri mp-big" data-a="mp:lobby" style="justify-content:center"><span><b>Continue to lobby</b></span></button>`;case`friend`:return`<button class="pb mp-big" data-a="mp:create">${this.ball(`you`,32)}<span><b>Create a room</b><small>You get a code to share</small></span></button>
 <div class="h4">Or join a friend</div>
 <button class="pb mp-big" data-a="mp:joinscreen">${this.ball(`opp`,32)}<span><b>Join with code</b><small>Type the code from your friend</small></span></button>`;case`created`:return`<div class="mp-c hn" style="margin-top:6px">Your room code</div>
 <div class="mp-code">${[...this.code].map(e=>e===`-`?`<span class="d">-</span>`:`<span>${e}</span>`).join(``)}</div>

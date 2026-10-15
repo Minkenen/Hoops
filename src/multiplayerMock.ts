@@ -466,7 +466,7 @@ export class MultiplayerMock {
 <div class="hn">${this.direct ? `Direct link ready with ${this.peerName}` : `Connecting directly to ${this.peerName}…`}</div><div class="hn" style="margin-top:4px">${GAMES[this.game].name} · ${GAMES[this.game].tag}</div></div>
 <button class="pb pri mp-big" data-a="mp:lobby" style="justify-content:center"><span><b>Continue to lobby</b></span></button>`;
       case "friend":
-        return `<button class="pb pri mp-big" data-a="mp:create">${this.ball("you", 32)}<span><b>Create a room</b><small>You get a code to share</small></span></button>
+        return `<button class="pb mp-big" data-a="mp:create">${this.ball("you", 32)}<span><b>Create a room</b><small>You get a code to share</small></span></button>
 <div class="h4">Or join a friend</div>
 <button class="pb mp-big" data-a="mp:joinscreen">${this.ball("opp", 32)}<span><b>Join with code</b><small>Type the code from your friend</small></span></button>`;
       case "created":
