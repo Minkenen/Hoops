@@ -205,7 +205,9 @@ export class Preview {
         c.fillRect(BALL_X + x + off, FLOOR - 1 + y, 1, 1);
       }
     }
+    if (noCourt) c.globalAlpha = p;
     if (this.ball) c.drawImage(this.ball, bx, by);
+    c.globalAlpha = 1;
     c.save();
     c.translate(-Math.round(e * (sp.w + 8)), 0);
     this.net?.draw(c, "front");
