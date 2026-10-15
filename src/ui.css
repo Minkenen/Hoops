@@ -372,7 +372,8 @@
 #ui .od-bd{position:absolute;right:20px;bottom:100px;width:10px;height:30px;background:#e8edf5;box-shadow:0 0 0 2px #0d0e12}
 #ui .od-rim{position:absolute;right:30px;bottom:96px;width:28px;height:5px;background:#ee7a24}
 #ui .od-net{position:absolute;right:33px;bottom:78px;width:22px;height:18px;border:2px solid #fff;border-top:0;opacity:.8}
-#ui .od-ball{position:absolute;width:20px;height:20px;border-radius:50%;background:#ee7a24;border:3px solid #0d0e12;left:42px;bottom:36px;animation:od-fly 6s infinite}
+#ui .od-ball{position:absolute;width:20px;height:20px;left:42px;bottom:36px;animation:od-bx 6s infinite linear}
+#ui .od-ball i{position:absolute;inset:0;border-radius:50%;background:#ee7a24;border:3px solid #0d0e12;animation:od-by 6s infinite}
 #ui .od-base{position:absolute;left:24px;bottom:18px;width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.2);border:2px solid rgba(255,255,255,.85);animation:od-bs 6s infinite}
 #ui .od-nub{position:absolute;left:41px;bottom:35px;width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.8);box-shadow:0 2px 4px rgba(0,0,0,.25);animation:od-nb 6s infinite}
 #ui .od-goal{position:absolute;left:50%;top:22px;transform:translateX(-50%);font-size:26px;font-weight:500;color:#fff;text-shadow:2px 2px 0 #0d0e12;opacity:0;animation:od-go 6s infinite}
@@ -380,7 +381,8 @@
 #ui .od-tip{position:absolute;left:10px;top:8px;font-size:12px;color:#1c1c22;background:rgba(255,255,255,.85);padding:2px 8px;animation:od-tp 6s infinite}
 @keyframes od-bs{0%,8%{opacity:0}14%,38%{opacity:1}44%,100%{opacity:0}}
 @keyframes od-nb{0%,14%{transform:translate(0,0);opacity:0}16%{opacity:1}38%{transform:translate(-14px,10px)}40%{transform:translate(0,0)}44%,100%{opacity:0}}
-@keyframes od-fly{0%,38%{left:42px;bottom:36px}44%{left:120px;bottom:100px}52%{left:190px;bottom:108px}57%{left:320px;bottom:88px}63%{left:330px;bottom:40px}100%{left:42px;bottom:36px}}
+@keyframes od-bx{0%,14%{left:42px;opacity:1}36%{left:30px;opacity:1}38%{left:30px;opacity:1}62%{left:calc(100% - 50px);opacity:1}66%{left:calc(100% - 46px);opacity:1}68%{left:calc(100% - 46px);opacity:0}96%{left:42px;opacity:0}100%{left:42px;opacity:1}}
+@keyframes od-by{0%,14%{transform:translateY(0);animation-timing-function:linear}36%{transform:translateY(8px);animation-timing-function:ease-out}38%{transform:translateY(8px);animation-timing-function:cubic-bezier(.2,.7,.3,1)}50%{transform:translateY(-78px);animation-timing-function:cubic-bezier(.5,0,.8,.4)}62%{transform:translateY(-60px);animation-timing-function:ease-in}66%{transform:translateY(0)}100%{transform:translateY(0)}}
 @keyframes od-go{0%,52%{opacity:0;transform:translateX(-50%) scale(.6)}56%{opacity:1;transform:translateX(-50%) scale(1.15)}66%,72%{opacity:1;transform:translateX(-50%) scale(1)}78%,100%{opacity:0}}
 @keyframes od-cf{0%,53%{opacity:0;transform:translate(0,0)}56%{opacity:1}75%{opacity:0;transform:translate(var(--x),var(--y))}100%{opacity:0}}
 @keyframes od-tp{0%,8%{opacity:0}12%,36%{opacity:1}42%,100%{opacity:0}}
