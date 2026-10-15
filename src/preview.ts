@@ -20,7 +20,7 @@ export function setPreviewOverride(o: { ballSkin: string; courtSkin: string; cro
   override = o;
 }
 
-export type CrowdMode = "off" | "row" | "half" | "full";
+export type CrowdMode = "nocourt" | "off" | "row" | "half" | "full";
 
 /** Options for a preview that shows one crowd choice, with the court sliding in and out like in the game. */
 export interface PreviewOptions {
@@ -97,7 +97,8 @@ export class Preview {
     const mode = this.opts?.mode;
     // a preview of one choice shows it whatever the settings say; the crowd style is the one in use, or the one that was switched off
     const base = (ov?.crowd ?? (settings.crowd === "none" ? settings.crowdBack : settings.crowd)) as typeof settings.crowd;
-    const crowdStyle = (mode ? (mode === "off" ? "none" : base) : (ov?.crowd ?? settings.crowd)) as typeof settings.crowd;
+    const noCourt = mode === "nocourt";
+    const crowdStyle = (mode ? (mode === "off" || noCourt ? "none" : base) : (ov?.crowd ?? settings.crowd)) as typeof settings.crowd;
     const full = mode ? mode === "full" : settings.arenaFill;
     const row = mode ? mode === "row" : settings.crowdRow && !full;
     const half = mode ? mode === "half" : !full && !row;
@@ -119,7 +120,7 @@ export class Preview {
       this.ball = makeBallFrame(s.pal, s.seam, crowdStyle === "arena" ? Math.max(-0.8, Math.min(0.8, (W / 2 - BALL_X) / (this.crowd.keyH(FLOOR, fill) * 1.6))) : -0.5);
       this.ballKey = ballSkin + crowdStyle + fill;
     }
-    const bottom = settings.court ? FLOOR + BASE_CENTER[settings.baseSkin] - 2 : H;
+    const bottom = settings.court && !noCourt ? FLOOR + BASE_CENTER[settings.baseSkin] - 2 : H;
     const y0 = Math.max(RIM_Y, sp.rimY + 4) - sp.rimY;
     const poleKey = settings.baseSkin + bottom;
     if (this.poleKey !== poleKey) {
@@ -130,8 +131,20 @@ export class Preview {
     c.clearRect(0, 0, W, H);
     c.fillStyle = "#c9d3e3";
     c.fillRect(0, 0, W, H);
+    if (noCourt) {
+      // no court: the hoop and the ball sit right on top of the desktop, a window behind them
+      const g = c.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, "#3b5b8c");
+      g.addColorStop(1, "#6b4a8c");
+      c.fillStyle = g;
+      c.fillRect(0, 0, W, H);
+      c.fillStyle = "rgba(255,255,255,0.3)";
+      c.fillRect(Math.round(W * 0.46), 24, Math.round(W * 0.38), Math.round(H * 0.3));
+      c.fillStyle = "rgba(13,14,18,0.45)";
+      c.fillRect(Math.round(W * 0.46), 24, Math.round(W * 0.38), 6);
+    }
     const e = Math.pow(1 - p, 3);
-    if (p > 0 && (settings.court || this.opts) && this.court) {
+    if (!noCourt && p > 0 && (settings.court || this.opts) && this.court) {
       const top = FLOOR - Math.round(this.court.cy) + Math.round(e * (H - (FLOOR - this.court.cy)));
       this.crowd.setBall(BALL_X, FLOOR + e * H, FLOOR - 10.5);
       const clipTop = row ? top + 1 - CROWD_ROW_H : half ? Math.min(top + 1, Math.round(H / 2)) : 0;

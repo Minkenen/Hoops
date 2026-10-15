@@ -16,6 +16,7 @@ import { drawSettingsArt } from "./settingsArt";
 import { type Trail, type TrailId, startTrailPreviews, trailById, trailOwned } from "./trails";
 import { addLicense, getBestScore, getScore, setOnboarded, setPremiumUnlocked, setSetting, settings } from "./settings";
 import type { Settings } from "./settings";
+import { allSetDemo, autostartDemo, boardDemo, fullscreenDemo, onlineDemo, shotDemo } from "./onboardingArt";
 import { type CrowdMode, Preview, setPreviewOverride } from "./preview";
 import { addOwnedTheme, isItemOwned, isOwned, resetPurchases } from "./purchases";
 import { ALL_ACCESS_PRICE, ALL_ACCESS_VALUE, PRICE_VALUE, THEMES, type ThemeId, themeById } from "./themes";
@@ -37,6 +38,8 @@ const isMac = /Mac/i.test(navigator.platform);
 const SHORTCUT = isMac
   ? "<span class=\"kb\">Ctrl+Option+Cmd+B</span>"
   : "<span class=\"kb\">Ctrl+Alt+Win+B</span>";
+
+const SHORTCUT_KEYS = isMac ? ["Ctrl", "Option", "Cmd", "B"] : ["Ctrl", "Alt", "Win", "B"];
 
 const fmt: Record<string, (v: number) => string> = {
   confetti: (v) => (v === 0 ? "Av" : String(v)),
@@ -718,7 +721,7 @@ ${
 
   /** Crowd: off, only the front row, half the screen or filling the screen. */
   private crowdSeg(): string {
-    const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
+    const cur: CrowdMode = !settings.court ? "nocourt" : settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
     return (
       "<div>" +
       ([["off", "Off"], ["row", "Row"], ["half", "Half"], ["full", "Full"]] as const)
@@ -847,8 +850,8 @@ ${this.row("Volume", this.sld("volume", 0, 1, 0.05), "Master level")}
 <button class="pb full" data-a="mile">Play a milestone</button>
 <button class="pb full" data-a="achtest">Play an achievement</button>`;
     } else if (t === "look") {
-      const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
-      const crowds = ([["off", "Off", "No crowd"], ["row", "Row", "Front row only"], ["half", "Half", "Half the screen"], ["full", "Full", "Whole screen"]] as const)
+      const cur: CrowdMode = !settings.court ? "nocourt" : settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
+      const crowds = ([["nocourt", "No court", "Only the ball and hoop"], ["off", "Off", "Court, no crowd"], ["row", "Row", "Front row only"], ["half", "Half", "Half the screen"], ["full", "Full", "Whole screen"]] as const)
         .map(([id, name, hint]) => this.pic("crowd", id, `crowd-${id}`, name, hint, cur === id, "crowdmode").replace(`data-k="crowd" `, ""))
         .join("");
       pane = `<div class="h4">Crowd</div><div class="st-tiles four">${crowds}</div>
@@ -1240,9 +1243,10 @@ ${rows}
 
   /** The steps of the first-run guide. The leaderboard steps are only there when there is a leaderboard; naming yourself only once you are signed in. */
   private onbSteps(): string[] {
-    if (WEB) return ["welcome", "overlay", "crowd", "board", ...(backend.user() ? ["name"] : []), "done"];
+    const online = MULTIPLAYER_MOCK ? ["online"] : [];
+    if (WEB) return ["welcome", "overlay", "crowd", ...online, "board", ...(backend.user() ? ["name"] : []), "done"];
     const lb = LEADERBOARD_ON && backend.available;
-    return ["welcome", "autostart", "fullscreen", "crowd", ...(lb ? ["board", ...(backend.user() ? ["name"] : [])] : []), "done"];
+    return ["welcome", "autostart", "fullscreen", "crowd", ...online, ...(lb ? ["board", ...(backend.user() ? ["name"] : [])] : []), "done"];
   }
 
   private onboardingHtml(): string {
@@ -1253,23 +1257,25 @@ ${rows}
     const user = backend.user();
     let body = "";
     if (id === "welcome") {
-      body = `<h3>Welcome to Hooperly</h3><p>${WEB ? "A tiny pixel-art basketball game." : "A tiny basketball that lives at the bottom of your screen."}</p><ul class="how"><li>Drag the ball and let go to shoot</li><li>Sink it for points and confetti</li>${TOUCH ? "<li>Press and hold the ball for the menu</li>" : "<li>Hold Shift and drag to move the ball</li><li>Right-click the ball for the menu</li>"}</ul>`;
+      body = `<h3>Welcome to Hooperly</h3>${shotDemo()}<ul class="how"><li>Pull the ball back and let go to shoot</li><li>The farther you pull, the harder it flies</li>${TOUCH ? "<li>Press and hold the ball for the menu</li>" : "<li>Right-click the ball for the menu</li>"}</ul>`;
     } else if (id === "overlay") {
       body = `<h3>Desktop app</h3><p>The overlay effect, where the ball and courts live on top of your other programs and your whole screen, only works in the downloaded version of Hooperly.</p><p><a class="lk" href="../#download" target="_blank" rel="noopener">Download Hooperly for Mac or Windows</a></p>`;
     } else if (id === "autostart") {
-      body = `<h3>Start automatically?</h3><p>Hooperly starts quietly in the background when you log in.</p><div class="tiles">${this.tile("autostart", 1, "Yes, start it for me", "Ready right after login")}${this.tile("autostart", 0, "No, I will start it", "Open Hooperly whenever you want")}</div>`;
+      body = `<h3>Start automatically?</h3><p>Hooperly starts quietly in the background when you log in.</p>${autostartDemo()}<div class="tiles">${this.tile("autostart", 1, "Yes, start it for me", "Ready right after login")}${this.tile("autostart", 0, "No, I will start it", "Open Hooperly whenever you want")}</div>`;
     } else if (id === "fullscreen") {
-      body = `<h3>Over other apps?</h3><p>Should the ball show over fullscreen apps, like games and video?</p><div class="tiles">${this.tile("fullscreen", 1, "On top of everything", "Even fullscreen")}${this.tile("fullscreen", 0, "Regular windows only", "Hidden behind fullscreen")}</div>`;
+      body = `<h3>Over other apps?</h3><p>Should the ball show over fullscreen apps, like games and video?</p>${fullscreenDemo()}<div class="tiles">${this.tile("fullscreen", 1, "On top of everything", "Even fullscreen")}${this.tile("fullscreen", 0, "Regular windows only", "Hidden behind fullscreen")}</div>`;
     } else if (id === "crowd") {
       const cur = settings.crowd === "none" ? "off" : settings.arenaFill ? "full" : settings.crowdRow ? "row" : "half";
-      const tiles = ([["off", "Off", "No crowd"], ["row", "Row", "Front row only"], ["half", "Half", "Half the screen"], ["full", "Full", "Whole screen"]] as const)
-        .map(([m, name, hint]) => `<button class="st-tile${cur === m ? " on" : ""}" data-a="crowdmode" data-v="${m}" aria-pressed="${cur === m}"><canvas data-prev="${m}" width="300" height="230"></canvas><b>${name}</b><small>${hint}</small></button>`)
+      const tiles = ([["nocourt", "No court", "Only the ball and hoop"], ["off", "Off", "Court, no crowd"], ["row", "Row", "Front row only"], ["half", "Half", "Half the screen"], ["full", "Full", "Whole screen"]] as const)
+        .map(([m, name, hint]) => `<button class="st-tile ${m === "nocourt" || m === "off" ? "wide" : "narrow"}${cur === m ? " on" : ""}" data-a="crowdmode" data-v="${m}" aria-pressed="${cur === m}"><canvas data-prev="${m}" width="300" height="230"></canvas><b>${name}</b><small>${hint}</small></button>`)
         .join("");
-      body = `<h3>How much crowd?</h3><p>The stands show up behind the court when you shoot. Watch how each one comes in and goes out.</p><div class="ob-grid">${tiles}</div>`;
+      body = `<h3>How much court and crowd?</h3><div class="ob-grid ob-grid6">${tiles}</div><p class="hn">You can change this later in Settings under Look.</p>`;
+    } else if (id === "online") {
+      body = `<h3>Play with a friend</h3>${onlineDemo()}<p>Share a room code or link and shoot it out against a friend. It is optional, and you can find it any time in the menu under Play online.</p>`;
     } else if (id === "board") {
       body = user
         ? `<h3>You are on the board</h3><p>Signed in as <b>${user.nickname}</b>. Next you can pick your own name.</p>`
-        : `<h3>Join the leaderboard?</h3><p>Sign in with Google to save your points and get a rank against other players. It is optional: Hooperly works fully without it, and you can do this later from the menu.</p>
+        : `<h3>Join the leaderboard?</h3>${boardDemo()}<p>Sign in with Google to save your points and get a rank against other players. It is optional: Hooperly works fully without it, and you can do this later from the menu.</p>
 <button class="pb full gbtn lbsign" data-a="obsign"${this.lbSigning ? " disabled" : ""}>${GOOGLE_G}${this.lbSigning ? "Signing in…" : "Sign in with Google"}</button>${this.lbError ? `<div class="err">${this.lbError}</div>` : ""}`;
     } else if (id === "name") {
       const cur = this.nickDraft || user?.nickname || "";
@@ -1277,7 +1283,7 @@ ${rows}
 <input class="lic" id="nick" type="text" maxlength="18" value="${cur.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}" placeholder="Your name" autocomplete="off" spellcheck="false"${this.nickBusy ? " disabled" : ""}>
 <div class="hn" style="margin-top:4px">3 to 18 letters, numbers, spaces, - or _.</div>${this.nickError ? `<div class="err">${this.nickError}</div>` : ""}`;
     } else {
-      body = `<h3>All set</h3><p>You can change everything later in settings. Lost the ball? Press the shortcut to open the menu.</p>${SHORTCUT}`;
+      body = `<h3>All set</h3>${WEB ? "" : allSetDemo(SHORTCUT_KEYS)}<p>${WEB ? "You can change everything later in settings." : "You can change everything later in settings. Lost the ball? Press the shortcut to open the menu."}</p>`;
     }
     const last = s === steps.length - 1;
     const nextLabel = id === "name" ? (this.nickBusy ? "Saving…" : "Save name") : id === "board" && !user ? "Skip for now" : "Next";
@@ -1438,7 +1444,10 @@ ${rows}
         this.render();
         break;
       case "crowdmode": {
-        if (v === "off") {
+        setSetting("court", v !== "nocourt");
+        if (v === "nocourt") {
+          // keep the crowd choice as it is; without a court there is nothing to show it on
+        } else if (v === "off") {
           if (settings.crowd !== "none") setSetting("crowdBack", settings.crowd);
           setSetting("crowd", "none");
         } else {
