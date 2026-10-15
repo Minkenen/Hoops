@@ -104,6 +104,9 @@ function rate(views: number, clicks: number): string {
   return views ? Math.round((clicks / views) * 100) + " %" : "0 %";
 }
 
+/** The Google "G" (the four-colour logo), for the white sign-in button. */
+const GOOGLE_G = `<svg class="gg" viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>`;
+
 export class UI {
   view: View = "none";
   private step = 0;
@@ -514,7 +517,7 @@ ${m.peerAway ? `<div class="n warn">${esc(m.opponent)} lost connection…</div>`
     const login =
       backend.available && !user && !this.lbSkip
         ? `<div class="px login"><b>Join the board?</b><div class="hn" style="margin:2px 0 8px">Sign in to get a rank. Your game keeps working without it, and stays on your computer.</div>
-<button class="pb full gold lbsign" data-a="signin" data-v="google"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".11111.", "1111111", "11.....", "11.1111", "11...11", "1111111", ".11111."], ["#1c1c22"], 2)}Sign in with Google</button>
+<button class="pb full gbtn lbsign" data-a="signin" data-v="google"${this.lbSigning ? " disabled" : ""}>${GOOGLE_G}Sign in with Google</button>
 <button class="pb full" style="text-align:center" data-a="lbskip">Not now</button>${this.lbError && board ? `<div class="err">${this.lbError}</div>` : ""}</div>`
         : user
           ? this.lbDelete
@@ -1267,7 +1270,7 @@ ${rows}
       body = user
         ? `<h3>You are on the board</h3><p>Signed in as <b>${user.nickname}</b>. Next you can pick your own name.</p>`
         : `<h3>Join the leaderboard?</h3><p>Sign in with Google to save your points and get a rank against other players. It is optional: Hooperly works fully without it, and you can do this later from the menu.</p>
-<button class="pb full gold lbsign" data-a="obsign"${this.lbSigning ? " disabled" : ""}>${this.pixIcon([".11111.", "1111111", "11.....", "11.1111", "11...11", "1111111", ".11111."], ["#1c1c22"], 2)}${this.lbSigning ? "Signing in…" : "Sign in with Google"}</button>${this.lbError ? `<div class="err">${this.lbError}</div>` : ""}`;
+<button class="pb full gbtn lbsign" data-a="obsign"${this.lbSigning ? " disabled" : ""}>${GOOGLE_G}${this.lbSigning ? "Signing in…" : "Sign in with Google"}</button>${this.lbError ? `<div class="err">${this.lbError}</div>` : ""}`;
     } else if (id === "name") {
       const cur = this.nickDraft || user?.nickname || "";
       body = `<h3>Pick your name</h3><p>This is how you show up on the leaderboard. A name is yours alone: no one else can have the same one.</p>

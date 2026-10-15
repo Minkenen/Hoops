@@ -125,6 +125,9 @@
 #ui .lbstat small{display:block;font-size:11px;color:var(--mut)}#ui .lbstat b{font-size:17px;font-weight:500;color:var(--acc)}
 #ui .login{position:relative;margin:12px 4px 4px;padding:10px 12px}
 #ui .pb.gold{background:#ffc83a;color:#1c1c22}
+#ui .pb.gbtn{background:#fff;color:#1f1f1f;font-weight:500}
+#ui .pb.gbtn:hover:not(:disabled){background:#f1f3f4}
+#ui .pb.gbtn .gg{flex:none}
 #ui .lbsign{display:flex !important;align-items:center;gap:8px}
 .ob .lk{color:#ff9a4a;text-decoration:underline;pointer-events:auto}
 
