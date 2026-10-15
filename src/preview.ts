@@ -132,12 +132,40 @@ export class Preview {
     c.fillStyle = "#c9d3e3";
     c.fillRect(0, 0, W, H);
     if (noCourt) {
-      // no court: the hoop and the ball sit on a plain dark gray gradient
-      const g = c.createLinearGradient(0, 0, 0, H);
-      g.addColorStop(0, "#3a3d46");
-      g.addColorStop(1, "#1a1c22");
-      c.fillStyle = g;
-      c.fillRect(0, 0, W, H);
+      // no court: the hoop and the ball sit on the user's own kind of desktop (Mac or Windows)
+      const R = (x: number, y: number, w: number, h: number, col: string): void => {
+        c.fillStyle = col;
+        c.fillRect(Math.round(x * W), Math.round(y * H), Math.max(1, Math.round(w * W)), Math.max(1, Math.round(h * H)));
+      };
+      const win = (x: number, y: number, w: number, h: number, bar: string, body: string, dots: boolean): void => {
+        R(x - 0.006, y - 0.008, w + 0.012, h + 0.016, "#111");
+        R(x, y, w, h, body);
+        R(x, y, w, h * 0.16, bar);
+        if (dots) [["#e8392b", 0], ["#f6c744", 1], ["#5de06a", 2]].forEach(([col, i]) => R(x + 0.015 + (i as number) * 0.03, y + h * 0.05, 0.02, h * 0.07, col as string));
+        R(x + 0.03, y + h * 0.3, w * 0.8, h * 0.05, "#b9bfc9");
+        R(x + 0.03, y + h * 0.45, w * 0.55, h * 0.05, "#b9bfc9");
+      };
+      if (/Mac/i.test(navigator.platform)) {
+        R(0, 0, 1, 1, "#3b5b8c");
+        R(0, 0, 1, 0.09, "rgba(20,22,32,0.6)");
+        R(0.02, 0.025, 0.025, 0.04, "#fff");
+        R(0.07, 0.03, 0.09, 0.03, "#fff");
+        R(0.17, 0.03, 0.05, 0.03, "#fff");
+        R(0.8, 0.03, 0.15, 0.03, "#fff");
+        win(0.3, 0.2, 0.5, 0.42, "#cfd4dc", "#e9ecf1", true);
+        R(0.25, 0.86, 0.5, 0.11, "rgba(255,255,255,0.35)");
+        ["#f6c744", "#35d4ff", "#5de06a", "#e8392b"].forEach((col, i) => R(0.32 + i * 0.1, 0.89, 0.05, 0.065, col));
+      } else {
+        R(0, 0, 1, 1, "#1f6f8b");
+        [["#f6c744", 0.08], ["#e9ecf1", 0.28], ["#9aa3b2", 0.48]].forEach(([col, y]) => {
+          R(0.05, y as number, 0.07, 0.1, col as string);
+          R(0.05, (y as number) + 0.13, 0.07, 0.03, "rgba(255,255,255,0.8)");
+        });
+        win(0.34, 0.12, 0.45, 0.46, "#cfd4dc", "rgba(240,242,246,0.9)", false);
+        R(0, 0.89, 1, 0.11, "rgba(20,22,30,0.88)");
+        ["#35d4ff", "#e9ecf1", "#f6c744"].forEach((col, i) => R(0.02 + i * 0.05, 0.915, 0.035, 0.06, col));
+        R(0.9, 0.925, 0.07, 0.04, "#fff");
+      }
     }
     const e = Math.pow(1 - p, 3);
     if (!noCourt && p > 0 && (settings.court || this.opts) && this.court) {
