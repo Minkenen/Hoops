@@ -131,8 +131,8 @@ export class Preview {
     c.clearRect(0, 0, W, H);
     c.fillStyle = "#c9d3e3";
     c.fillRect(0, 0, W, H);
-    if (noCourt) {
-      // no court: the hoop and the ball sit on the user's own kind of desktop (Mac or Windows)
+    if (mode) {
+      // the crowd choices are shown on the user's own kind of desktop (Mac or Windows)
       const R = (x: number, y: number, w: number, h: number, col: string): void => {
         c.fillStyle = col;
         c.fillRect(Math.round(x * W), Math.round(y * H), Math.max(1, Math.round(w * W)), Math.max(1, Math.round(h * H)));
@@ -205,7 +205,7 @@ export class Preview {
         c.fillRect(BALL_X + x + off, FLOOR - 1 + y, 1, 1);
       }
     }
-    if (noCourt) c.globalAlpha = p;
+    if (mode) c.globalAlpha = 0.5 + 0.5 * p;
     if (this.ball) c.drawImage(this.ball, bx, by);
     c.globalAlpha = 1;
     c.save();
